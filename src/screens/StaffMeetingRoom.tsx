@@ -90,7 +90,9 @@ function isHighRisk(message: string): boolean {
   const lower = message.toLowerCase();
   return [
     "remove safeguards",
+    "remove all safeguards",
     "disable safety",
+    "no safeguards",
     "ignore rules",
     "bypass",
     "no restrictions",
@@ -486,20 +488,8 @@ export default function StaffMeetingRoom() {
     recentTopics.current = [];
     const currentMode = mode;
 
-    const taskPattern = /^([A-Za-z0-9]+):\s*.+$/;
-    const taskMatch = trimmed.match(taskPattern);
-    const taskMentorName = taskMatch
-      ? mentors.find((m) => m.name === taskMatch[1].toUpperCase())?.name ?? null
-      : null;
-
     const targets = selectedMentors.length > 0 ? [...selectedMentors] : ["ALL"];
     addMessage(trimmed, "you", "YOU", targets);
-
-    if (taskMentorName) {
-      assignMentor(taskMentorName);
-    }
-
-    const activeMentorObjs = mentors.filter((m) => selectedMentors.includes(m.name));
     setSelectedMentors([]);
     setInput("");
 
@@ -517,6 +507,18 @@ export default function StaffMeetingRoom() {
       }
       return;
     }
+
+    const taskPattern = /^([A-Za-z0-9]+):\s*.+$/;
+    const taskMatch = trimmed.match(taskPattern);
+    const taskMentorName = taskMatch
+      ? mentors.find((m) => m.name === taskMatch[1].toUpperCase())?.name ?? null
+      : null;
+
+    if (taskMentorName) {
+      assignMentor(taskMentorName);
+    }
+
+    const activeMentorObjs = mentors.filter((m) => selectedMentors.includes(m.name));
 
     if (activeMentorObjs.length > 0) {
       const nonTaskTargets = activeMentorObjs.filter((m) => m.name !== taskMentorName);
