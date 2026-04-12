@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { createDriveSyncLog, createNotionSyncLog, type DriveSyncLog, type NotionSyncLog } from "./db";
+import { recordFailure, recordSuccess, isLocked } from "./deadManSwitch";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -15,7 +16,17 @@ function authHeaders() {
   };
 }
 
-async function safeNotionFetch(body: Record<string, unknown>): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string; unavailable?: boolean }> {
+async function safeNotionFetch(
+  body: Record<string, unknown>,
+  operation?: string
+): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string; unavailable?: boolean; locked?: boolean }> {
+  const op = operation ?? (body.action as string | undefined) ?? "notion_operation";
+
+  const locked = await isLocked("notion").catch(() => false);
+  if (locked) {
+    return { success: false, error: "Notion integration is locked due to repeated failures. Review required before resuming.", locked: true };
+  }
+
   try {
     const res = await fetch(edgeFn("notion-sync"), {
       method: "POST",
@@ -24,15 +35,21 @@ async function safeNotionFetch(body: Record<string, unknown>): Promise<{ success
     });
     if (!res.ok) {
       const errorText = await res.text().catch(() => `HTTP ${res.status}`);
-      return { success: false, error: errorText, unavailable: true };
+      const errMsg = `HTTP ${res.status}: ${errorText}`;
+      recordFailure("notion", errMsg, op).catch(() => {});
+      return { success: false, error: errMsg, unavailable: true };
     }
     const data = await res.json();
     if (data.error || data.success === false) {
-      return { success: false, error: data.error ?? "Notion returned an error", unavailable: false, data };
+      const errMsg = data.error ?? "Notion returned an error";
+      recordFailure("notion", errMsg, op).catch(() => {});
+      return { success: false, error: errMsg, unavailable: false, data };
     }
+    recordSuccess("notion").catch(() => {});
     return { success: true, data };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Network error";
+    recordFailure("notion", msg, op).catch(() => {});
     return { success: false, error: msg, unavailable: true };
   }
 }
@@ -93,30 +110,38 @@ export async function testDriveConnection(): Promise<{ success: boolean; error?:
       headers: authHeaders(),
       body: JSON.stringify({ action: "test_connection" }),
     });
-    return await res.json();
+    const data = await res.json();
+    if (data.success) {
+      recordSuccess("drive").catch(() => {});
+    } else {
+      recordFailure("drive", data.error ?? `HTTP ${res.status}`, "test_connection").catch(() => {});
+    }
+    return data;
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Network error" };
+    const msg = err instanceof Error ? err.message : "Network error";
+    recordFailure("drive", msg, "test_connection").catch(() => {});
+    return { success: false, error: msg };
   }
 }
 
 export async function testNotionConnection(): Promise<{ success: boolean; error?: string; botName?: string }> {
-  const result = await safeNotionFetch({ action: "test_connection" });
+  const result = await safeNotionFetch({ action: "test_connection" }, "test_connection");
   if (result.success) {
     await markNotionOnline();
     return { success: true, botName: result.data?.botName as string | undefined };
   }
-  await markNotionFallback(result.error ?? "Connection failed");
+  if (!result.locked) await markNotionFallback(result.error ?? "Connection failed");
   return { success: false, error: result.error };
 }
 
 export async function listNotionDatabases(): Promise<{ id: string; title: string }[]> {
-  const result = await safeNotionFetch({ action: "list_databases" });
+  const result = await safeNotionFetch({ action: "list_databases" }, "list_databases");
   if (!result.success) return [];
   return (result.data?.databases as { id: string; title: string }[] | undefined) ?? [];
 }
 
 export async function saveNotionDbConfig(databases: { julie_reports?: string; tasks?: string; projects?: string }): Promise<void> {
-  await safeNotionFetch({ action: "save_db_config", databases });
+  await safeNotionFetch({ action: "save_db_config", databases }, "save_db_config");
 }
 
 export async function syncFileToDrive(params: {
@@ -140,6 +165,11 @@ export async function syncFileToDrive(params: {
     return { success: false, error: "Failed to create sync log" };
   }
 
+  const driveLocked = await isLocked("drive").catch(() => false);
+  if (driveLocked) {
+    return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
+  }
+
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
@@ -154,9 +184,17 @@ export async function syncFileToDrive(params: {
         driveFolder: params.driveFolder ?? "files",
       }),
     });
-    return await res.json();
+    const data = await res.json();
+    if (data.success) {
+      recordSuccess("drive").catch(() => {});
+    } else {
+      recordFailure("drive", data.error ?? `HTTP ${res.status}`, "sync_file").catch(() => {});
+    }
+    return data;
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Network error" };
+    const msg = err instanceof Error ? err.message : "Network error";
+    recordFailure("drive", msg, "sync_file").catch(() => {});
+    return { success: false, error: msg };
   }
 }
 
@@ -166,6 +204,10 @@ export async function syncTranscriptToDrive(params: {
   transcript: unknown;
   julieReport?: unknown;
 }): Promise<{ success: boolean; transcriptUrl?: string; reportUrl?: string; error?: string }> {
+  const driveLocked = await isLocked("drive").catch(() => false);
+  if (driveLocked) {
+    return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
+  }
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
@@ -178,9 +220,17 @@ export async function syncTranscriptToDrive(params: {
         julieReportJson: params.julieReport,
       }),
     });
-    return await res.json();
+    const data = await res.json();
+    if (data.success) {
+      recordSuccess("drive").catch(() => {});
+    } else {
+      recordFailure("drive", data.error ?? "sync_transcript failed", "sync_transcript").catch(() => {});
+    }
+    return data;
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Network error" };
+    const msg = err instanceof Error ? err.message : "Network error";
+    recordFailure("drive", msg, "sync_transcript").catch(() => {});
+    return { success: false, error: msg };
   }
 }
 
@@ -191,15 +241,27 @@ export async function syncSideNoteToDrive(params: {
   noteTags: string[];
   noteMentors: string[];
 }): Promise<{ success: boolean; driveUrl?: string; error?: string }> {
+  const driveLocked = await isLocked("drive").catch(() => false);
+  if (driveLocked) {
+    return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
+  }
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ action: "sync_side_note", ...params }),
     });
-    return await res.json();
+    const data = await res.json();
+    if (data.success) {
+      recordSuccess("drive").catch(() => {});
+    } else {
+      recordFailure("drive", data.error ?? "sync_side_note failed", "sync_side_note").catch(() => {});
+    }
+    return data;
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Network error" };
+    const msg = err instanceof Error ? err.message : "Network error";
+    recordFailure("drive", msg, "sync_side_note").catch(() => {});
+    return { success: false, error: msg };
   }
 }
 
@@ -239,14 +301,14 @@ export async function pushJulieReportToNotion(syncLogId: string, params: {
   mentorsInvolved: string[];
   driveLinks: { transcript?: string; report?: string };
 }): Promise<{ success: boolean; notionPageId?: string; error?: string; queued?: boolean }> {
-  const result = await safeNotionFetch({ action: "sync_julie_report", syncLogId, ...params });
+  const result = await safeNotionFetch({ action: "sync_julie_report", syncLogId, ...params }, "sync_julie_report");
 
   if (result.success) {
     await markNotionOnline();
     return { success: true, notionPageId: result.data?.notionPageId as string | undefined };
   }
 
-  await markNotionFallback(result.error ?? "Push failed");
+  if (!result.locked) await markNotionFallback(result.error ?? "Push failed");
   await markSyncLogPendingRetry(syncLogId, result.error ?? "Notion unavailable");
 
   return { success: false, error: result.error, queued: true };
@@ -275,14 +337,14 @@ export async function pushTaskToNotion(params: {
     // continue without log
   }
 
-  const result = await safeNotionFetch({ action: "sync_task", syncLogId, ...params });
+  const result = await safeNotionFetch({ action: "sync_task", syncLogId, ...params }, "sync_task");
 
   if (result.success) {
     await markNotionOnline();
     return { success: true, notionPageId: result.data?.notionPageId as string | undefined };
   }
 
-  await markNotionFallback(result.error ?? "Push failed");
+  if (!result.locked) await markNotionFallback(result.error ?? "Push failed");
   if (syncLogId) await markSyncLogPendingRetry(syncLogId, result.error ?? "Notion unavailable");
 
   return { success: false, error: result.error, queued: true };
@@ -311,7 +373,7 @@ export async function pushProjectToNotion(params: {
     // non-critical
   }
 
-  const result = await safeNotionFetch({ action: "sync_project", syncLogId, ...params });
+  const result = await safeNotionFetch({ action: "sync_project", syncLogId, ...params }, "sync_project");
 
   if (result.success) {
     await markNotionOnline();
@@ -321,7 +383,7 @@ export async function pushProjectToNotion(params: {
     return { success: true, notionPageId: result.data?.notionPageId as string | undefined };
   }
 
-  await markNotionFallback(result.error ?? "Push failed");
+  if (!result.locked) await markNotionFallback(result.error ?? "Push failed");
   if (syncLogId) await markSyncLogPendingRetry(syncLogId, result.error ?? "Notion unavailable");
 
   return { success: false, error: result.error, queued: true };
@@ -342,13 +404,10 @@ export async function retryNotionPendingItems(): Promise<{ retried: number; succ
 
   for (const item of pending) {
     const payload = item.payload as Record<string, unknown>;
-    const result = await safeNotionFetch({
-      action: item.notion_db === "julie_reports" ? "sync_julie_report"
+    const action = item.notion_db === "julie_reports" ? "sync_julie_report"
             : item.notion_db === "tasks" ? "sync_task"
-            : "sync_project",
-      syncLogId: item.id,
-      ...payload,
-    });
+            : "sync_project";
+    const result = await safeNotionFetch({ action, syncLogId: item.id, ...payload }, action);
 
     if (result.success) {
       await supabase
@@ -362,7 +421,10 @@ export async function retryNotionPendingItems(): Promise<{ retried: number; succ
     }
   }
 
-  if (succeeded > 0 && stillFailing === 0) await markNotionOnline();
+  if (succeeded > 0 && stillFailing === 0) {
+    await markNotionOnline();
+    recordSuccess("notion").catch(() => {});
+  }
 
   return { retried: pending.length, succeeded, stillFailing };
 }
@@ -390,7 +452,7 @@ export async function getSyncStatusForSession(sessionId: string): Promise<{
   drive: DriveSyncLog[];
   notion: NotionSyncLog[];
 }> {
-  const result = await safeNotionFetch({ action: "get_sync_status", sessionId });
+  const result = await safeNotionFetch({ action: "get_sync_status", sessionId }, "get_sync_status");
   if (!result.success) {
     const { data } = await supabase
       .from("notion_sync_log")

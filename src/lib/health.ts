@@ -1,8 +1,9 @@
 import { supabase } from "./supabase";
 import { getNotionFallbackStatus, testDriveConnection } from "./integrations";
 import { getQueuedActions } from "./offline";
+import { getAllLockStates, type IntegrationLock } from "./deadManSwitch";
 
-export type HealthStatus = "ok" | "warning" | "error" | "unknown" | "checking";
+export type HealthStatus = "ok" | "warning" | "error" | "unknown" | "checking" | "locked";
 
 export interface ServiceHealth {
   name: string;
@@ -18,6 +19,7 @@ export interface SystemHealth {
   notion: ServiceHealth;
   syncQueue: ServiceHealth;
   recentErrors: RecentError[];
+  locks: IntegrationLock[];
   lastRefreshed: number;
 }
 
@@ -160,7 +162,7 @@ async function fetchHealth(): Promise<SystemHealth> {
   let notionFallbackError = "";
   let notionFallbackAt: string | null = null;
 
-  const [db, drive, notionFallback] = await Promise.all([
+  const [db, drive, notionFallback, locks] = await Promise.all([
     checkDatabase(),
     checkDrive(),
     getNotionFallbackStatus().catch(() => ({
@@ -169,16 +171,45 @@ async function fetchHealth(): Promise<SystemHealth> {
       lastErrorAt: null as string | null,
       pendingCount: 0,
     })),
+    getAllLockStates().catch(() => [] as IntegrationLock[]),
   ]);
 
   notionFallbackError = notionFallback.lastError;
   notionFallbackAt = notionFallback.lastErrorAt;
 
-  const notion: ServiceHealth = notionFallback.inFallback
+  const notionLock = locks.find((l) => l.integration === "notion");
+  const driveLock = locks.find((l) => l.integration === "drive");
+
+  const resolvedDrive: ServiceHealth = driveLock?.locked
+    ? {
+        name: "drive",
+        status: "locked",
+        label: "Locked",
+        detail: `Writes paused — ${driveLock.consecutive_failures} consecutive failures (last: ${driveLock.last_error_code || "unknown"})`,
+        checkedAt: Date.now(),
+      }
+    : driveLock && driveLock.consecutive_failures > 0
+    ? {
+        ...drive,
+        status: "warning",
+        label: "Warning",
+        detail: `${driveLock.consecutive_failures} failure${driveLock.consecutive_failures > 1 ? "s" : ""} — ${driveLock.last_error_code || drive.detail || ""}`,
+      }
+    : drive;
+
+  const notion: ServiceHealth = notionLock?.locked
     ? {
         name: "notion",
-        status: notionFallback.pendingCount > 0 ? "warning" : "warning",
-        label: "Pending",
+        status: "locked",
+        label: "Locked",
+        detail: `Writes paused — ${notionLock.consecutive_failures} consecutive failures (last: ${notionLock.last_error_code || "unknown"})`,
+        checkedAt: Date.now(),
+      }
+    : notionFallback.inFallback
+    ? {
+        name: "notion",
+        status: "warning",
+        label: "Warning",
         detail:
           notionFallback.lastError ||
           (notionFallback.pendingCount > 0 ? `${notionFallback.pendingCount} items queued` : undefined),
@@ -193,14 +224,30 @@ async function fetchHealth(): Promise<SystemHealth> {
       };
 
   const syncQueue = checkSyncQueue();
-  const recentErrors = collectRecentErrors(db, drive, notion, notionFallbackError, notionFallbackAt);
+  const recentErrors = collectRecentErrors(db, resolvedDrive, notion, notionFallbackError, notionFallbackAt);
+
+  if (driveLock?.locked && driveLock.last_error_message) {
+    recentErrors.unshift({
+      service: "Google Drive",
+      message: `LOCKED: ${driveLock.last_error_message}`,
+      at: driveLock.locked_at ?? null,
+    });
+  }
+  if (notionLock?.locked && notionLock.last_error_message) {
+    recentErrors.unshift({
+      service: "Notion",
+      message: `LOCKED: ${notionLock.last_error_message}`,
+      at: notionLock.locked_at ?? null,
+    });
+  }
 
   return {
     database: db,
-    drive,
+    drive: resolvedDrive,
     notion,
     syncQueue,
     recentErrors,
+    locks,
     lastRefreshed: Date.now(),
   };
 }
@@ -229,7 +276,12 @@ export async function getSystemHealth(forceRefresh = false): Promise<SystemHealt
 
 export function getOverallStatus(health: SystemHealth): HealthStatus {
   const statuses = [health.database.status, health.drive.status, health.notion.status, health.syncQueue.status];
+  if (statuses.includes("locked")) return "locked";
   if (statuses.includes("error")) return "error";
   if (statuses.includes("warning")) return "warning";
   return "ok";
+}
+
+export function hasLockedIntegration(health: SystemHealth): boolean {
+  return health.locks.some((l) => l.locked);
 }
