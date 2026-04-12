@@ -23,6 +23,7 @@ interface Message {
   speaker: "you" | "mentor";
   sender?: string;
   targets?: string[];
+  isThinking?: boolean;
 }
 
 const INITIAL_MENTORS: Mentor[] = [
@@ -58,6 +59,19 @@ const STATUS_DOT: Record<MentorStatus, string> = {
   blocked:  "#F87171",
 };
 
+const MENTOR_KEYWORDS: Record<string, string[]> = {
+  DOC:     ["risk", "problem", "issue", "concern", "wrong"],
+  CIPHER:  ["data", "privacy", "user", "trust"],
+  TECHGUY: ["build", "how", "system", "implement", "code"],
+  SAM:     ["next", "plan", "steps", "who", "process"],
+  JAMISON: ["user", "message", "sound", "clear", "write"],
+};
+
+const MAX_RESPONSES_PER_TURN = 2;
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 export default function StaffMeetingRoom() {
   const [mentors, setMentors] = useState<Mentor[]>(INITIAL_MENTORS);
   const [mode, setMode] = useState<Mode>("brainstorm");
@@ -71,6 +85,11 @@ export default function StaffMeetingRoom() {
   const inputRef = useRef<HTMLInputElement>(null);
   const msgCounter = useRef(0);
   const currentTurnId = useRef(0);
+  const messagesRef = useRef<Message[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -84,9 +103,19 @@ export default function StaffMeetingRoom() {
     );
   }
 
-  function addMessage(text: string, speaker: "you" | "mentor", sender?: string, targets?: string[]) {
+  function nextId() {
     msgCounter.current += 1;
-    setMessages((prev) => [...prev, { id: msgCounter.current, text, speaker, sender, targets }]);
+    return msgCounter.current;
+  }
+
+  function addMessage(text: string, speaker: "you" | "mentor", sender?: string, targets?: string[], isThinking?: boolean): number {
+    const id = nextId();
+    setMessages((prev) => [...prev, { id, text, speaker, sender, targets, isThinking }]);
+    return id;
+  }
+
+  function removeMessageById(id: number) {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
   }
 
   function toggleMentorSelection(name: string) {
@@ -99,47 +128,6 @@ export default function StaffMeetingRoom() {
     setSelectedMentors((prev) => prev.filter((n) => n !== name));
   }
 
-  const MAX_RESPONSES_PER_TURN = 2;
-
-  function getMentorResponse(name: string, isInterrupt: boolean): string {
-    switch (name) {
-      case "PREZ":
-        return isInterrupt
-          ? "PREZ: Stop. We are moving without clear direction. What is the actual goal here?"
-          : "PREZ: What is the goal here? We need clarity before moving forward.";
-      case "DOC":
-        return isInterrupt
-          ? "DOC: Hold on. There is a risk here we are not addressing. What could go wrong?"
-          : "DOC: I want to understand the risks here. What are we missing?";
-      case "CIPHER":
-        return isInterrupt
-          ? "CIPHER: This could impact trust or data safety. We need to check that immediately."
-          : "CIPHER: Are we considering user trust and data safety in this?";
-      case "TECHGUY":
-        return isInterrupt
-          ? "TECHGUY: This may not be feasible as-is. We need to simplify how this would be built."
-          : "TECHGUY: How would we actually implement this? What's the simplest version?";
-      case "SAM":
-        return isInterrupt
-          ? "SAM: We are not aligned on execution. This needs structure before we proceed."
-          : "SAM: What are the next steps? Who owns this?";
-      case "JAMISON":
-        return isInterrupt
-          ? "JAMISON: This could confuse the user. We need to rethink how this is communicated."
-          : "JAMISON: How does this sound to the user? Is it clear and human?";
-      default:
-        return "Let's think this through.";
-    }
-  }
-
-  const MENTOR_KEYWORDS: Record<string, string[]> = {
-    DOC:     ["risk", "problem", "issue", "concern", "wrong"],
-    CIPHER:  ["data", "privacy", "user", "trust"],
-    TECHGUY: ["build", "how", "system", "implement", "code"],
-    SAM:     ["next", "plan", "steps", "who", "process"],
-    JAMISON: ["user", "message", "sound", "clear", "write"],
-  };
-
   function isMentorRelevant(mentorName: string, text: string): boolean {
     if (mentorName === "PREZ") return true;
     const keywords = MENTOR_KEYWORDS[mentorName];
@@ -148,7 +136,73 @@ export default function StaffMeetingRoom() {
     return keywords.some((kw) => lower.includes(kw));
   }
 
-  function triggerSignals(targetMentors: Mentor[], messageText: string) {
+  async function fetchMentorResponse(
+    mentorName: string,
+    userMessage: string,
+    currentMode: Mode
+  ): Promise<string> {
+    const recent = messagesRef.current
+      .filter((m) => !m.isThinking)
+      .slice(-8)
+      .map((m) => ({ speaker: m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR"), text: m.text }));
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/mentor-response`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        mentor: mentorName,
+        message: userMessage,
+        mode: currentMode,
+        recentTranscript: recent,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.response) throw new Error("Empty response");
+    return data.response as string;
+  }
+
+  async function dispatchMentorResponse(
+    mentor: Mentor,
+    userMessage: string,
+    currentMode: Mode,
+    turnId: number
+  ) {
+    setMentors((prev) =>
+      prev.map((m) => m.id === mentor.id ? { ...m, status: "working" } : m)
+    );
+
+    const thinkingId = addMessage(
+      `${mentor.name} is thinking...`,
+      "mentor",
+      mentor.name,
+      ["YOU"],
+      true
+    );
+
+    try {
+      const text = await fetchMentorResponse(mentor.name, userMessage, currentMode);
+      removeMessageById(thinkingId);
+      addMessage(`${mentor.name}: ${text}`, "mentor", mentor.name, ["YOU"]);
+    } catch {
+      removeMessageById(thinkingId);
+      addMessage(`${mentor.name}: I hit a problem generating a response.`, "mentor", mentor.name, ["YOU"]);
+    } finally {
+      setMentors((prev) =>
+        prev.map((m) => {
+          if (m.id !== mentor.id) return m;
+          if (m.hasTask) return { ...m, status: m.status };
+          return { ...m, status: "idle", hasInterrupt: false, hasComment: false, lastRespondedTurn: turnId };
+        })
+      );
+    }
+  }
+
+  function triggerSignals(targetMentors: Mentor[], messageText: string, currentMode: Mode) {
     const turnId = currentTurnId.current;
     const riskFactor = messageText.length > 20 ? 1 : 0.5;
 
@@ -200,27 +254,21 @@ export default function StaffMeetingRoom() {
     const respondingSignals = sorted.slice(0, MAX_RESPONSES_PER_TURN);
     const silencedSignals = sorted.slice(MAX_RESPONSES_PER_TURN);
 
-    respondingSignals.forEach((s) => {
-      const mentor = mentors.find((m) => m.id === s.id) ?? eligibleMentors.find((m) => m.id === s.id);
-      if (!mentor) return;
-      const text = getMentorResponse(mentor.name, s.hasInterrupt);
-      addMessage(text, "mentor", mentor.name, ["YOU"]);
-    });
-
-    const respondingIds = new Set(respondingSignals.map((s) => s.id));
     const silencedIds = new Set(silencedSignals.map((s) => s.id));
-
     setMentors((prev) =>
       prev.map((m) => {
-        if (respondingIds.has(m.id)) {
-          return { ...m, hasInterrupt: false, hasComment: false, lastRespondedTurn: turnId };
-        }
         if (silencedIds.has(m.id)) {
           return { ...m, hasInterrupt: false, hasComment: false };
         }
         return m;
       })
     );
+
+    respondingSignals.forEach((s) => {
+      const mentor = poolMentors.find((m) => m.id === s.id);
+      if (!mentor) return;
+      dispatchMentorResponse(mentor, messageText, currentMode, turnId);
+    });
   }
 
   function handleMentorClick(mentor: Mentor) {
@@ -236,23 +284,9 @@ export default function StaffMeetingRoom() {
       return;
     }
 
-    if (mentor.hasInterrupt) {
-      addMessage(getMentorResponse(mentor.name, true), "mentor", mentor.name, ["YOU"]);
-      setMentors((prev) =>
-        prev.map((m) =>
-          m.id === mentor.id ? { ...m, hasInterrupt: false, hasComment: false } : m
-        )
-      );
-      return;
-    }
-
-    if (mentor.hasComment) {
-      addMessage(getMentorResponse(mentor.name, false), "mentor", mentor.name, ["YOU"]);
-      setMentors((prev) =>
-        prev.map((m) =>
-          m.id === mentor.id ? { ...m, hasComment: false } : m
-        )
-      );
+    if (mentor.hasInterrupt || mentor.hasComment) {
+      toggleMentorSelection(mentor.name);
+      inputRef.current?.focus();
       return;
     }
 
@@ -273,6 +307,8 @@ export default function StaffMeetingRoom() {
     if (!trimmed) return;
 
     currentTurnId.current += 1;
+    const turnId = currentTurnId.current;
+    const currentMode = mode;
 
     const taskPattern = /^([A-Za-z0-9]+):\s*.+$/;
     const taskMatch = trimmed.match(taskPattern);
@@ -291,11 +327,14 @@ export default function StaffMeetingRoom() {
     setSelectedMentors([]);
     setInput("");
 
-    const conversationTargets = activeMentorObjs.length > 0 ? activeMentorObjs : mentors;
-    const nonTaskTargets = conversationTargets.filter((m) => m.name !== taskMentorName);
-
-    if (nonTaskTargets.length > 0) {
-      setTimeout(() => triggerSignals(nonTaskTargets, trimmed), 600);
+    if (activeMentorObjs.length > 0) {
+      const nonTaskTargets = activeMentorObjs.filter((m) => m.name !== taskMentorName);
+      nonTaskTargets.slice(0, MAX_RESPONSES_PER_TURN).forEach((mentor) => {
+        setTimeout(() => dispatchMentorResponse(mentor, trimmed, currentMode, turnId), 400);
+      });
+    } else {
+      const conversationTargets = mentors.filter((m) => m.name !== taskMentorName);
+      setTimeout(() => triggerSignals(conversationTargets, trimmed, currentMode), 600);
     }
   }
 
@@ -495,7 +534,11 @@ export default function StaffMeetingRoom() {
                   <div
                     key={msg.id}
                     className="rounded-lg px-3 py-2.5"
-                    style={{ backgroundColor: "rgba(255,255,255,0.03)" }}
+                    style={{
+                      backgroundColor: msg.isThinking
+                        ? "rgba(255,255,255,0.015)"
+                        : "rgba(255,255,255,0.03)",
+                    }}
                   >
                     <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
                       <span
@@ -533,7 +576,13 @@ export default function StaffMeetingRoom() {
                         )
                       )}
                     </div>
-                    <p className="text-sm leading-relaxed" style={{ color: isYou ? "#FFFFFF" : "#D0DFEE" }}>
+                    <p
+                      className="text-sm leading-relaxed"
+                      style={{
+                        color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : "#D0DFEE",
+                        fontStyle: msg.isThinking ? "italic" : "normal",
+                      }}
+                    >
                       {msg.text}
                     </p>
                   </div>
