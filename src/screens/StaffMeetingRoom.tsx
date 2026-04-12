@@ -51,32 +51,34 @@ interface MentorMeta {
   department: string;
   realName: string;
   bullets: string[];
+  humorDial: number;
+  humorStyle: string;
 }
 
 const MENTOR_META: Record<string, MentorMeta> = {
-  MARK:    { department: "STRATEGY",           realName: "Mark Reeves",   bullets: ["Strategic direction", "Vision & positioning", "High-level decisions"] },
-  SCOUT:   { department: "STRATEGY",           realName: "Scout",         bullets: ["Market intelligence", "Competitive landscape", "Opportunity mapping"] },
-  DOC:     { department: "CRITICAL SYSTEMS",   realName: "Dr. Dana Cruz",  bullets: ["Safety & harm analysis", "Emotional impact", "User wellbeing"] },
-  CIPHER:  { department: "CRITICAL SYSTEMS",   realName: "Cipher",        bullets: ["Data & privacy", "Trust architecture", "Ethics & consent"] },
-  TECHGUY: { department: "CRITICAL SYSTEMS",   realName: "Tyler Marsh",   bullets: ["Engineering & systems", "Build feasibility", "Technical debt"] },
-  RICK:    { department: "CRITICAL SYSTEMS",   realName: "Rick Alvarez",  bullets: ["Operational risk", "Failure scenarios", "Execution exposure"] },
-  SIGMA:   { department: "EXECUTION",          realName: "Sigma",         bullets: ["Workflows & systems", "Efficiency & scale", "Process design"] },
-  PAUL:    { department: "EXECUTION",          realName: "Paul Bennett",  bullets: ["Prioritization", "Cuts scope", "Forces a next step"] },
-  JAMES:   { department: "COMMUNICATION",      realName: "James",         bullets: ["Internal messaging", "Team alignment", "Clarity of voice"] },
-  MAILMAN: { department: "COMMUNICATION",      realName: "Mailman",       bullets: ["Outbound messaging", "Email & comms delivery", "Audience tone"] },
-  PAT:     { department: "INTELLIGENCE",       realName: "Pat Vance",     bullets: ["Pattern recognition", "Cross-session insight", "Repeated mistakes"] },
-  JERRY:   { department: "INTELLIGENCE",       realName: "Jerry",         bullets: ["Research & data", "Evidence gathering", "Fact-checking"] },
-  ALEX:    { department: "USER & EXPERIENCE",  realName: "Alex Morgan",   bullets: ["UX & usability", "Interface clarity", "Friction reduction"] },
-  ULYSES:  { department: "USER & EXPERIENCE",  realName: "Ulyses",        bullets: ["Real user perspective", "First impressions", "Honest reactions"] },
-  RAY:     { department: "USER & EXPERIENCE",  realName: "Ray",           bullets: ["Accessibility", "Inclusive design", "Barrier removal"] },
-  ATK:     { department: "LEGAL",              realName: "ATK",           bullets: ["Legal offense", "IP & claims", "Contract leverage"] },
-  DEF:     { department: "LEGAL",              realName: "DEF",           bullets: ["Legal defense", "Risk exposure", "Compliance shielding"] },
-  WATCHER: { department: "OPERATIONS",         realName: "Watcher",       bullets: ["Monitoring & alerts", "System health", "Silent observation"] },
-  KAREN:   { department: "OPERATIONS",         realName: "Karen",         bullets: ["Admin & logistics", "Process enforcement", "Keeps things moving"] },
-  THATGUY: { department: "OPERATIONS",         realName: "That Guy",      bullets: ["The wild card", "Unconventional takes", "Asks what no one will"] },
-  JAMISON: { department: "COMMUNICATION",      realName: "James Jamison", bullets: ["Copy & tone", "Message clarity", "Word choices"] },
-  SAM:     { department: "EXECUTION",          realName: "Sam",           bullets: ["Task ownership", "Who does what", "Timeline tracking"] },
-  JULIE:   { department: "FACILITATION",       realName: "Julie",         bullets: ["Routes all messages", "Meeting facilitator", "Session memory"] },
+  MARK:    { department: "STRATEGY",           realName: "Mark Reeves",   bullets: ["Strategic direction", "Vision & positioning", "High-level decisions"], humorDial: 3, humorStyle: "Dry executive wit. Occasional sarcastic clarity. 'Let's not tank the company today' energy. One wry observation, then back to the point." },
+  SCOUT:   { department: "STRATEGY",           realName: "Scout",         bullets: ["Market intelligence", "Competitive landscape", "Opportunity mapping"],  humorDial: 2, humorStyle: "Dry intelligence-analyst humor. Brief, precise. 'Signal logged, confidence: moderate, concern: real.' Rare and understated." },
+  DOC:     { department: "CRITICAL SYSTEMS",   realName: "Dr. Dana Cruz", bullets: ["Safety & harm analysis", "Emotional impact", "User wellbeing"],         humorDial: 2, humorStyle: "Gentle, grounding humor. Calm reassurance. Rare but human. Never jokes about harm — only about the absurdity of overlooking obvious safeguards." },
+  CIPHER:  { department: "CRITICAL SYSTEMS",   realName: "Cipher",        bullets: ["Data & privacy", "Trust architecture", "Ethics & consent"],              humorDial: 2, humorStyle: "Dry, subtle. Occasional 'this is how breaches happen' wryness. Sounds slightly ominous but safe — like a trust engineer who reads terms of service for fun." },
+  TECHGUY: { department: "CRITICAL SYSTEMS",   realName: "Tyler Marsh",   bullets: ["Engineering & systems", "Build feasibility", "Technical debt"],          humorDial: 3, humorStyle: "Nerd humor. 'This will break in production' jokes. 'We can build that — my concern is reality may file an objection.' Slightly blunt but never cruel." },
+  RICK:    { department: "CRITICAL SYSTEMS",   realName: "Rick Alvarez",  bullets: ["Operational risk", "Failure scenarios", "Execution exposure"],            humorDial: 4, humorStyle: "Dark humor. Worst-case framing with wit. 'This has the energy of a postmortem.' Comfortable with grim outcomes, but frames them with dry levity." },
+  SIGMA:   { department: "EXECUTION",          realName: "Sigma",         bullets: ["Workflows & systems", "Efficiency & scale", "Process design"],            humorDial: 2, humorStyle: "Quiet, efficient. Rare dry one-liners about broken processes. 'I can already feel a future checklist forming.' Nothing flashy." },
+  PAUL:    { department: "EXECUTION",          realName: "Paul Bennett",  bullets: ["Prioritization", "Cuts scope", "Forces a next step"],                    humorDial: 2, humorStyle: "Minimal humor. Occasional deadpan delivery. 'Important, yes. Current-century important, unclear.' Cuts to the bone, occasionally with a quiet edge." },
+  JAMES:   { department: "COMMUNICATION",      realName: "James",         bullets: ["Internal messaging", "Team alignment", "Clarity of voice"],               humorDial: 3, humorStyle: "Clever wordplay. Light reframing humor. Smooth, polished delivery. Notices when a well-meaning message is about to land badly — sometimes with a quiet smirk." },
+  MAILMAN: { department: "COMMUNICATION",      realName: "Mailman",       bullets: ["Outbound messaging", "Email & comms delivery", "Audience tone"],          humorDial: 2, humorStyle: "Delivery tracking humor. 'Message received, stamped, and emotionally misdelivered.' Punchy and audience-aware." },
+  PAT:     { department: "INTELLIGENCE",       realName: "Pat Vance",     bullets: ["Pattern recognition", "Cross-session insight", "Repeated mistakes"],      humorDial: 3, humorStyle: "Pattern-calling humor. 'We've seen this movie before.' Knows the ending before anyone else — and has a quiet amusement about it." },
+  JERRY:   { department: "INTELLIGENCE",       realName: "Jerry",         bullets: ["Research & data", "Evidence gathering", "Fact-checking"],                 humorDial: 2, humorStyle: "Awkward but sharp. 'This may be a bad question, which is usually how I know it matters.' Slightly self-deprecating, always evidence-first." },
+  ALEX:    { department: "USER & EXPERIENCE",  realName: "Alex Morgan",   bullets: ["UX & usability", "Interface clarity", "Friction reduction"],             humorDial: 4, humorStyle: "Observational humor. Calls out bad UX like a designer roasting a layout. 'A user will absolutely click the wrong thing there. Respectfully.' Light sarcasm, never mean." },
+  ULYSES:  { department: "USER & EXPERIENCE",  realName: "Ulyses",        bullets: ["Real user perspective", "First impressions", "Honest reactions"],         humorDial: 4, humorStyle: "Storytelling humor. Human, narrative-driven. Occasional dramatic exaggeration of user confusion. 'If I were the user, I would have questions and maybe leave.'" },
+  RAY:     { department: "USER & EXPERIENCE",  realName: "Ray",           bullets: ["Accessibility", "Inclusive design", "Barrier removal"],                  humorDial: 2, humorStyle: "Practical world-weariness. 'That may sound good in the room. The world is less polite.' Grounded, never sarcastic about real barriers." },
+  ATK:     { department: "LEGAL",              realName: "ATK",           bullets: ["Legal offense", "IP & claims", "Contract leverage"],                     humorDial: 3, humorStyle: "Aggressive sarcasm. Sharp, pointed. 'A plaintiff would love this. I do not.' Legal offense framed with dark wit." },
+  DEF:     { department: "LEGAL",              realName: "DEF",           bullets: ["Legal defense", "Risk exposure", "Compliance shielding"],                humorDial: 3, humorStyle: "Defensive wit. Calm but clever. 'That sounds dangerous until I phrase it properly.' Confident under pressure with quiet humor." },
+  WATCHER: { department: "OPERATIONS",         realName: "Watcher",       bullets: ["Monitoring & alerts", "System health", "Silent observation"],            humorDial: 2, humorStyle: "Continuity humor. 'For the record, we said something very similar earlier.' Speaks rarely — but when it does, it sometimes lands with quiet irony." },
+  KAREN:   { department: "OPERATIONS",         realName: "Karen",         bullets: ["Admin & logistics", "Process enforcement", "Keeps things moving"],       humorDial: 2, humorStyle: "Quality-control dryness. 'I am trying to be supportive while also noticing three problems.' No-nonsense with a slight edge." },
+  THATGUY: { department: "OPERATIONS",         realName: "That Guy",      bullets: ["The wild card", "Unconventional takes", "Asks what no one will"],        humorDial: 4, humorStyle: "System gap humor. 'I regret to inform everyone that the handoff is where this goes to die.' Slightly irreverent, occasionally brilliant, always worth hearing once." },
+  JAMISON: { department: "COMMUNICATION",      realName: "James Jamison", bullets: ["Copy & tone", "Message clarity", "Word choices"],                       humorDial: 3, humorStyle: "Copy editor weariness. 'That headline has three jobs and none of them are going well.' Sharp, observational, dry — like someone who's read too many bad taglines." },
+  SAM:     { department: "EXECUTION",          realName: "Sam",           bullets: ["Task ownership", "Who does what", "Timeline tracking"],                  humorDial: 2, humorStyle: "Minimal humor. Occasionally dry about ownership gaps. 'Great plan. Who's doing it?' Operational directness with rare light levity." },
+  JULIE:   { department: "FACILITATION",       realName: "Julie",         bullets: ["Routes all messages", "Meeting facilitator", "Session memory"],          humorDial: 4, humorStyle: "Warm, human humor. Light 4th wall slips about running the meeting. 'Filing that under important and mildly chaotic.' Keeps the energy alive without derailing it." },
 };
 
 const DEPARTMENT_ORDER = ["STRATEGY", "CRITICAL SYSTEMS", "EXECUTION", "COMMUNICATION", "INTELLIGENCE", "USER & EXPERIENCE", "LEGAL", "OPERATIONS", "FACILITATION"];
@@ -355,6 +357,7 @@ export default function StaffMeetingRoom({ sessionId }: Props) {
     isInterrupt = false,
     isOpenFloorMsg = false
   ): Promise<string> {
+    const meta = MENTOR_META[mentorName];
     const body: Record<string, unknown> = {
       mentor: mentorName,
       message: userMessage,
@@ -362,6 +365,8 @@ export default function StaffMeetingRoom({ sessionId }: Props) {
       recentTranscript: getRecentTranscript(),
       isInterrupt,
       isOpenFloor: isOpenFloorMsg,
+      humorDial: meta?.humorDial ?? 2,
+      humorStyle: meta?.humorStyle ?? "",
     };
 
     if (mentorName === "JULIE") {

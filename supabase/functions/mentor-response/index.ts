@@ -922,7 +922,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { mentor, message, mode, recentTranscript, isInterrupt, isOpenFloor, meetingState } = await req.json();
+    const { mentor, message, mode, recentTranscript, isInterrupt, isOpenFloor, meetingState, humorDial, humorStyle } = await req.json();
 
     const profile = MENTOR_PROFILES[mentor];
     if (!profile) {
@@ -982,11 +982,30 @@ Mentor participation (turn counts): ${JSON.stringify(meetingState.mentorParticip
 Dropped ideas: ${JSON.stringify(meetingState.droppedIdeas ?? [])}`
       : "";
 
+    const effectiveHumorDial = (isInterrupt || mentor === "DOC" || mentor === "CIPHER") ? 1 : (humorDial ?? 2);
+
+    const humorInstructions = (() => {
+      if (effectiveHumorDial === 1) {
+        return `\nHUMOR DIAL: 1 (OFF) — No humor. Stay fully serious, grounded, and professional. This is not the moment.`;
+      }
+      const dialDescriptions: Record<number, string> = {
+        2: "Light wit only. Subtle, understated. One brief dry observation is the absolute maximum — and only if it reinforces the point. Default to serious.",
+        3: "Balanced. Occasional dry or situational humor allowed. One brief humorous touch per response at most, then immediately back to useful content. Never forced.",
+        4: "Noticeable personality. Humor is part of your voice — dry, observational, or character-driven. Still professional. Still brief. One sharp line max, then the actual point.",
+        5: "Strong personality. Frequent but controlled humor. Your wit is part of how you communicate — but it never replaces clarity or usefulness. One good line is better than three average ones.",
+      };
+      const dialDesc = dialDescriptions[effectiveHumorDial] ?? dialDescriptions[3];
+      return `\nHUMOR DIAL: ${effectiveHumorDial}/5 — ${dialDesc}
+YOUR HUMOR STYLE: ${humorStyle ?? "Dry, understated, in-character."}
+HUMOR FAILSAFE: If the user message is high-risk, safety-related, emotionally distressed, or involves harm → drop humor dial to 1 immediately. Clarity first, always.
+4TH WALL SLIP: Approximately 1 in every 8 responses you may include a brief, subtle self-aware slip that fits your character. It must be: one short phrase only, charming not unsettling, and must NOT replace useful content. Skip it when in doubt.`;
+    })();
+
     const roleSpecificPrompt = `You are ${mentor === "JULIE" ? "JULIE, the Bridge Host" : `${mentor}, a specialist in ${profile.role}`}.
 ${profile.style}
 YOUR FOCUS: ${profile.focus}
 STAY OUT OF: ${profile.avoid}
-The current meeting mode is: ${mode}.${meetingStateContext}${interruptInstructions}${openFloorInstructions}`;
+The current meeting mode is: ${mode}.${meetingStateContext}${interruptInstructions}${openFloorInstructions}${humorInstructions}`;
 
     const systemPrompt = globalRules + "\n" + roleSpecificPrompt;
 
