@@ -8,8 +8,9 @@ import {
   listProjectNotes, addProjectNote, deleteProjectNote,
   listProjectTasks, addProjectTask, updateTaskStatus, deleteProjectTask,
   listVaultFilesByProject, listSideNotes, listTagsForProject,
-  type Project, type ProjectNote, type ProjectTask, type TaskStatus, type VaultFile, type SideNote, type TagEntry,
+  type Project, type ProjectNote, type ProjectTask, type TaskStatus, type VaultFile, type SideNote, type TagEntry, type LinkableType,
 } from "../lib/db";
+import LinkedItemsPanel from "../components/LinkedItemsPanel";
 
 type DetailTab = "overview" | "files" | "notes" | "tasks" | "sessions" | "tags";
 
@@ -78,9 +79,10 @@ function EmptySection({ message }: { message: string }) {
 interface ProjectDetailProps {
   project: Project;
   onProjectRenamed: (id: string, name: string) => void;
+  onNavigate?: (type: LinkableType, id: string) => void;
 }
 
-function ProjectDetail({ project, onProjectRenamed }: ProjectDetailProps) {
+function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailProps) {
   const [tab, setTab] = useState<DetailTab>("overview");
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -296,6 +298,8 @@ function ProjectDetail({ project, onProjectRenamed }: ProjectDetailProps) {
                     </div>
                   </div>
                 )}
+
+                <LinkedItemsPanel sourceType="project" sourceId={project.id} onNavigate={onNavigate} />
 
                 {openTasks.length === 0 && notes.length === 0 && files.length === 0 && tags.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-40 gap-3">
@@ -523,7 +527,12 @@ function ProjectDetail({ project, onProjectRenamed }: ProjectDetailProps) {
   );
 }
 
-export default function ProjectsView() {
+interface ProjectsViewProps {
+  onNavigateLinked?: (type: LinkableType, id: string) => void;
+  linkedTarget?: string;
+}
+
+export default function ProjectsView({ onNavigateLinked, linkedTarget }: ProjectsViewProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
@@ -535,8 +544,12 @@ export default function ProjectsView() {
     listProjects().then((p) => {
       setProjects(p);
       setLoading(false);
+      if (linkedTarget) {
+        const target = p.find((proj) => proj.id === linkedTarget);
+        if (target) setSelected(target);
+      }
     });
-  }, []);
+  }, [linkedTarget]);
 
   async function handleCreateProject() {
     if (!newProjectName.trim()) return;
@@ -677,6 +690,7 @@ export default function ProjectsView() {
             key={selected.id}
             project={selected}
             onProjectRenamed={handleProjectRenamed}
+            onNavigate={onNavigateLinked}
           />
         )}
       </div>

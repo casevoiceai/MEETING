@@ -3,8 +3,9 @@ import { Plus, Trash2, CreditCard as Edit2, Check, X, Tag, FileText, AlignLeft, 
 import {
   listAllTags, createTag, updateTag, deleteTag,
   listVaultFilesByTag, listSideNotesByTag, listSessionsByTag, listProjectsByTag, listEmailsByTag,
-  type TagEntry, type VaultFile, type SideNote, type Session, type Project, type Email,
+  type TagEntry, type VaultFile, type SideNote, type Session, type Project, type Email, type LinkableType,
 } from "../lib/db";
+import LinkedItemsPanel from "../components/LinkedItemsPanel";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -50,9 +51,10 @@ function EmptyState({ icon, message }: { icon: React.ReactNode; message: string 
 interface TagDetailProps {
   tag: TagEntry;
   onBack: () => void;
+  onNavigate?: (type: LinkableType, id: string) => void;
 }
 
-function TagDetail({ tag, onBack }: TagDetailProps) {
+function TagDetail({ tag, onBack, onNavigate }: TagDetailProps) {
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [notes, setNotes] = useState<SideNote[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -232,13 +234,20 @@ function TagDetail({ tag, onBack }: TagDetailProps) {
               )
             }
           </section>
+
+          <LinkedItemsPanel sourceType="tag" sourceId={tag.id} onNavigate={onNavigate} />
         </div>
       )}
     </div>
   );
 }
 
-export default function TagsView() {
+interface TagsViewProps {
+  onNavigateLinked?: (type: LinkableType, id: string) => void;
+  linkedTarget?: string;
+}
+
+export default function TagsView({ onNavigateLinked, linkedTarget }: TagsViewProps) {
   const [tags, setTags] = useState<TagEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTag, setSelectedTag] = useState<TagEntry | null>(null);
@@ -258,6 +267,10 @@ export default function TagsView() {
     const t = await listAllTags();
     setTags(t);
     setLoading(false);
+    if (linkedTarget) {
+      const target = t.find((tag) => tag.id === linkedTarget);
+      if (target) setSelectedTag(target);
+    }
   }
 
   function openCreate() {
@@ -319,7 +332,7 @@ export default function TagsView() {
   if (selectedTag) {
     return (
       <div className="flex-1 flex flex-col min-h-0" style={{ backgroundColor: NAVY, color: "#FFFFFF" }}>
-        <TagDetail tag={selectedTag} onBack={() => setSelectedTag(null)} />
+        <TagDetail tag={selectedTag} onBack={() => setSelectedTag(null)} onNavigate={onNavigateLinked} />
       </div>
     );
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Archive, ChevronRight, FileText, Tag, Users, AlertCircle, CheckSquare, StickyNote } from "lucide-react";
-import { listSessions, archiveSession, loadSession, type Session } from "../lib/db";
+import { listSessions, archiveSession, loadSession, type Session, type LinkableType } from "../lib/db";
+import LinkedItemsPanel from "../components/LinkedItemsPanel";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -12,6 +13,8 @@ const TEXT = "#D0DFEE";
 
 interface Props {
   onOpenSession: (key: string) => void | Promise<void>;
+  onNavigateLinked?: (type: LinkableType, id: string) => void;
+  linkedTarget?: string;
 }
 
 interface SessionData {
@@ -25,10 +28,10 @@ interface SessionData {
   summary: string;
 }
 
-export default function SessionsView({ onOpenSession }: Props) {
+export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTarget }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(linkedTarget ?? null);
   const [expandedData, setExpandedData] = useState<Record<string, SessionData>>({});
 
   useEffect(() => {
@@ -37,6 +40,14 @@ export default function SessionsView({ onOpenSession }: Props) {
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    if (linkedTarget) {
+      setExpandedId(linkedTarget);
+      const session = sessions.find((s) => s.id === linkedTarget);
+      if (session) handleExpand(session);
+    }
+  }, [linkedTarget, sessions.length]);
 
   async function handleExpand(session: Session) {
     if (expandedId === session.id) {
@@ -254,6 +265,10 @@ export default function SessionsView({ onOpenSession }: Props) {
                             </div>
                           </div>
                         )}
+
+                        <div className="col-span-2">
+                          <LinkedItemsPanel sourceType="session" sourceId={session.id} onNavigate={onNavigateLinked} />
+                        </div>
                       </div>
                     )}
                   </div>

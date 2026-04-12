@@ -8,9 +8,10 @@ import {
   listVaultFolders, createVaultFolder, renameVaultFolder, deleteVaultFolder,
   listVaultFiles, createVaultFile, updateVaultFile, deleteVaultFile,
   listProjects, addProjectTask,
-  type SideNote, type TagEntry, type VaultFolder, type VaultFile, type Project,
+  type SideNote, type TagEntry, type VaultFolder, type VaultFile, type Project, type LinkableType,
 } from "../lib/db";
 import { TEAM_ROSTER } from "../lib/mentors";
+import LinkedItemsPanel from "../components/LinkedItemsPanel";
 
 type MainTab = "files" | "notes";
 type ViewMode = "grid" | "table";
@@ -87,8 +88,8 @@ function renderMarkdown(text: string) {
 }
 
 function FileEditor({
-  file, onUpdate, onClose, projects,
-}: { file: VaultFile; onUpdate: (patch: Partial<VaultFile>) => void; onClose: () => void; projects: Project[] }) {
+  file, onUpdate, onClose, projects, onNavigate,
+}: { file: VaultFile; onUpdate: (patch: Partial<VaultFile>) => void; onClose: () => void; projects: Project[]; onNavigate?: (type: LinkableType, id: string) => void }) {
   const [content, setContent] = useState(file.content);
   const [summary, setSummary] = useState(file.summary);
   const [tagInput, setTagInput] = useState("");
@@ -281,13 +282,15 @@ function FileEditor({
             <p className="text-xs font-bold tracking-widest uppercase mt-3 mb-1" style={{ color: MUTED }}>Updated</p>
             <p className="text-sm" style={{ color: DIM }}>{new Date(file.updated_at).toLocaleDateString()}</p>
           </div>
+
+          <LinkedItemsPanel sourceType="file" sourceId={file.id} onNavigate={onNavigate} />
         </div>
       </div>
     </div>
   );
 }
 
-function FilesTab() {
+function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableType, id: string) => void; initialFileId?: string }) {
   const [folders, setFolders] = useState<VaultFolder[]>([]);
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -309,6 +312,13 @@ function FilesTab() {
   }, [selectedFolder]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (initialFileId && files.length > 0) {
+      const target = files.find((f) => f.id === initialFileId);
+      if (target) setOpenFile(target);
+    }
+  }, [initialFileId, files]);
 
   async function handleCreateFile(name = "Untitled", initialContent = "") {
     const f = await createVaultFile(name, selectedFolder ?? null);
@@ -387,6 +397,7 @@ function FilesTab() {
         onUpdate={(patch) => handleUpdateFile(openFile.id, patch)}
         onClose={() => setOpenFile(null)}
         projects={projects}
+        onNavigate={onNavigate}
       />
     );
   }
@@ -712,7 +723,7 @@ function MentorPicker({
   );
 }
 
-function NotesTab() {
+function NotesTab({ onNavigate, initialNoteId }: { onNavigate?: (type: LinkableType, id: string) => void; initialNoteId?: string }) {
   const [notes, setNotes] = useState<SideNote[]>([]);
   const [tags, setTags] = useState<TagEntry[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -727,6 +738,7 @@ function NotesTab() {
   const [newMentors, setNewMentors] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(initialNoteId ?? null);
 
   useEffect(() => {
     Promise.all([listSideNotes({ archived: false }), listAllTags(), listProjects()]).then(([n, t, p]) => {
@@ -890,8 +902,9 @@ function NotesTab() {
           {filtered.map((note) => {
             const linkedProject = projects.find((p) => p.id === note.project_id);
             const isEditing = editingId === note.id;
+            const isExpanded = expandedNoteId === note.id;
             return (
-              <div key={note.id} className="rounded-xl px-5 py-4 group" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
+              <div key={note.id} className="rounded-xl px-5 py-4 group" style={{ backgroundColor: CARD, border: `1px solid ${isExpanded ? `${GOLD}44` : BORDER}` }}>
                 <div className="flex items-start gap-3">
                   {isEditing ? (
                     <div className="flex-1 flex flex-col gap-2">
@@ -908,7 +921,13 @@ function NotesTab() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm leading-relaxed flex-1" style={{ color: TEXT }}>{note.text}</p>
+                    <p
+                      className="text-sm leading-relaxed flex-1 cursor-pointer"
+                      style={{ color: TEXT }}
+                      onClick={() => setExpandedNoteId(isExpanded ? null : note.id)}
+                    >
+                      {note.text}
+                    </p>
                   )}
                   {!isEditing && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -959,6 +978,12 @@ function NotesTab() {
                   )}
                   <span className="text-xs ml-auto" style={{ color: DIM }}>{new Date(note.created_at).toLocaleDateString()}</span>
                 </div>
+
+                {isExpanded && (
+                  <div className="mt-4">
+                    <LinkedItemsPanel sourceType="note" sourceId={note.id} onNavigate={onNavigate} />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -968,8 +993,13 @@ function NotesTab() {
   );
 }
 
-export default function VaultView() {
-  const [tab, setTab] = useState<MainTab>("files");
+interface VaultViewProps {
+  onNavigateLinked?: (type: LinkableType, id: string) => void;
+  linkedTarget?: { type: LinkableType; id: string };
+}
+
+export default function VaultView({ onNavigateLinked, linkedTarget }: VaultViewProps) {
+  const [tab, setTab] = useState<MainTab>(linkedTarget?.type === "note" ? "notes" : "files");
 
   return (
     <div className="flex-1 flex flex-col min-h-0" style={{ backgroundColor: NAVY, color: "#FFFFFF" }}>
@@ -1000,8 +1030,18 @@ export default function VaultView() {
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
-        {tab === "files" && <FilesTab />}
-        {tab === "notes" && <NotesTab />}
+        {tab === "files" && (
+          <FilesTab
+            onNavigate={onNavigateLinked}
+            initialFileId={linkedTarget?.type === "file" ? linkedTarget.id : undefined}
+          />
+        )}
+        {tab === "notes" && (
+          <NotesTab
+            onNavigate={onNavigateLinked}
+            initialNoteId={linkedTarget?.type === "note" ? linkedTarget.id : undefined}
+          />
+        )}
       </div>
     </div>
   );

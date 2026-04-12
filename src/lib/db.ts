@@ -709,6 +709,157 @@ export async function deleteEmailDraft(draftId: string): Promise<void> {
   await supabase.from("email_drafts").delete().eq("id", draftId);
 }
 
+export type LinkableType = "file" | "note" | "tag" | "session" | "project";
+
+export interface LinkedItem {
+  id: string;
+  source_type: LinkableType;
+  source_id: string;
+  target_type: LinkableType;
+  target_id: string;
+  created_at: string;
+  resolved?: ResolvedLinkTarget;
+}
+
+export interface ResolvedLinkTarget {
+  type: LinkableType;
+  id: string;
+  title: string;
+  subtitle?: string;
+  tags?: string[];
+}
+
+export async function addLink(
+  sourceType: LinkableType,
+  sourceId: string,
+  targetType: LinkableType,
+  targetId: string
+): Promise<void> {
+  await supabase.from("linked_items").upsert(
+    { source_type: sourceType, source_id: sourceId, target_type: targetType, target_id: targetId },
+    { onConflict: "source_type,source_id,target_type,target_id" }
+  );
+  await supabase.from("linked_items").upsert(
+    { source_type: targetType, source_id: targetId, target_type: sourceType, target_id: sourceId },
+    { onConflict: "source_type,source_id,target_type,target_id" }
+  );
+}
+
+export async function removeLink(
+  sourceType: LinkableType,
+  sourceId: string,
+  targetType: LinkableType,
+  targetId: string
+): Promise<void> {
+  await Promise.all([
+    supabase.from("linked_items")
+      .delete()
+      .eq("source_type", sourceType)
+      .eq("source_id", sourceId)
+      .eq("target_type", targetType)
+      .eq("target_id", targetId),
+    supabase.from("linked_items")
+      .delete()
+      .eq("source_type", targetType)
+      .eq("source_id", targetId)
+      .eq("target_type", sourceType)
+      .eq("target_id", sourceId),
+  ]);
+}
+
+async function resolveLinkedTarget(type: LinkableType, id: string): Promise<ResolvedLinkTarget | null> {
+  if (type === "file") {
+    const { data } = await supabase.from("vault_files").select("id,name,tags,summary").eq("id", id).maybeSingle();
+    if (!data) return null;
+    return { type, id, title: data.name, subtitle: data.summary?.slice(0, 60) || undefined, tags: data.tags };
+  }
+  if (type === "note") {
+    const { data } = await supabase.from("side_notes").select("id,text,tags,mentors").eq("id", id).maybeSingle();
+    if (!data) return null;
+    return { type, id, title: data.text.slice(0, 80), subtitle: (data.mentors ?? []).join(", ") || undefined, tags: data.tags };
+  }
+  if (type === "tag") {
+    const { data } = await supabase.from("tag_registry").select("id,tag,category").eq("id", id).maybeSingle();
+    if (!data) return null;
+    return { type, id, title: data.tag, subtitle: data.category };
+  }
+  if (type === "session") {
+    const { data } = await supabase.from("sessions").select("id,session_key,session_summary").eq("id", id).maybeSingle();
+    if (!data) return null;
+    return { type, id, title: data.session_key, subtitle: data.session_summary?.slice(0, 60) || undefined };
+  }
+  if (type === "project") {
+    const { data } = await supabase.from("projects").select("id,name").eq("id", id).maybeSingle();
+    if (!data) return null;
+    return { type, id, title: data.name };
+  }
+  return null;
+}
+
+export async function getLinkedItems(
+  sourceType: LinkableType,
+  sourceId: string,
+  filterType?: LinkableType
+): Promise<LinkedItem[]> {
+  let q = supabase.from("linked_items").select("*").eq("source_type", sourceType).eq("source_id", sourceId);
+  if (filterType) q = q.eq("target_type", filterType);
+  const { data } = await q.order("created_at", { ascending: false });
+  const rows = (data ?? []) as LinkedItem[];
+  const resolved = await Promise.all(
+    rows.map(async (row) => {
+      const r = await resolveLinkedTarget(row.target_type, row.target_id);
+      return { ...row, resolved: r ?? undefined };
+    })
+  );
+  return resolved.filter((r) => r.resolved);
+}
+
+export async function searchLinkCandidates(query: string, excludeType?: LinkableType, excludeId?: string): Promise<ResolvedLinkTarget[]> {
+  if (!query.trim()) return [];
+  const q = query.toLowerCase();
+  const results: ResolvedLinkTarget[] = [];
+
+  const [files, notes, tags, sessions, projects] = await Promise.all([
+    supabase.from("vault_files").select("id,name,tags,summary").eq("archived", false),
+    supabase.from("side_notes").select("id,text,tags,mentors").eq("archived", false),
+    supabase.from("tag_registry").select("id,tag,category"),
+    supabase.from("sessions").select("id,session_key,session_summary").eq("archived", false),
+    supabase.from("projects").select("id,name").eq("archived", false),
+  ]);
+
+  (files.data ?? []).forEach((f: { id: string; name: string; tags: string[]; summary: string }) => {
+    if (excludeType === "file" && f.id === excludeId) return;
+    if (f.name?.toLowerCase().includes(q) || f.summary?.toLowerCase().includes(q))
+      results.push({ type: "file", id: f.id, title: f.name, subtitle: f.summary?.slice(0, 60) || undefined, tags: f.tags });
+  });
+
+  (notes.data ?? []).forEach((n: { id: string; text: string; tags: string[]; mentors: string[] }) => {
+    if (excludeType === "note" && n.id === excludeId) return;
+    if (n.text?.toLowerCase().includes(q))
+      results.push({ type: "note", id: n.id, title: n.text.slice(0, 80), subtitle: (n.mentors ?? []).join(", ") || undefined, tags: n.tags });
+  });
+
+  (tags.data ?? []).forEach((t: { id: string; tag: string; category: string }) => {
+    if (excludeType === "tag" && t.id === excludeId) return;
+    if (t.tag?.toLowerCase().includes(q))
+      results.push({ type: "tag", id: t.id, title: t.tag, subtitle: t.category });
+  });
+
+  (sessions.data ?? []).forEach((s: { id: string; session_key: string; session_summary: string }) => {
+    if (excludeType === "session" && s.id === excludeId) return;
+    if (s.session_key?.toLowerCase().includes(q) || s.session_summary?.toLowerCase().includes(q))
+      results.push({ type: "session", id: s.id, title: s.session_key, subtitle: s.session_summary?.slice(0, 60) || undefined });
+  });
+
+  (projects.data ?? []).forEach((p: { id: string; name: string }) => {
+    if (excludeType === "project" && p.id === excludeId) return;
+    if (p.name?.toLowerCase().includes(q))
+      results.push({ type: "project", id: p.id, title: p.name });
+  });
+
+  return results.slice(0, 20);
+}
+
 export interface SearchResult {
   type: "file" | "note" | "tag" | "session" | "project";
   id: string;

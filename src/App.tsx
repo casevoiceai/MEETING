@@ -7,7 +7,7 @@ import TagsView from "./screens/TagsView";
 import ProjectsView from "./screens/ProjectsView";
 import GlobalSearch from "./screens/GlobalSearch";
 import EmailView from "./screens/EmailView";
-import { getOrCreateSession, loadSession, type Session, type SearchResult } from "./lib/db";
+import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
 
 type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email";
 
@@ -46,6 +46,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [linkedNavTarget, setLinkedNavTarget] = useState<{ type: LinkableType; id: string } | null>(null);
 
   useEffect(() => {
     getOrCreateSession().then((s) => {
@@ -83,6 +84,18 @@ export default function App() {
       project: "projects",
     };
     setView(viewMap[type]);
+  }, []);
+
+  const handleLinkedNavigation = useCallback((type: LinkableType, id: string) => {
+    const viewMap: Record<LinkableType, View> = {
+      file: "vault",
+      note: "vault",
+      tag: "tags",
+      session: "sessions",
+      project: "projects",
+    };
+    setView(viewMap[type]);
+    setLinkedNavTarget({ type, id });
   }, []);
 
   return (
@@ -127,11 +140,11 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-h-0">
         {view === "meeting" && <StaffMeetingRoom sessionId={session?.id ?? null} sessionKey={sessionKey} />}
-        {view === "sessions" && <SessionsView onOpenSession={handleOpenSession} />}
+        {view === "sessions" && <SessionsView onOpenSession={handleOpenSession} onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "session" ? linkedNavTarget.id : undefined} />}
         {view === "email" && <EmailView />}
-        {view === "vault" && <VaultView />}
-        {view === "tags" && <TagsView />}
-        {view === "projects" && <ProjectsView />}
+        {view === "vault" && <VaultView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "file" || linkedNavTarget?.type === "note" ? linkedNavTarget : undefined} />}
+        {view === "tags" && <TagsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "tag" ? linkedNavTarget.id : undefined} />}
+        {view === "projects" && <ProjectsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "project" ? linkedNavTarget.id : undefined} />}
       </div>
 
       {searchOpen && (
