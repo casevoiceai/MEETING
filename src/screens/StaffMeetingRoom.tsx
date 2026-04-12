@@ -67,6 +67,25 @@ const MENTOR_KEYWORDS: Record<string, string[]> = {
   JAMISON: ["user", "message", "sound", "clear", "write"],
 };
 
+const MENTOR_PRIORITY: Record<string, string[]> = {
+  TECHGUY: ["build", "how", "implement", "system", "code"],
+  DOC:     ["risk", "issue", "problem", "danger"],
+  CIPHER:  ["data", "privacy", "trust"],
+  SAM:     ["plan", "steps", "process", "who"],
+  JAMISON: ["message", "clear", "write"],
+};
+
+function getBestMentor(message: string): string | null {
+  const lower = message.toLowerCase();
+  for (const mentor in MENTOR_PRIORITY) {
+    const keywords = MENTOR_PRIORITY[mentor];
+    if (keywords.some((k) => lower.includes(k))) {
+      return mentor;
+    }
+  }
+  return null;
+}
+
 const MAX_RESPONSES_PER_TURN = 2;
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -299,8 +318,14 @@ export default function StaffMeetingRoom() {
 
     if (eligibleMentors.length === 0) return;
 
+    const bestMentorMatch = getBestMentor(messageText);
     const relevantMentors = eligibleMentors.filter((m) => isMentorRelevant(m.name, messageText));
-    const poolMentors = relevantMentors.length > 0 ? relevantMentors : eligibleMentors;
+    const nonPrezRelevant = relevantMentors.filter((m) => m.name !== "PREZ");
+    const poolMentors = nonPrezRelevant.length > 0
+      ? (bestMentorMatch ? relevantMentors : nonPrezRelevant)
+      : relevantMentors.length > 0
+      ? relevantMentors
+      : eligibleMentors;
 
     let signals: SignalResult[] = poolMentors.map((m) => {
       const interruptChance = m.interruptWeight * m.riskSensitivity * riskFactor;
@@ -327,11 +352,25 @@ export default function StaffMeetingRoom() {
 
     const allResponding = signals.filter((s) => s.hasInterrupt || s.hasComment);
 
+    const bestMentorName = getBestMentor(messageText);
+
     const sorted = [...allResponding].sort((a, b) => {
-      if (a.hasInterrupt !== b.hasInterrupt) return a.hasInterrupt ? -1 : 1;
       const mA = poolMentors.find((m) => m.id === a.id);
       const mB = poolMentors.find((m) => m.id === b.id);
       if (!mA || !mB) return 0;
+
+      if (bestMentorName) {
+        const aIsBest = mA.name === bestMentorName;
+        const bIsBest = mB.name === bestMentorName;
+        if (aIsBest && !bIsBest) return -1;
+        if (bIsBest && !aIsBest) return 1;
+        const aIsPrez = mA.name === "PREZ";
+        const bIsPrez = mB.name === "PREZ";
+        if (aIsPrez && !bIsPrez) return 1;
+        if (bIsPrez && !aIsPrez) return -1;
+      }
+
+      if (a.hasInterrupt !== b.hasInterrupt) return a.hasInterrupt ? -1 : 1;
       if (mB.riskSensitivity !== mA.riskSensitivity) return mB.riskSensitivity - mA.riskSensitivity;
       return mB.interruptWeight - mA.interruptWeight;
     });
