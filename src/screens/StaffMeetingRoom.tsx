@@ -132,6 +132,22 @@ export default function StaffMeetingRoom() {
     }
   }
 
+  const MENTOR_KEYWORDS: Record<string, string[]> = {
+    DOC:     ["risk", "problem", "issue", "concern", "wrong"],
+    CIPHER:  ["data", "privacy", "user", "trust"],
+    TECHGUY: ["build", "how", "system", "implement", "code"],
+    SAM:     ["next", "plan", "steps", "who", "process"],
+    JAMISON: ["user", "message", "sound", "clear", "write"],
+  };
+
+  function isMentorRelevant(mentorName: string, text: string): boolean {
+    if (mentorName === "PREZ") return true;
+    const keywords = MENTOR_KEYWORDS[mentorName];
+    if (!keywords) return true;
+    const lower = text.toLowerCase();
+    return keywords.some((kw) => lower.includes(kw));
+  }
+
   function triggerSignals(targetMentors: Mentor[], messageText: string) {
     const turnId = currentTurnId.current;
     const riskFactor = messageText.length > 20 ? 1 : 0.5;
@@ -144,7 +160,10 @@ export default function StaffMeetingRoom() {
 
     if (eligibleMentors.length === 0) return;
 
-    let signals: SignalResult[] = eligibleMentors.map((m) => {
+    const relevantMentors = eligibleMentors.filter((m) => isMentorRelevant(m.name, messageText));
+    const poolMentors = relevantMentors.length > 0 ? relevantMentors : eligibleMentors;
+
+    let signals: SignalResult[] = poolMentors.map((m) => {
       const interruptChance = m.interruptWeight * m.riskSensitivity * riskFactor;
       const commentChance = m.commentWeight;
       const roll = Math.random();
@@ -155,8 +174,7 @@ export default function StaffMeetingRoom() {
 
     const anyResponded = signals.some((s) => s.hasInterrupt || s.hasComment);
     if (!anyResponded) {
-      const pool = eligibleMentors.length > 0 ? eligibleMentors : mentors;
-      const sorted = [...pool].sort((a, b) => b.commentWeight - a.commentWeight);
+      const sorted = [...poolMentors].sort((a, b) => b.commentWeight - a.commentWeight);
       const topWeight = sorted[0].commentWeight;
       const topTier = sorted.filter((m) => m.commentWeight === topWeight);
       const chosen = topTier[Math.floor(Math.random() * topTier.length)];
@@ -172,8 +190,8 @@ export default function StaffMeetingRoom() {
 
     const sorted = [...allResponding].sort((a, b) => {
       if (a.hasInterrupt !== b.hasInterrupt) return a.hasInterrupt ? -1 : 1;
-      const mA = eligibleMentors.find((m) => m.id === a.id);
-      const mB = eligibleMentors.find((m) => m.id === b.id);
+      const mA = poolMentors.find((m) => m.id === a.id);
+      const mB = poolMentors.find((m) => m.id === b.id);
       if (!mA || !mB) return 0;
       if (mB.riskSensitivity !== mA.riskSensitivity) return mB.riskSensitivity - mA.riskSensitivity;
       return mB.interruptWeight - mA.interruptWeight;
