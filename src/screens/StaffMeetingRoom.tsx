@@ -783,17 +783,21 @@ Rules:
             backgroundColor: "#0F1F36",
             border: isSelected ? "1px solid #8A9BB5" : mentor.status === "working" ? "1px solid #3A4F6A" : "1px solid #1B2A4A",
             boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.15)" : "none",
-            width: "100px",
-            padding: "8px 10px",
+            width: "130px",
+            minHeight: "72px",
+            padding: "10px 12px",
           }}
           title="JULIE — Facilitator"
         >
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[10px] font-bold tracking-widest" style={{ color: "#8A9BB5" }}>JULIE</span>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: mentor.status === "working" ? "#60AEFF" : "#1B2A4A" }} />
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-bold tracking-widest" style={{ color: "#8A9BB5" }}>JULIE</span>
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: mentor.status === "working" ? "#60AEFF" : "#1B2A4A" }} />
           </div>
-          <span className="text-[8px] tracking-widest uppercase" style={{ color: "#3A4F6A" }}>
-            {mentor.status === "working" ? "ROUTING" : "HOST"}
+          <span className="text-[10px] tracking-wider uppercase font-semibold" style={{ color: "#4A6080" }}>
+            Facilitation
+          </span>
+          <span className="text-[10px] leading-snug block mt-1" style={{ color: "#5A7090" }}>
+            {mentor.status === "working" ? "Routing now..." : "Meeting host"}
           </span>
         </button>
       );
@@ -807,26 +811,31 @@ Rules:
         style={{
           ...STATUS_STYLES[mentor.status],
           boxShadow: isSelected ? `0 0 0 1.5px ${deptColor}, 0 0 10px 2px ${deptColor}33` : "none",
-          width: "100px",
-          padding: "8px 10px",
+          width: "130px",
+          minHeight: "72px",
+          padding: "10px 12px",
         }}
         title={mentor.status === "ready" ? "Click to receive result" : isSelected ? `Deselect ${mentor.name}` : `Select ${mentor.name}`}
       >
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[10px] font-bold tracking-widest" style={{ color: isSelected ? deptColor : "#FFFFFF" }}>{mentor.name}</span>
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-bold tracking-widest" style={{ color: isSelected ? deptColor : "#FFFFFF" }}>{mentor.name}</span>
+          <div className="flex items-center gap-1.5">
             {participation > 0 && (
-              <span className="text-[8px] font-bold" style={{ color: "#3A4F6A" }}>{participation}</span>
+              <span className="text-[10px] font-bold" style={{ color: "#4A6080" }}>{participation}</span>
             )}
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_DOT[mentor.status] }} />
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_DOT[mentor.status] }} />
           </div>
         </div>
-        {meta?.realName && (
-          <span className="text-[8px] block" style={{ color: "#3A4F6A" }}>{meta.realName}</span>
-        )}
-        <span className="text-[8px] leading-tight block mt-0.5" style={{ color: isSelected ? `${deptColor}99` : "#2A3D5E" }}>
-          {meta?.bullets[0] ?? ""}
+        <span className="text-[10px] tracking-wider uppercase font-semibold block" style={{ color: isSelected ? deptColor + "BB" : "#4A5E78" }}>
+          {meta?.department ?? ""}
         </span>
+        <div className="flex flex-col gap-0.5 mt-1">
+          {(meta?.bullets ?? []).slice(0, 2).map((b, i) => (
+            <span key={i} className="text-[10px] leading-snug" style={{ color: isSelected ? "#8AB0C8" : "#4A6080" }}>
+              · {b}
+            </span>
+          ))}
+        </div>
       </button>
     );
   }
@@ -965,7 +974,7 @@ Rules:
         )}
 
         <div className="flex-1 flex flex-col min-h-0 px-5 pt-3 pb-2 overflow-hidden">
-          <p className="text-[9px] tracking-widest uppercase mb-1.5 flex-shrink-0" style={{ color: "#3A4F6A" }}>
+          <p className="text-[10px] tracking-widest uppercase mb-1.5 flex-shrink-0 font-semibold" style={{ color: "#5A7A9A" }}>
             Transcript
           </p>
           <div
@@ -974,7 +983,7 @@ Rules:
             style={{ backgroundColor: "#111D30" }}
           >
             {messages.length === 0 ? (
-              <p className="text-sm text-center mt-8" style={{ color: "#3A4F6A" }}>
+              <p className="text-sm text-center mt-8" style={{ color: "#5A7A9A" }}>
                 No messages yet. JULIE will route your message to the right team members.
               </p>
             ) : (
@@ -1036,7 +1045,7 @@ Rules:
                         style={{
                           color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : isJulieMsg ? "#A0B2C8" : "#D8E8F5",
                           fontStyle: msg.isThinking ? "italic" : "normal",
-                          fontSize: "14px",
+                          fontSize: "15px",
                         }}
                       >
                         {msg.text}
@@ -1104,8 +1113,8 @@ Rules:
               Note{sideNotes.length > 0 ? ` (${sideNotes.length})` : ""}
             </button>
           </div>
-          <p className="text-[10px] mt-1.5" style={{ color: "#2A3D5E" }}>
-            Select mentor tiles to direct your message. JULIE always decides who speaks.
+          <p className="text-xs mt-2" style={{ color: "#5A7A9A" }}>
+            Select team member tiles to direct your message. JULIE always decides who speaks.
           </p>
         </div>
       </div>

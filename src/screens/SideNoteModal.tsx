@@ -98,18 +98,18 @@ function MentorPickerModal({
             <button
               key={member.name}
               onMouseDown={(e) => { e.preventDefault(); toggle(member.name); setQuery(""); }}
-              className="w-full text-left px-4 py-2.5 transition-colors hover:bg-yellow-200 border-b last:border-b-0"
-              style={{ borderColor: "rgba(0,0,0,0.06)" }}
+              className="w-full text-left px-4 py-3 transition-colors hover:bg-yellow-200 border-b last:border-b-0"
+              style={{ borderColor: "rgba(0,0,0,0.06)", minHeight: "68px" }}
             >
-              <p className="text-xs font-bold tracking-widest uppercase leading-tight" style={{ color: "#1B1B1B" }}>
+              <p className="text-sm font-bold tracking-widest uppercase leading-tight" style={{ color: "#1B1B1B" }}>
                 {member.name}
               </p>
-              <p className="text-[10px] font-semibold tracking-wider mt-0.5 mb-1" style={{ color: "#7A6200" }}>
+              <p className="text-xs font-semibold tracking-wider mt-0.5 mb-1.5" style={{ color: "#7A6200" }}>
                 {member.department}
               </p>
               <div className="flex flex-col gap-0.5">
                 {member.skills.map((skill) => (
-                  <p key={skill} className="text-[10px] leading-snug" style={{ color: "#5A4E00" }}>
+                  <p key={skill} className="text-xs leading-snug" style={{ color: "#5A4E00" }}>
                     · {skill}
                   </p>
                 ))}
@@ -293,15 +293,15 @@ export default function SideNoteModal({ usedTags, onSave, onClose }: SideNoteMod
         </div>
 
         <div className="flex items-center justify-between pt-1">
-          <span className="text-xs" style={{ color: "#5A4E00" }}>
+          <span className="text-sm font-semibold" style={{ color: "#5A4E00" }}>
             {selectedMentors.length > 0 && `for ${selectedMentors.join(", ")} · `}
             {selectedTags.length > 0 && selectedTags.join(" ")}
           </span>
           <button
             onClick={handleSave}
             disabled={!text.trim()}
-            className="px-5 py-2 rounded-xl text-sm font-bold tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
+            className="px-6 py-2.5 rounded-xl text-sm font-bold tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ backgroundColor: "#C9A84C", color: "#0D1B2E", minHeight: "40px" }}
           >
             Save
           </button>
