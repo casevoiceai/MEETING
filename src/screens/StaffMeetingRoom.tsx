@@ -101,86 +101,35 @@ export default function StaffMeetingRoom() {
 
   const MAX_RESPONSES_PER_TURN = 2;
 
-  function getMentorResponse(id: string, name: string, isInterrupt: boolean): string {
-    const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
-
-    const responses: Record<string, { comment: string[]; interrupt: string[] }> = {
-      prez: {
-        comment: [
-          `${name}: What is the goal here? We need clarity on direction before moving.`,
-          `${name}: Let's step back. What outcome are we actually driving toward?`,
-          `${name}: Strategy first. What does success look like on this?`,
-        ],
-        interrupt: [
-          `${name}: Hold on. We are moving without a clear objective. What is the goal here?`,
-          `${name}: Stop. Before we go further — what is the actual direction we are committing to?`,
-        ],
-      },
-      doc: {
-        comment: [
-          `${name}: There may be a risk here we are not addressing. What could go wrong?`,
-          `${name}: I want to flag a potential downside before we proceed. Have we stress-tested this?`,
-          `${name}: What's the failure mode if this doesn't work? We should know that before moving.`,
-        ],
-        interrupt: [
-          `${name}: Hold on. There's a potential risk here we need to address before moving forward.`,
-          `${name}: Stop. I see a risk that hasn't been accounted for. We need to talk about this now.`,
-        ],
-      },
-      cipher: {
-        comment: [
-          `${name}: Are we considering data safety and user trust in this?`,
-          `${name}: How does this affect user privacy? We need to be deliberate here.`,
-          `${name}: Before this moves forward — are we handling any sensitive data responsibly?`,
-        ],
-        interrupt: [
-          `${name}: Hold on. This touches user data or trust. We need to address that before proceeding.`,
-          `${name}: Stop. There are privacy and ethics implications here we can't skip over.`,
-        ],
-      },
-      tech9: {
-        comment: [
-          `${name}: How would this actually be implemented? What's the simplest version?`,
-          `${name}: Let's talk about what this looks like in practice. What's the minimal build?`,
-          `${name}: I need to understand the technical path here. What are we actually shipping?`,
-        ],
-        interrupt: [
-          `${name}: Hold on. This isn't buildable as described. We need to simplify before going further.`,
-          `${name}: Stop. There's a technical blocker here. Let's resolve it before we commit to this.`,
-        ],
-      },
-      sam: {
-        comment: [
-          `${name}: What are the next steps? Who owns this and how do we track it?`,
-          `${name}: Before we move on — who is responsible for this and what does done look like?`,
-          `${name}: Let's make sure there's a clear owner and a timeline on this. Otherwise it stalls.`,
-        ],
-        interrupt: [
-          `${name}: Hold on. Nobody owns this yet. We need to assign it before moving forward.`,
-          `${name}: Stop. We keep talking without defining who does what. That needs to change now.`,
-        ],
-      },
-      jamison: {
-        comment: [
-          `${name}: How does this sound to the user? Is this clear and human?`,
-          `${name}: I want to check the tone here. Will people understand this the way we intend?`,
-          `${name}: The message matters. Is this landing the way we think it is from the outside?`,
-        ],
-        interrupt: [
-          `${name}: Hold on. The way this is framed could land wrong. We need to rethink the messaging.`,
-          `${name}: Stop. This doesn't read clearly to an outside person. Let's fix the tone before it goes out.`,
-        ],
-      },
-    };
-
-    const role = responses[id];
-    if (!role) {
-      return isInterrupt
-        ? `${name}: Hold on. Something here needs attention.`
-        : `${name}: I have a thought on this.`;
+  function getMentorResponse(name: string, isInterrupt: boolean): string {
+    switch (name) {
+      case "PREZ":
+        return isInterrupt
+          ? "PREZ: Stop. We are moving without clear direction. What is the actual goal here?"
+          : "PREZ: What is the goal here? We need clarity before moving forward.";
+      case "DOC":
+        return isInterrupt
+          ? "DOC: Hold on. There is a risk here we are not addressing. What could go wrong?"
+          : "DOC: I want to understand the risks here. What are we missing?";
+      case "CIPHER":
+        return isInterrupt
+          ? "CIPHER: This could impact trust or data safety. We need to check that immediately."
+          : "CIPHER: Are we considering user trust and data safety in this?";
+      case "TECHGUY":
+        return isInterrupt
+          ? "TECHGUY: This may not be feasible as-is. We need to simplify how this would be built."
+          : "TECHGUY: How would we actually implement this? What's the simplest version?";
+      case "SAM":
+        return isInterrupt
+          ? "SAM: We are not aligned on execution. This needs structure before we proceed."
+          : "SAM: What are the next steps? Who owns this?";
+      case "JAMISON":
+        return isInterrupt
+          ? "JAMISON: This could confuse the user. We need to rethink how this is communicated."
+          : "JAMISON: How does this sound to the user? Is it clear and human?";
+      default:
+        return "Let's think this through.";
     }
-
-    return isInterrupt ? pick(role.interrupt) : pick(role.comment);
   }
 
   function triggerSignals(targetMentors: Mentor[], messageText: string) {
@@ -236,7 +185,7 @@ export default function StaffMeetingRoom() {
     respondingSignals.forEach((s) => {
       const mentor = mentors.find((m) => m.id === s.id) ?? eligibleMentors.find((m) => m.id === s.id);
       if (!mentor) return;
-      const text = getMentorResponse(mentor.id, mentor.name, s.hasInterrupt);
+      const text = getMentorResponse(mentor.name, s.hasInterrupt);
       addMessage(text, "mentor", mentor.name, ["YOU"]);
     });
 
@@ -258,7 +207,7 @@ export default function StaffMeetingRoom() {
 
   function handleMentorClick(mentor: Mentor) {
     if (mentor.status === "ready" && mentor.hasTask) {
-      addMessage("Task complete. Here is the result.", "mentor", mentor.name, ["YOU"]);
+      addMessage(`${mentor.name}: Task complete. Ready for your review.`, "mentor", mentor.name, ["YOU"]);
       setMentors((prev) =>
         prev.map((m) =>
           m.id === mentor.id
@@ -270,7 +219,7 @@ export default function StaffMeetingRoom() {
     }
 
     if (mentor.hasInterrupt) {
-      addMessage(getMentorResponse(mentor.id, mentor.name, true), "mentor", mentor.name, ["YOU"]);
+      addMessage(getMentorResponse(mentor.name, true), "mentor", mentor.name, ["YOU"]);
       setMentors((prev) =>
         prev.map((m) =>
           m.id === mentor.id ? { ...m, hasInterrupt: false, hasComment: false } : m
@@ -280,7 +229,7 @@ export default function StaffMeetingRoom() {
     }
 
     if (mentor.hasComment) {
-      addMessage(getMentorResponse(mentor.id, mentor.name, false), "mentor", mentor.name, ["YOU"]);
+      addMessage(getMentorResponse(mentor.name, false), "mentor", mentor.name, ["YOU"]);
       setMentors((prev) =>
         prev.map((m) =>
           m.id === mentor.id ? { ...m, hasComment: false } : m
