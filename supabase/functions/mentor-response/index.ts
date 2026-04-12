@@ -114,7 +114,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { mentor, message, mode, recentTranscript, isInterrupt } = await req.json();
+    const { mentor, message, mode, recentTranscript, isInterrupt, isOpenFloor } = await req.json();
 
     const profile = MENTOR_PROFILES[mentor];
     if (!profile) {
@@ -151,11 +151,21 @@ Deno.serve(async (req: Request) => {
 - Structure: [Interrupt phrase]. [Risk statement]. [Concrete consequence].`
       : "";
 
+    const openFloorInstructions = isOpenFloor
+      ? `\nOPEN FLOOR MOMENT — MANDATORY BEHAVIOR:
+- Keep it brief: 1 to 2 sentences maximum.
+- Add one fresh perspective from your domain only.
+- Do NOT restate the question or repeat what was already said.
+- Do NOT take over the conversation.
+- Do NOT give a full strategy response.
+- Speak like someone briefly chiming in, not presenting.`
+      : "";
+
     const roleSpecificPrompt = `You are ${mentor}, a specialist in ${profile.role}.
 ${profile.style}
 YOUR FOCUS: ${profile.focus}
 STAY OUT OF: ${profile.avoid}
-The current meeting mode is: ${mode}.${interruptInstructions}`;
+The current meeting mode is: ${mode}.${interruptInstructions}${openFloorInstructions}`;
 
     const systemPrompt = globalRules + "\n" + roleSpecificPrompt;
 

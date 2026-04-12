@@ -79,7 +79,7 @@ function selectOpenFloorMentors(lastSpeaker: string | null, messageText: string)
   const lower = messageText.toLowerCase();
 
   const scored = OPEN_FLOOR_MENTOR_DOMAINS
-    .filter((m) => m.name !== lastSpeaker)
+    .filter((m) => m.name !== "PREZ" && m.name !== lastSpeaker)
     .map((m) => ({
       name: m.name,
       score: m.keywords.filter((k) => lower.includes(k)).length,
@@ -222,7 +222,8 @@ export default function StaffMeetingRoom() {
     mentorName: string,
     userMessage: string,
     currentMode: Mode,
-    isInterrupt = false
+    isInterrupt = false,
+    isOpenFloor = false
   ): Promise<string> {
     const recent = messagesRef.current
       .filter((m) => !m.isThinking)
@@ -241,6 +242,7 @@ export default function StaffMeetingRoom() {
         mode: currentMode,
         recentTranscript: recent,
         isInterrupt,
+        isOpenFloor,
       }),
     });
 
@@ -336,7 +338,8 @@ export default function StaffMeetingRoom() {
     userMessage: string,
     currentMode: Mode,
     turnId: number,
-    isInterrupt = false
+    isInterrupt = false,
+    isOpenFloor = false
   ) {
     setMentors((prev) =>
       prev.map((m) => m.id === mentor.id ? { ...m, status: "working" } : m)
@@ -352,7 +355,7 @@ export default function StaffMeetingRoom() {
 
     let responseText = "";
     try {
-      responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode, isInterrupt);
+      responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode, isInterrupt, isOpenFloor);
 
       const lastWasQuestion = recentTopics.current.length > 0 && isQuestion(recentTopics.current[recentTopics.current.length - 1]);
       if (!isInterrupt && isTooSimilar(responseText, recentTopics.current)) {
@@ -398,15 +401,13 @@ export default function StaffMeetingRoom() {
     currentMode: Mode,
     turnId: number
   ) {
-    const openFloorInstruction = `\n\n[Instruction: This is an open floor moment. Speak briefly. Add one clear perspective from your domain. Do not restate the question. Do not take over the conversation.]`;
-
     for (let i = 0; i < selectedNames.length; i++) {
       const name = selectedNames[i];
       const mentor = mentorsRef.current.find((m) => m.name === name);
       if (!mentor) continue;
       const delay = i * 1400;
       setTimeout(() => {
-        dispatchMentorResponse(mentor, userMessage + openFloorInstruction, currentMode, turnId);
+        dispatchMentorResponse(mentor, userMessage, currentMode, turnId, false, true);
       }, delay);
     }
   }
