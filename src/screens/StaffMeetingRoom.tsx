@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
-import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, type TranscriptMessage, type JulieReport } from "../lib/db";
+import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, type TranscriptMessage, type JulieReport } from "../lib/db";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
 
 type MentorStatus = "idle" | "assigned" | "working" | "ready" | "blocked";
@@ -302,6 +302,55 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { mentorsRef.current = mentors; }, [mentors]);
   useEffect(() => { meetingStateRef.current = meetingState; }, [meetingState]);
+
+  useEffect(() => {
+    if (!sessionKey) return;
+    loadSession(sessionKey).then((result) => {
+      if (!result) return;
+
+      if (result.transcript?.messages && result.transcript.messages.length > 0) {
+        const restored: Message[] = result.transcript.messages.map((m) => ({
+          id: m.id,
+          text: m.text,
+          speaker: m.speaker,
+          sender: m.sender,
+          targets: m.targets,
+        }));
+        setMessages(restored);
+        msgCounter.current = Math.max(...result.transcript.messages.map((m) => m.id), 0);
+      }
+
+      if (result.julieReport) {
+        const r = result.julieReport;
+        setMeetingState((prev) => ({
+          ...prev,
+          openQuestions: r.open_questions ?? [],
+          answeredQuestions: r.answered_questions ?? [],
+          assignedTasks: r.assigned_tasks ?? [],
+          unresolvedTopics: r.unresolved_topics ?? [],
+          activeTopics: r.active_topics ?? [],
+          decisionsMade: r.decisions_made ?? [],
+          pendingDecisions: r.pending_decisions ?? [],
+          mentorParticipation: r.mentor_participation ?? {},
+          droppedIdeas: r.dropped_ideas ?? [],
+        }));
+      }
+
+      if (result.sideNotes && result.sideNotes.length > 0) {
+        const restored: SideNote[] = result.sideNotes.map((n) => ({
+          text: n.text,
+          mentors: n.mentors ?? [],
+          tags: n.tags ?? [],
+          timestamp: new Date(n.created_at).getTime(),
+        }));
+        setSideNotes(restored);
+      }
+    }).catch(() => {});
+
+    listAllTags().then((tags) => {
+      setUsedTags(tags.map((t) => t.tag));
+    }).catch(() => {});
+  }, [sessionKey]);
 
   useEffect(() => {
     if (!sessionKey) return;
