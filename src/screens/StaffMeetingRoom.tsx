@@ -194,9 +194,19 @@ function isSummaryRequest(text: string): boolean {
 
 function isOpenFloor(text: string): boolean {
   const lower = text.toLowerCase();
-  return ["anyone else", "thoughts", "what do you all think", "who else", "other ideas"].some(
+  return ["anyone else", "thoughts", "what do you all think", "who else", "other ideas", "what does everyone think", "any other"].some(
     (t) => lower.includes(t)
   );
+}
+
+function isVenting(text: string): boolean {
+  const lower = text.toLowerCase();
+  return [
+    "so frustrated", "i'm frustrated", "im frustrated", "pissed off", "i'm done", "im done",
+    "this is ridiculous", "this is a mess", "nothing is working", "i hate this", "i can't deal",
+    "i cant deal", "ugh", "argh", "i give up", "so annoying", "drives me crazy",
+    "i'm losing it", "im losing it", "falling apart", "completely lost",
+  ].some((k) => lower.includes(k));
 }
 
 function isAnyoneElse(text: string): boolean {
@@ -272,6 +282,8 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   const recentTopics = useRef<string[]>([]);
   const highRiskTurnId = useRef<number | null>(null);
   const lastJulieSpeakTurn = useRef<number>(-10);
+  const lastSpeakerRef = useRef<string | null>(null);
+  const recentSpeakersRef = useRef<string[]>([]);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { mentorsRef.current = mentors; }, [mentors]);
@@ -367,6 +379,8 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   }
 
   function trackMentorTurn(mentorName: string) {
+    lastSpeakerRef.current = mentorName;
+    recentSpeakersRef.current = [...recentSpeakersRef.current.slice(-4), mentorName];
     setMentors((prev) => prev.map((m) => m.name === mentorName ? { ...m, turnCount: m.turnCount + 1 } : m));
     setMeetingState((prev) => ({
       ...prev,
@@ -464,6 +478,8 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   async function askJulieToRoute(userMessage: string, currentMode: Mode, forcedMentors?: string[]): Promise<JulieRouting> {
     const participationMap = meetingStateRef.current.mentorParticipation;
     const currentMentors = mentorsRef.current;
+    const lastSpeaker = lastSpeakerRef.current;
+    const recentSpeakers = recentSpeakersRef.current;
 
     const mentorCounts = ALL_MENTOR_NAMES.map((name) => ({
       name,
@@ -471,29 +487,42 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
       turnCount: currentMentors.find((m) => m.name === name)?.turnCount ?? 0,
     }));
 
-    const leastSpoken = [...mentorCounts].sort((a, b) => a.count - b.count).map((m) => m.name);
+    const leastSpoken = [...mentorCounts]
+      .sort((a, b) => a.count - b.count)
+      .map((m) => m.name)
+      .filter((n) => n !== lastSpeaker);
 
+    const openFloor = isOpenFloor(userMessage);
     const anyoneElse = isAnyoneElse(userMessage);
+    const ventingSignal = isVenting(userMessage);
+    const maxMentors = openFloor ? 3 : 2;
 
     const juliePrompt = `USER MESSAGE: "${userMessage}"
 MEETING MODE: ${currentMode}
+LAST SPEAKER: ${lastSpeaker ?? "none"}
+RECENT SPEAKERS (last 4): ${recentSpeakers.join(", ") || "none"}
 MENTOR TURN COUNTS THIS SESSION: ${JSON.stringify(mentorCounts)}
-LEAST SPOKEN MENTORS (in order): ${leastSpoken.join(", ")}
-${anyoneElse ? "USER ASKED 'ANYONE ELSE' — do NOT route to MARK. Pick from those who have spoken least." : ""}
+LEAST SPOKEN MENTORS EXCLUDING LAST SPEAKER (in order): ${leastSpoken.join(", ")}
+${anyoneElse || openFloor ? `OPEN FLOOR — invite UP TO ${maxMentors} relevant mentors. Do NOT pick MARK unless strategy is the explicit topic. Do NOT pick the last speaker (${lastSpeaker ?? "none"}).` : ""}
+${ventingSignal ? "VENTING DETECTED — user is emotionally frustrated. Include a short acknowledging 'line' before routing. Do not skip straight to fixing." : ""}
 ${forcedMentors ? `USER EXPLICITLY SELECTED: ${forcedMentors.join(", ")} — route to them.` : ""}
 
+ANTI-DOMINANCE RULE: MARK must NOT be routed to unless the topic is clearly strategic direction. MARK is not the default.
+LAST SPEAKER RULE: NEVER route to "${lastSpeaker ?? "none"}" — they just spoke.
+
 Your job is to decide who should speak. Return ONLY valid JSON in this exact format:
-{"mentors":["NAME1"],"line":"optional brief line you want to say out loud","action":"route"}
+{"mentors":["NAME1"],"line":"optional brief line","action":"route"}
 
 Rules:
-- mentors: 1 or 2 names from [MARK, SCOUT, JAMES, DOC, TECHGUY, SIGMA, CIPHER, RICK, ALEX, PAUL, PAT, ULYSES, MAILMAN, JERRY, RAY, ATK, DEF, WATCHER, KAREN, "THAT GUY"]
-- Never include JULIE in mentors
-- If user is venting/emotional: include your "line" acknowledging it briefly, still route
-- "line" is OPTIONAL — only include if you have something worth saying (not to fill space)
-- If user asks for summary: set action to "summarize" and include your full summary in "line", mentors: []
+- mentors: default 1 name. Up to ${maxMentors} if open floor or multiple clearly relevant domains
+- NEVER include JULIE in mentors
+- NEVER include "${lastSpeaker ?? ""}" in mentors (they just spoke)
+- If user is venting/emotional: include your "line" acknowledging it, then route
+- "line" is OPTIONAL — only if genuinely useful (venting, drift, refocus, open floor invite)
+- If user asks for summary: action "summarize", mentors: [], full summary in "line"
 - If it's simple acknowledgment ("ok", "got it", "thanks"): action "acknowledge", mentors: [], no line
-- Prefer mentors who have spoken less. Avoid letting one mentor dominate.
-- Only pick 2 mentors if both domains are clearly relevant
+- If user is vague/unclear: action "route", mentors: [], "line" with ONE clarifying question
+- Prefer mentors who have spoken less. Rotate the roster.
 - Return ONLY the JSON object, no other text`;
 
     try {
@@ -501,10 +530,24 @@ Rules:
       const cleaned = raw.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(cleaned) as JulieRouting;
       if (!Array.isArray(parsed.mentors)) parsed.mentors = [];
-      parsed.mentors = parsed.mentors.filter((n) => ALL_MENTOR_NAMES.includes(n));
+
+      parsed.mentors = parsed.mentors
+        .filter((n) => ALL_MENTOR_NAMES.includes(n))
+        .filter((n) => n !== lastSpeaker)
+        .slice(0, maxMentors);
+
+      if (parsed.mentors.includes("MARK") && !forcedMentors?.includes("MARK")) {
+        const markCount = recentSpeakers.filter((s) => s === "MARK").length;
+        if (markCount >= 2) {
+          parsed.mentors = parsed.mentors.filter((n) => n !== "MARK");
+          const replacement = leastSpoken.find((n) => !parsed.mentors.includes(n) && n !== "MARK");
+          if (replacement && parsed.mentors.length === 0) parsed.mentors = [replacement];
+        }
+      }
+
       return parsed;
     } catch {
-      const fallback = leastSpoken.find((n) => n !== "PREZ") ?? "PREZ";
+      const fallback = leastSpoken.find((n) => n !== lastSpeaker && n !== "MARK") ?? leastSpoken[0] ?? "PAUL";
       return { mentors: [fallback], action: "route" };
     }
   }
@@ -717,9 +760,16 @@ Rules:
       return;
     }
 
-    if (routing.line && routing.line.trim()) {
+    if (routing.action === "refocus" && routing.line) {
       addMessage(`JULIE: ${routing.line}`, "mentor", "JULIE", ["ALL"], false, true);
       lastJulieSpeakTurn.current = turnId;
+    } else if (routing.line && routing.line.trim()) {
+      addMessage(`JULIE: ${routing.line}`, "mentor", "JULIE", ["ALL"], false, true);
+      lastJulieSpeakTurn.current = turnId;
+    }
+
+    if (routing.mentors.length === 0) {
+      return;
     }
 
     const mentorsToCall = routing.mentors
@@ -727,9 +777,10 @@ Rules:
       .filter((m): m is Mentor => !!m && m.status === "idle");
 
     const isOpenFloorMsg = isOpenFloor(trimmed);
+    const staggerMs = isOpenFloorMsg ? 1500 : 1200;
 
     mentorsToCall.forEach((mentor, i) => {
-      dispatchMentorResponse(mentor, trimmed, currentMode, turnId, false, isOpenFloorMsg, i * 1200);
+      dispatchMentorResponse(mentor, trimmed, currentMode, turnId, false, isOpenFloorMsg, i * staggerMs);
     });
   }
 
