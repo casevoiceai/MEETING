@@ -7,9 +7,10 @@ import TagsView from "./screens/TagsView";
 import ProjectsView from "./screens/ProjectsView";
 import GlobalSearch from "./screens/GlobalSearch";
 import EmailView from "./screens/EmailView";
+import IntegrationsView from "./screens/IntegrationsView";
 import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
 
-type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email";
+type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations";
 
 const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "meeting", label: "Meeting" },
@@ -18,6 +19,7 @@ const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "vault", label: "Vault" },
   { id: "tags", label: "Tags" },
   { id: "projects", label: "Projects" },
+  { id: "integrations", label: "Integrations" },
 ];
 
 function NavButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -145,6 +147,7 @@ export default function App() {
         {view === "vault" && <VaultView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "file" || linkedNavTarget?.type === "note" ? linkedNavTarget : undefined} />}
         {view === "tags" && <TagsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "tag" ? linkedNavTarget.id : undefined} />}
         {view === "projects" && <ProjectsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "project" ? linkedNavTarget.id : undefined} />}
+        {view === "integrations" && <IntegrationsView />}
       </div>
 
       {searchOpen && (

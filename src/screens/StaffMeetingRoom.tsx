@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
-import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, uploadFileToVault, type TranscriptMessage, type JulieReport, type VaultFile, type SideNote as DBSideNote } from "../lib/db";
+import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, uploadFileToVault, getIntegrationSettings, type TranscriptMessage, type JulieReport, type VaultFile, type SideNote as DBSideNote } from "../lib/db";
+import { syncFileToDrive, syncTranscriptToDrive, syncSideNoteToDrive, queueJulieReportForNotion } from "../lib/integrations";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
 import FileUploadModal from "../components/FileUploadModal";
 import FilePreviewModal from "../components/FilePreviewModal";
@@ -945,6 +946,88 @@ Rules:
     setTimeout(() => setMentorStatus(mentorName, "ready"), 3000);
   }
 
+  async function handleEndSession() {
+    if (!sessionId || !sessionKey) return;
+    setSyncingSession(true);
+    setSyncStatus("Saving session...");
+    persistSession();
+
+    const s = meetingStateRef.current;
+    const mentorsInvolved = Object.keys(s.mentorParticipation).filter((k) => (s.mentorParticipation[k] ?? 0) > 0);
+    const summary = buildSessionSummary(s);
+
+    let driveTranscriptUrl = "";
+    let driveReportUrl = "";
+
+    if (driveConnected) {
+      setSyncStatus("Syncing to Google Drive...");
+      const transcript = messagesRef.current.filter((m) => !m.isThinking).map((m) => ({
+        id: m.id, speaker: m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR"), text: m.text,
+      }));
+      const julieReport = {
+        open_questions: s.openQuestions,
+        decisions_made: s.decisionsMade,
+        assigned_tasks: s.assignedTasks,
+        active_topics: s.activeTopics,
+        unresolved_topics: s.unresolvedTopics,
+        mentor_participation: s.mentorParticipation,
+      };
+      try {
+        const result = await syncTranscriptToDrive({ sessionId, sessionKey, transcript, julieReport });
+        if (result.success) {
+          driveTranscriptUrl = result.transcriptUrl ?? "";
+          driveReportUrl = result.reportUrl ?? "";
+          setSyncStatus("Drive sync complete.");
+        } else {
+          setSyncStatus(`Drive sync failed: ${result.error}`);
+        }
+      } catch {
+        setSyncStatus("Drive sync failed.");
+      }
+    }
+
+    if (notionConnected) {
+      setSyncStatus("Queuing Notion report for approval...");
+      const today = new Date().toISOString().slice(0, 10);
+      try {
+        await queueJulieReportForNotion({
+          sessionId,
+          sessionKey,
+          sessionDate: today,
+          summary,
+          decisions: s.decisionsMade,
+          openQuestions: s.openQuestions,
+          assignedTasks: s.assignedTasks,
+          activeTopics: s.activeTopics,
+          mentorsInvolved,
+          driveLinks: { transcript: driveTranscriptUrl, report: driveReportUrl },
+        });
+        setSyncStatus("Session synced. Notion report queued for approval in Integrations.");
+        addMessage(
+          "JULIE: Session wrapped up. Transcript and report saved to Drive. The Notion report is waiting for your approval in Integrations.",
+          "mentor", "JULIE", ["ALL"], false, true
+        );
+      } catch {
+        setSyncStatus("Notion queue failed.");
+      }
+    } else if (driveConnected) {
+      setSyncStatus("Session synced to Drive.");
+      addMessage(
+        "JULIE: Session wrapped up. Transcript and report saved to Google Drive.",
+        "mentor", "JULIE", ["ALL"], false, true
+      );
+    } else {
+      setSyncStatus("Session saved locally. Connect Drive + Notion in Integrations to sync.");
+      addMessage(
+        "JULIE: Session saved locally. Connect Google Drive and Notion in Integrations to enable cloud sync.",
+        "mentor", "JULIE", ["ALL"], false, true
+      );
+    }
+
+    setSyncingSession(false);
+    setTimeout(() => setSyncStatus(null), 8000);
+  }
+
   async function handleSend() {
     const trimmed = input.trim();
     if (!trimmed) return;
@@ -1100,6 +1183,15 @@ Rules:
             "mentor", "JULIE", ["ALL"], false, true
           );
         }
+        if (driveConnected && sessionId && sessionKey) {
+          syncSideNoteToDrive({
+            sessionId,
+            sessionKey,
+            noteText: note.text,
+            noteTags: allNoteTags,
+            noteMentors: note.mentors,
+          }).catch(() => {});
+        }
       }
     }
     setShowSideNoteModal(false);
@@ -1108,6 +1200,15 @@ Rules:
   const lastNote = sideNotes[sideNotes.length - 1];
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
   const [activeDeptTab, setActiveDeptTab] = useState<string | null>(null);
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [notionConnected, setNotionConnected] = useState(false);
+  const [syncingSession, setSyncingSession] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    getIntegrationSettings("google_drive").then((s) => { if (s?.connected) setDriveConnected(true); }).catch(() => {});
+    getIntegrationSettings("notion").then((s) => { if (s?.connected) setNotionConnected(true); }).catch(() => {});
+  }, []);
 
   const activeDepts = DEPARTMENT_ORDER.filter((dept) =>
     mentors.some((m) => MENTOR_META[m.name]?.department === dept)
@@ -1215,6 +1316,24 @@ Rules:
             <span className="text-[10px] tracking-widest uppercase px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(138,155,181,0.1)", color: "#8A9BB5" }}>
               JULIE facilitating
             </span>
+            <div className="flex items-center gap-1.5">
+              <span
+                className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                style={{ color: driveConnected ? "#4ADE80" : "#3A4F6A", backgroundColor: driveConnected ? "rgba(74,222,128,0.08)" : "transparent" }}
+                title={driveConnected ? "Google Drive connected" : "Google Drive not connected"}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: driveConnected ? "#4ADE80" : "#2A3D5E" }} />
+                Drive
+              </span>
+              <span
+                className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                style={{ color: notionConnected ? "#4ADE80" : "#3A4F6A", backgroundColor: notionConnected ? "rgba(74,222,128,0.08)" : "transparent" }}
+                title={notionConnected ? "Notion connected" : "Notion not connected"}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: notionConnected ? "#4ADE80" : "#2A3D5E" }} />
+                Notion
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {(["brainstorm", "command"] as Mode[]).map((m) => (
@@ -1243,8 +1362,22 @@ Rules:
             >
               Memory
             </button>
+            <button
+              onClick={handleEndSession}
+              disabled={syncingSession}
+              className="px-3 py-1 text-xs font-semibold tracking-wider uppercase rounded transition-all duration-150 ml-1 disabled:opacity-40"
+              style={{ backgroundColor: syncingSession ? "#1B2A4A" : "rgba(74,222,128,0.1)", color: syncingSession ? "#3A4F6A" : "#4ADE80", border: "1px solid rgba(74,222,128,0.25)" }}
+              title="End session — syncs to Drive + queues Notion report"
+            >
+              {syncingSession ? "Syncing…" : "End Session"}
+            </button>
           </div>
         </div>
+        {syncStatus && (
+          <div className="flex-shrink-0 px-5 py-1.5 border-b" style={{ borderColor: "#1B2A4A", backgroundColor: "rgba(74,222,128,0.04)" }}>
+            <p className="text-[10px] tracking-wide" style={{ color: "#4ADE80" }}>{syncStatus}</p>
+          </div>
+        )}
 
         <div
           className="flex-shrink-0 border-b"
@@ -1462,6 +1595,16 @@ Rules:
                 trackFileDiscussed(record);
                 updateSession(sessionId, { files_discussed: [...meetingStateRef.current.filesDiscussed, record.id] }).catch(() => {});
                 addMessage(`JULIE: File "${record.name}" saved to Vault and linked to this session.`, "mentor", "JULIE", ["ALL"], false, true);
+                if (driveConnected && record.content) {
+                  syncFileToDrive({
+                    localFileId: record.id,
+                    sessionId,
+                    fileName: record.name,
+                    fileContent: record.content,
+                    mimeType: record.mime_type ?? "text/plain",
+                    driveFolder: "files",
+                  }).catch(() => {});
+                }
               } catch {
                 addMessage(`[File upload failed]`, "mentor", "JULIE", ["ALL"], false, true);
               }
@@ -1777,6 +1920,16 @@ Rules:
               updateSession(sessionId, { files_discussed: [...meetingStateRef.current.filesDiscussed, record.id] }).catch(() => {});
             }
             addMessage(`JULIE: File "${record.name}" saved to Vault and linked to this session.`, "mentor", "JULIE", ["ALL"], false, true);
+            if (driveConnected && sessionId && record.content) {
+              syncFileToDrive({
+                localFileId: record.id,
+                sessionId,
+                fileName: record.name,
+                fileContent: record.content,
+                mimeType: record.mime_type ?? "text/plain",
+                driveFolder: "files",
+              }).catch(() => {});
+            }
           }}
         />
       )}

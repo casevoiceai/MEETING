@@ -1039,3 +1039,137 @@ export async function globalSearch(query: string): Promise<SearchResult[]> {
 
   return results;
 }
+
+export interface IntegrationSettings {
+  id: string;
+  integration_type: string;
+  access_token: string;
+  refresh_token: string;
+  config: Record<string, unknown>;
+  connected: boolean;
+  connected_at: string | null;
+  last_sync_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DriveSyncLog {
+  id: string;
+  local_file_id: string | null;
+  session_id: string | null;
+  drive_file_id: string;
+  drive_url: string;
+  drive_folder: string;
+  file_name: string;
+  file_type: string;
+  status: "pending" | "syncing" | "synced" | "failed";
+  error_message: string;
+  retry_count: number;
+  payload: Record<string, unknown>;
+  created_at: string;
+  synced_at: string | null;
+}
+
+export interface NotionSyncLog {
+  id: string;
+  notion_db: string;
+  notion_page_id: string;
+  local_id: string;
+  local_type: string;
+  session_id: string | null;
+  drive_links: string[];
+  payload: Record<string, unknown>;
+  status: "pending" | "pending_approval" | "approved" | "syncing" | "synced" | "failed";
+  approved_by_user: boolean;
+  error_message: string;
+  retry_count: number;
+  created_at: string;
+  synced_at: string | null;
+}
+
+export async function getIntegrationSettings(type: string): Promise<IntegrationSettings | null> {
+  const { data } = await supabase
+    .from("integration_settings")
+    .select("*")
+    .eq("integration_type", type)
+    .maybeSingle();
+  return (data ?? null) as IntegrationSettings | null;
+}
+
+export async function getAllIntegrationSettings(): Promise<IntegrationSettings[]> {
+  const { data } = await supabase.from("integration_settings").select("*");
+  return (data ?? []) as IntegrationSettings[];
+}
+
+export async function upsertIntegrationSettings(
+  type: string,
+  patch: Partial<Pick<IntegrationSettings, "access_token" | "refresh_token" | "config" | "connected" | "connected_at" | "last_sync_at">>
+): Promise<void> {
+  await supabase
+    .from("integration_settings")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("integration_type", type);
+}
+
+export async function createDriveSyncLog(
+  entry: Pick<DriveSyncLog, "file_name" | "file_type" | "drive_folder"> & {
+    local_file_id?: string | null;
+    session_id?: string | null;
+    payload?: Record<string, unknown>;
+  }
+): Promise<DriveSyncLog> {
+  const { data, error } = await supabase
+    .from("drive_sync_log")
+    .insert({ ...entry, status: "pending" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as DriveSyncLog;
+}
+
+export async function listDriveSyncLogs(sessionId?: string): Promise<DriveSyncLog[]> {
+  let q = supabase.from("drive_sync_log").select("*");
+  if (sessionId) q = q.eq("session_id", sessionId);
+  const { data } = await q.order("created_at", { ascending: false }).limit(50);
+  return (data ?? []) as DriveSyncLog[];
+}
+
+export async function createNotionSyncLog(
+  entry: Pick<NotionSyncLog, "notion_db" | "local_id" | "local_type"> & {
+    session_id?: string | null;
+    payload?: Record<string, unknown>;
+    drive_links?: string[];
+    status?: NotionSyncLog["status"];
+  }
+): Promise<NotionSyncLog> {
+  const { data, error } = await supabase
+    .from("notion_sync_log")
+    .insert({ ...entry, status: entry.status ?? "pending_approval", approved_by_user: false })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as NotionSyncLog;
+}
+
+export async function approveNotionSync(syncLogId: string): Promise<void> {
+  await supabase
+    .from("notion_sync_log")
+    .update({ approved_by_user: true, status: "approved" })
+    .eq("id", syncLogId);
+}
+
+export async function listNotionSyncLogs(sessionId?: string): Promise<NotionSyncLog[]> {
+  let q = supabase.from("notion_sync_log").select("*");
+  if (sessionId) q = q.eq("session_id", sessionId);
+  const { data } = await q.order("created_at", { ascending: false }).limit(50);
+  return (data ?? []) as NotionSyncLog[];
+}
+
+export async function listPendingNotionApprovals(): Promise<NotionSyncLog[]> {
+  const { data } = await supabase
+    .from("notion_sync_log")
+    .select("*")
+    .eq("status", "pending_approval")
+    .order("created_at", { ascending: false });
+  return (data ?? []) as NotionSyncLog[];
+}
