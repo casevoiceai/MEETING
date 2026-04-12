@@ -11,6 +11,8 @@ import {
   type Email, type EmailAttachment, type EmailAnalysis, type EmailDraft,
 } from "../lib/db";
 import { proposeAction, getPendingCount } from "../lib/approval";
+import { scanContent, type InjectionScanResult } from "../lib/injectionGuard";
+import { TrustBadge, InjectionWarning, SandboxBanner } from "../components/TrustBadge";
 
 const NAVY = "#0D1B2E";
 const CARD = "#111D30";
@@ -623,6 +625,8 @@ export default function EmailView({ onPendingChange }: { onPendingChange?: (coun
   const [rightTab, setRightTab] = useState<RightPanelTab>("analysis");
   const [showArchived, setShowArchived] = useState(false);
   const [deleteProposedIds, setDeleteProposedIds] = useState<Set<string>>(new Set());
+  const [emailScanResult, setEmailScanResult] = useState<InjectionScanResult | null>(null);
+  const [attachmentScans, setAttachmentScans] = useState<Record<string, InjectionScanResult>>({});
   const loadedEmailId = useRef<string | null>(null);
 
   async function handleApprovalCreated() {
@@ -644,6 +648,8 @@ export default function EmailView({ onPendingChange }: { onPendingChange?: (coun
     setAttachments([]);
     setAnalysis(null);
     setDrafts([]);
+    setEmailScanResult(null);
+    setAttachmentScans({});
 
     if (!email.is_read) {
       await markEmailRead(email.id);
@@ -658,6 +664,24 @@ export default function EmailView({ onPendingChange }: { onPendingChange?: (coun
     setAttachments(atts);
     setAnalysis(ana);
     setDrafts(drs);
+
+    const bodyContent = `Subject: ${email.subject}\nFrom: ${email.sender_name} <${email.sender_email}>\n\n${email.body}`;
+    scanContent(bodyContent, `email:${email.id}`, "email").then((result) => {
+      setEmailScanResult(result);
+    }).catch(() => {});
+
+    if (atts.length > 0) {
+      const scans: Record<string, InjectionScanResult> = {};
+      await Promise.all(
+        atts.map(async (att) => {
+          if (att.content) {
+            const r = await scanContent(att.content, `attachment:${att.id}`, "attachment").catch(() => null);
+            if (r) scans[att.id] = r;
+          }
+        })
+      );
+      setAttachmentScans(scans);
+    }
   }
 
   async function handleArchive(email: Email, e: React.MouseEvent) {
@@ -821,6 +845,7 @@ export default function EmailView({ onPendingChange }: { onPendingChange?: (coun
                   <div className="flex items-center gap-2 mt-2">
                     <span className="text-sm font-semibold" style={{ color: GOLD }}>{selectedEmail.sender_name}</span>
                     <span className="text-sm" style={{ color: MUTED }}>&lt;{selectedEmail.sender_email}&gt;</span>
+                    {emailScanResult && <TrustBadge level={emailScanResult.trustLevel} compact />}
                   </div>
                   <p className="text-xs mt-1" style={{ color: DIM }}>
                     {new Date(selectedEmail.received_at).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -840,6 +865,10 @@ export default function EmailView({ onPendingChange }: { onPendingChange?: (coun
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="flex flex-col gap-2 mb-3">
+                <SandboxBanner contentType="email" />
+                {emailScanResult && <InjectionWarning result={emailScanResult} />}
+              </div>
               <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: TEXT }}>{selectedEmail.body}</p>
 
               {attachments.length > 0 && (
@@ -849,22 +878,31 @@ export default function EmailView({ onPendingChange }: { onPendingChange?: (coun
                     <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>Attachments ({attachments.length})</p>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {attachments.map((att) => (
-                      <div key={att.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
-                        <div className="flex items-center gap-2 px-3 py-3" style={{ minHeight: "44px" }}>
-                          <FileText size={14} style={{ color: att.routed_to ? ROUTED_MENTOR_COLORS[att.routed_to] ?? GOLD : MUTED }} />
-                          <p className="flex-1 text-sm font-semibold" style={{ color: TEXT }}>{att.filename}</p>
-                          {att.routed_to && (
-                            <span className="text-xs font-bold tracking-widest uppercase px-2.5 py-1 rounded" style={{ backgroundColor: (ROUTED_MENTOR_COLORS[att.routed_to] ?? GOLD) + "22", color: ROUTED_MENTOR_COLORS[att.routed_to] ?? GOLD }}>{att.routed_to}</span>
+                    {attachments.map((att) => {
+                      const attScan = attachmentScans[att.id];
+                      return (
+                        <div key={att.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${attScan?.injectionDetected ? "rgba(248,113,113,0.35)" : BORDER}`, backgroundColor: CARD }}>
+                          <div className="flex items-center gap-2 px-3 py-3" style={{ minHeight: "44px" }}>
+                            <FileText size={14} style={{ color: att.routed_to ? ROUTED_MENTOR_COLORS[att.routed_to] ?? GOLD : MUTED }} />
+                            <p className="flex-1 text-sm font-semibold" style={{ color: TEXT }}>{att.filename}</p>
+                            {attScan && <TrustBadge level={attScan.trustLevel} compact />}
+                            {att.routed_to && (
+                              <span className="text-xs font-bold tracking-widest uppercase px-2.5 py-1 rounded" style={{ backgroundColor: (ROUTED_MENTOR_COLORS[att.routed_to] ?? GOLD) + "22", color: ROUTED_MENTOR_COLORS[att.routed_to] ?? GOLD }}>{att.routed_to}</span>
+                            )}
+                          </div>
+                          {attScan?.injectionDetected && (
+                            <div className="px-3 pb-2">
+                              <InjectionWarning result={attScan} />
+                            </div>
+                          )}
+                          {att.content && (
+                            <div className="px-3 pb-3">
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: MUTED }}>{att.content.slice(0, 400)}{att.content.length > 400 ? "…" : ""}</p>
+                            </div>
                           )}
                         </div>
-                        {att.content && (
-                          <div className="px-3 pb-3">
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: MUTED }}>{att.content.slice(0, 400)}{att.content.length > 400 ? "…" : ""}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
