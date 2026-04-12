@@ -59,6 +59,39 @@ const STATUS_DOT: Record<MentorStatus, string> = {
   blocked:  "#F87171",
 };
 
+const OPEN_FLOOR_TRIGGERS = [
+  "anyone else",
+  "thoughts",
+  "what do you all think",
+  "who else",
+  "other ideas",
+];
+
+const OPEN_FLOOR_MENTOR_DOMAINS: { name: string; keywords: string[] }[] = [
+  { name: "JAMISON", keywords: ["message", "copy", "tone", "word", "sound", "clear", "write", "language"] },
+  { name: "TECHGUY", keywords: ["build", "how", "system", "implement", "code", "engineer", "tech", "stack"] },
+  { name: "SAM",     keywords: ["plan", "steps", "process", "who", "own", "ship", "timeline", "next"] },
+  { name: "DOC",     keywords: ["risk", "harm", "safe", "issue", "problem", "concern", "danger"] },
+  { name: "CIPHER",  keywords: ["data", "privacy", "trust", "consent", "ethics", "expose"] },
+];
+
+function selectOpenFloorMentors(lastSpeaker: string | null, messageText: string): string[] {
+  const lower = messageText.toLowerCase();
+
+  const scored = OPEN_FLOOR_MENTOR_DOMAINS
+    .filter((m) => m.name !== lastSpeaker)
+    .map((m) => ({
+      name: m.name,
+      score: m.keywords.filter((k) => lower.includes(k)).length,
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const withScore = scored.filter((m) => m.score > 0);
+  const pool = withScore.length >= 2 ? withScore : scored;
+
+  return pool.slice(0, 2).map((m) => m.name);
+}
+
 const MENTOR_KEYWORDS: Record<string, string[]> = {
   DOC:     ["risk", "problem", "issue", "concern", "wrong"],
   CIPHER:  ["data", "privacy", "user", "trust"],
@@ -359,6 +392,25 @@ export default function StaffMeetingRoom() {
     }
   }
 
+  async function triggerOpenFloor(
+    selectedNames: string[],
+    userMessage: string,
+    currentMode: Mode,
+    turnId: number
+  ) {
+    const openFloorInstruction = `\n\n[Instruction: This is an open floor moment. Speak briefly. Add one clear perspective from your domain. Do not restate the question. Do not take over the conversation.]`;
+
+    for (let i = 0; i < selectedNames.length; i++) {
+      const name = selectedNames[i];
+      const mentor = mentorsRef.current.find((m) => m.name === name);
+      if (!mentor) continue;
+      const delay = i * 1400;
+      setTimeout(() => {
+        dispatchMentorResponse(mentor, userMessage + openFloorInstruction, currentMode, turnId);
+      }, delay);
+    }
+  }
+
   function triggerSignals(targetMentors: Mentor[], messageText: string, currentMode: Mode) {
     const turnId = currentTurnId.current;
     const riskFactor = messageText.length > 20 ? 1 : 0.5;
@@ -518,9 +570,20 @@ export default function StaffMeetingRoom() {
       assignMentor(taskMentorName);
     }
 
+    const isOpenFloor = OPEN_FLOOR_TRIGGERS.some((trigger) =>
+      trimmed.toLowerCase().includes(trigger)
+    );
+
     const activeMentorObjs = mentors.filter((m) => selectedMentors.includes(m.name));
 
-    if (activeMentorObjs.length > 0) {
+    if (isOpenFloor) {
+      const recentMentorMessages = messagesRef.current
+        .filter((m) => m.speaker === "mentor" && !m.isThinking)
+        .slice(-1);
+      const lastSpeaker = recentMentorMessages[0]?.sender ?? null;
+      const openFloorNames = selectOpenFloorMentors(lastSpeaker, trimmed);
+      setTimeout(() => triggerOpenFloor(openFloorNames, trimmed, currentMode, turnId), 400);
+    } else if (activeMentorObjs.length > 0) {
       const nonTaskTargets = activeMentorObjs.filter((m) => m.name !== taskMentorName);
       nonTaskTargets.slice(0, MAX_RESPONSES_PER_TURN).forEach((mentor) => {
         setTimeout(() => dispatchMentorResponse(mentor, trimmed, currentMode, turnId), 400);
