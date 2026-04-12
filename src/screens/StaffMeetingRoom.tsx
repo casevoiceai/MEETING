@@ -420,7 +420,7 @@ Your job is to decide who should speak. Return ONLY valid JSON in this exact for
 {"mentors":["NAME1"],"line":"optional brief line you want to say out loud","action":"route"}
 
 Rules:
-- mentors: 1 or 2 names from [MARK, SCOUT, JAMISON, DOC, TECHGUY, SAM, CIPHER, RICK, ALEX, PAUL, PAT, ULYSES, SIGMA, JAMES, MAILMAN, JERRY, RAY, ATK, DEF, WATCHER, KAREN, THATGUY]
+- mentors: 1 or 2 names from [MARK, SCOUT, JAMES, DOC, TECHGUY, SIGMA, CIPHER, RICK, ALEX, PAUL, PAT, ULYSES, MAILMAN, JERRY, RAY, ATK, DEF, WATCHER, KAREN, "THAT GUY"]
 - Never include JULIE in mentors
 - If user is venting/emotional: include your "line" acknowledging it briefly, still route
 - "line" is OPTIONAL — only include if you have something worth saying (not to fill space)
@@ -616,7 +616,7 @@ Rules:
     try {
       routing = await askJulieToRoute(trimmed, currentMode, explicitTargets.length > 0 ? explicitTargets : undefined);
     } catch {
-      routing = { mentors: ["PREZ"], action: "route" };
+      routing = { mentors: ["MARK"], action: "route" };
     } finally {
       setMentors((prev) => prev.map((m) => m.name === "JULIE" ? { ...m, status: "idle" } : m));
     }
@@ -892,7 +892,7 @@ Rules:
           >
             {messages.length === 0 ? (
               <p className="text-sm text-center mt-8" style={{ color: "#3A4F6A" }}>
-                No messages yet. JULIE will route your message to the right mentors.
+                No messages yet. JULIE will route your message to the right team members.
               </p>
             ) : (
               <div className="flex flex-col gap-1.5">

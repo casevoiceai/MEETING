@@ -139,7 +139,7 @@ export default function SessionsView({ onOpenSession }: Props) {
                         {data.mentors.length > 0 && (
                           <div className="col-span-2 flex items-center gap-2 flex-wrap">
                             <Users size={13} style={{ color: MUTED }} />
-                            <p className="text-xs font-bold tracking-widest uppercase mr-1" style={{ color: MUTED }}>Mentors</p>
+                            <p className="text-xs font-bold tracking-widest uppercase mr-1" style={{ color: MUTED }}>Team</p>
                             {data.mentors.map((m) => (
                               <span key={m} className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.12)", color: GOLD }}>
                                 {m}

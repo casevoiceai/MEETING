@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { X, Tag } from "lucide-react";
-import { ALL_MENTOR_NAMES, FALLBACK_MENTOR_NAMES } from "../lib/mentors";
+import { ALL_MENTOR_NAMES } from "../lib/mentors";
 
 export interface SideNote {
   text: string;
@@ -26,13 +26,7 @@ function MentorPickerModal({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const mentorList = useMemo(() => {
-    try {
-      return ALL_MENTOR_NAMES.length ? ALL_MENTOR_NAMES : FALLBACK_MENTOR_NAMES;
-    } catch {
-      return FALLBACK_MENTOR_NAMES;
-    }
-  }, []);
+  const mentorList = useMemo(() => ALL_MENTOR_NAMES, []);
 
   const filtered = useMemo(
     () => mentorList.filter((m) => m.toLowerCase().includes(query.toLowerCase()) && !selected.includes(m)),
@@ -79,7 +73,7 @@ function MentorPickerModal({
         <input
           className="bg-transparent outline-none text-sm flex-1 min-w-[80px]"
           style={{ color: "#1B1B1B" }}
-          placeholder={selected.length === 0 ? "Tag mentors..." : ""}
+          placeholder={selected.length === 0 ? "Tag team members..." : ""}
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}

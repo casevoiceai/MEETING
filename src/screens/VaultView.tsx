@@ -10,7 +10,7 @@ import {
   listProjects, addProjectTask,
   type SideNote, type TagEntry, type VaultFolder, type VaultFile, type Project,
 } from "../lib/db";
-import { ALL_MENTOR_NAMES, FALLBACK_MENTOR_NAMES } from "../lib/mentors";
+import { ALL_MENTOR_NAMES } from "../lib/mentors";
 
 type MainTab = "files" | "notes";
 type ViewMode = "grid" | "table";
@@ -621,13 +621,7 @@ function MentorPicker({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const mentorList = useMemo(() => {
-    try {
-      return ALL_MENTOR_NAMES.length ? ALL_MENTOR_NAMES : FALLBACK_MENTOR_NAMES;
-    } catch {
-      return FALLBACK_MENTOR_NAMES;
-    }
-  }, []);
+  const mentorList = useMemo(() => ALL_MENTOR_NAMES, []);
 
   const filtered = useMemo(
     () => mentorList.filter((m) => m.toLowerCase().includes(query.toLowerCase()) && !selected.includes(m)),
@@ -671,7 +665,7 @@ function MentorPicker({
         <input
           className="bg-transparent outline-none text-sm flex-1 min-w-[80px]"
           style={{ color: "#FFFFFF" }}
-          placeholder={selected.length === 0 ? "Tag mentors..." : ""}
+          placeholder={selected.length === 0 ? "Tag team members..." : ""}
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
@@ -684,7 +678,7 @@ function MentorPicker({
           style={{ backgroundColor: "#0A1628", border: `1px solid ${BORDER}`, maxHeight: "220px", overflowY: "auto" }}
         >
           {filtered.length === 0 && (
-            <p className="px-3 py-2.5 text-xs" style={{ color: DIM }}>No mentors match.</p>
+            <p className="px-3 py-2.5 text-xs" style={{ color: DIM }}>No team members match.</p>
           )}
           {filtered.map((name) => (
             <button
