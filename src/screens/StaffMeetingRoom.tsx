@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
-import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, type TranscriptMessage, type JulieReport } from "../lib/db";
+import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, uploadFileToVault, type TranscriptMessage, type JulieReport, type VaultFile } from "../lib/db";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
+import FileUploadModal from "../components/FileUploadModal";
+import FilePreviewModal from "../components/FilePreviewModal";
 
 type MentorStatus = "idle" | "assigned" | "working" | "ready" | "blocked";
 type Mode = "brainstorm" | "command";
@@ -284,6 +286,10 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   const [sideNotes, setSideNotes] = useState<SideNote[]>([]);
   const [usedTags, setUsedTags] = useState<string[]>([]);
   const [showSideNoteModal, setShowSideNoteModal] = useState(false);
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [previewFile, setPreviewFile] = useState<VaultFile | null>(null);
+  const [sessionFiles, setSessionFiles] = useState<VaultFile[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [selectedMentors, setSelectedMentors] = useState<string[]>([]);
   const [meetingState, setMeetingState] = useState<MeetingState>(INITIAL_MEETING_STATE);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -1275,36 +1281,89 @@ Rules:
               ))}
             </div>
           )}
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your message... JULIE routes it to the right people."
-              className="flex-1 px-4 py-3 rounded-lg outline-none transition-all"
-              style={{
-                backgroundColor: "#1B2A4A",
-                color: "#FFFFFF",
-                fontSize: "15px",
-                border: selectedMentors.length > 0 ? "1px solid rgba(201,168,76,0.5)" : "1px solid #2A3D5E",
-              }}
-            />
-            <button
-              onClick={handleSend}
-              className="px-5 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
-              style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
-            >
-              Send
-            </button>
-            <button
-              onClick={() => setShowSideNoteModal(true)}
-              className="px-4 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
-              style={{ backgroundColor: "#1B2A4A", color: "#8A9BB5", border: "1px solid #2A3D5E" }}
-            >
-              Note{sideNotes.length > 0 ? ` (${sideNotes.length})` : ""}
-            </button>
+          {sessionFiles.length > 0 && (
+            <div className="mb-2 flex items-center gap-2 flex-wrap">
+              <span className="text-[9px] tracking-widest uppercase font-semibold flex-shrink-0" style={{ color: "#5A7A9A" }}>Files:</span>
+              {sessionFiles.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setPreviewFile(f)}
+                  className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-lg font-semibold transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: "rgba(201,168,76,0.1)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.2)" }}
+                >
+                  <span>📄</span>
+                  {f.name.length > 20 ? f.name.slice(0, 20) + "…" : f.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div
+            className="relative mb-2"
+            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={async (e) => {
+              e.preventDefault();
+              setIsDragOver(false);
+              const file = e.dataTransfer.files[0];
+              if (!file || !sessionId) return;
+              try {
+                const record = await uploadFileToVault(file, { linkedSessionId: sessionId });
+                setSessionFiles((prev) => [...prev, record]);
+                setMeetingState((prev) => ({ ...prev, filesDiscussed: [...prev.filesDiscussed, record.id] }));
+                if (sessionId) {
+                  updateSession(sessionId, { files_discussed: [...meetingStateRef.current.filesDiscussed, record.id] }).catch(() => {});
+                }
+                addMessage(`[File uploaded to session: ${record.name}]`, "mentor", "JULIE", ["ALL"], false, true);
+              } catch {
+                addMessage(`[File upload failed]`, "mentor", "JULIE", ["ALL"], false, true);
+              }
+            }}
+          >
+            {isDragOver && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg pointer-events-none"
+                style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "2px dashed #C9A84C" }}>
+                <span className="text-xs font-semibold" style={{ color: "#C9A84C" }}>Drop file — saves to Vault + links to session</span>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type your message... JULIE routes it to the right people."
+                className="flex-1 px-4 py-3 rounded-lg outline-none transition-all"
+                style={{
+                  backgroundColor: "#1B2A4A",
+                  color: "#FFFFFF",
+                  fontSize: "15px",
+                  border: selectedMentors.length > 0 ? "1px solid rgba(201,168,76,0.5)" : "1px solid #2A3D5E",
+                }}
+              />
+              <button
+                onClick={handleSend}
+                className="px-5 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
+                style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
+              >
+                Send
+              </button>
+              <button
+                onClick={() => setShowSideNoteModal(true)}
+                className="px-4 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
+                style={{ backgroundColor: "#1B2A4A", color: "#8A9BB5", border: "1px solid #2A3D5E" }}
+              >
+                Note{sideNotes.length > 0 ? ` (${sideNotes.length})` : ""}
+              </button>
+              <button
+                onClick={() => setShowFileUpload(true)}
+                className="px-4 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-80 active:scale-95 flex items-center gap-2"
+                style={{ backgroundColor: "#1B2A4A", color: "#8A9BB5", border: "1px solid #2A3D5E" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                File
+              </button>
+            </div>
           </div>
           <p className="text-xs mt-2" style={{ color: "#5A7A9A" }}>
             Select team member tiles to direct your message. JULIE always decides who speaks.
@@ -1447,6 +1506,33 @@ Rules:
             </div>
           )}
         </div>
+      )}
+
+      {showFileUpload && (
+        <FileUploadModal
+          folders={[]}
+          projects={[]}
+          defaultSessionId={sessionId ?? null}
+          onClose={() => setShowFileUpload(false)}
+          onUploaded={(record) => {
+            setSessionFiles((prev) => [...prev, record]);
+            setMeetingState((prev) => ({ ...prev, filesDiscussed: [...prev.filesDiscussed, record.id] }));
+            if (sessionId) {
+              updateSession(sessionId, { files_discussed: [...meetingStateRef.current.filesDiscussed, record.id] }).catch(() => {});
+            }
+            addMessage(`[File saved to Vault: ${record.name}]`, "mentor", "JULIE", ["ALL"], false, true);
+          }}
+        />
+      )}
+
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          projects={[]}
+          sessions={[]}
+          onClose={() => setPreviewFile(null)}
+          onUpdated={() => {}}
+        />
       )}
     </div>
   );

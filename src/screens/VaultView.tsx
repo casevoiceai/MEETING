@@ -2,16 +2,19 @@ import { useState, useEffect, useRef, useCallback, DragEvent, useMemo } from "re
 import {
   Trash2, Search, Plus, Folder, FolderOpen, FileText, Check, X,
   Table, LayoutGrid, Tag, Printer, Upload, Eye, EyeOff, Link, ChevronRight,
+  Image as ImageIcon, File,
 } from "lucide-react";
 import {
   listSideNotes, deleteSideNote, saveSideNote, updateSideNote, listAllTags, upsertTags,
   listVaultFolders, createVaultFolder, renameVaultFolder, deleteVaultFolder,
-  listVaultFiles, createVaultFile, updateVaultFile, deleteVaultFile,
+  listVaultFiles, createVaultFile, updateVaultFile, deleteVaultFile, uploadFileToVault,
   listProjects, addProjectTask,
   type SideNote, type TagEntry, type VaultFolder, type VaultFile, type Project, type LinkableType,
 } from "../lib/db";
 import { TEAM_ROSTER } from "../lib/mentors";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
+import FileUploadModal from "../components/FileUploadModal";
+import FilePreviewModal from "../components/FilePreviewModal";
 
 type MainTab = "files" | "notes";
 type ViewMode = "grid" | "table";
@@ -72,6 +75,15 @@ function InlineEdit({
       {value}
     </span>
   );
+}
+
+function VaultFileIcon({ file, size = 16 }: { file: VaultFile; size?: number }) {
+  const ft = file.file_type ?? "note";
+  const mt = file.mime_type ?? "";
+  if (ft === "image" || mt.startsWith("image/")) return <ImageIcon size={size} style={{ color: "#60A5FA" }} />;
+  if (ft === "pdf" || mt === "application/pdf") return <FileText size={size} style={{ color: "#F87171" }} />;
+  if (ft === "document") return <File size={size} style={{ color: "#A78BFA" }} />;
+  return <FileText size={size} style={{ color: GOLD, opacity: 0.7 }} />;
 }
 
 function renderMarkdown(text: string) {
@@ -296,6 +308,8 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null | undefined>(undefined);
   const [openFile, setOpenFile] = useState<VaultFile | null>(null);
+  const [previewFile, setPreviewFile] = useState<VaultFile | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [search, setSearch] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
@@ -367,20 +381,26 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
     if (openFile?.id === id) setOpenFile((prev) => prev ? { ...prev, ...patch } : prev);
   }
 
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
+  async function handleDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragOver(false);
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string ?? "";
-      handleCreateFile(file.name, text);
-    };
-    if (file.type.startsWith("text") || file.name.endsWith(".md") || file.name.endsWith(".txt")) {
-      reader.readAsText(file);
+    try {
+      const record = await uploadFileToVault(file, { folderId: selectedFolder ?? null });
+      setFiles((prev) => [record, ...prev]);
+      handleOpenFile(record);
+    } catch {
+      handleCreateFile(file.name);
+    }
+  }
+
+  function handleOpenFile(file: VaultFile) {
+    const isMedia = file.file_type === "image" || file.file_type === "pdf" || file.file_type === "document" || !!file.storage_path;
+    if (isMedia) {
+      setPreviewFile(file);
     } else {
-      handleCreateFile(file.name, `[Binary file: ${file.name} — ${(file.size / 1024).toFixed(1)} KB]`);
+      setOpenFile(file);
     }
   }
 
@@ -392,13 +412,24 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
 
   if (openFile) {
     return (
-      <FileEditor
-        file={openFile}
-        onUpdate={(patch) => handleUpdateFile(openFile.id, patch)}
-        onClose={() => setOpenFile(null)}
-        projects={projects}
-        onNavigate={onNavigate}
-      />
+      <>
+        <FileEditor
+          file={openFile}
+          onUpdate={(patch) => handleUpdateFile(openFile.id, patch)}
+          onClose={() => setOpenFile(null)}
+          projects={projects}
+          onNavigate={onNavigate}
+        />
+        {previewFile && (
+          <FilePreviewModal
+            file={previewFile}
+            projects={projects}
+            sessions={[]}
+            onClose={() => setPreviewFile(null)}
+            onUpdated={(patch) => handleUpdateFile(previewFile.id, patch)}
+          />
+        )}
+      </>
     );
   }
 
@@ -496,6 +527,14 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
             ))}
           </div>
           <button
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold tracking-wider uppercase transition-all hover:opacity-80"
+            style={{ backgroundColor: "#1B2A4A", color: MUTED, border: `1px solid ${BORDER}` }}
+          >
+            <Upload size={13} />
+            Upload
+          </button>
+          <button
             onClick={() => handleCreateFile()}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold tracking-wider uppercase transition-all hover:opacity-90"
             style={{ backgroundColor: GOLD, color: NAVY }}
@@ -526,12 +565,12 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
               {filtered.map((file) => (
                 <div
                   key={file.id}
-                  onClick={() => setOpenFile(file)}
+                  onClick={() => handleOpenFile(file)}
                   className="group cursor-pointer rounded-xl p-4 transition-all hover:border-opacity-60"
                   style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}
                 >
                   <div className="flex items-start justify-between mb-3">
-                    <FileText size={16} style={{ color: GOLD, opacity: 0.7 }} />
+                    <VaultFileIcon file={file} size={18} />
                     <button
                       onClick={(e) => handleDeleteFile(file.id, e)}
                       className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-0.5 transition-opacity"
@@ -545,6 +584,7 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
                     className="block text-sm font-semibold mb-1.5 w-full"
                     style={{ color: "#FFFFFF" }}
                   />
+                  <p className="text-xs mb-1.5 uppercase tracking-widest font-semibold" style={{ color: DIM }}>{file.file_type ?? "note"}</p>
                   {file.summary && (
                     <p className="text-xs leading-snug mb-2 line-clamp-2" style={{ color: MUTED }}>{file.summary}</p>
                   )}
@@ -573,7 +613,7 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
                   return (
                     <tr
                       key={file.id}
-                      onClick={() => setOpenFile(file)}
+                      onClick={() => handleOpenFile(file)}
                       className="group cursor-pointer transition-all"
                       style={{ borderBottom: `1px solid rgba(27,42,74,0.5)` }}
                       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
@@ -581,7 +621,7 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
                     >
                       <td className="py-3 px-3 font-semibold" style={{ color: "#FFFFFF" }}>
                         <div className="flex items-center gap-2">
-                          <FileText size={13} style={{ color: GOLD, opacity: 0.6 }} />
+                          <VaultFileIcon file={file} size={13} />
                           {file.name}
                         </div>
                       </td>
@@ -617,6 +657,30 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
           )}
         </div>
       </div>
+
+      {showUploadModal && (
+        <FileUploadModal
+          folders={folders}
+          projects={projects}
+          defaultFolderId={typeof selectedFolder === "string" ? selectedFolder : null}
+          onClose={() => setShowUploadModal(false)}
+          onUploaded={(record) => {
+            setFiles((prev) => [record, ...prev]);
+            setShowUploadModal(false);
+            handleOpenFile(record);
+          }}
+        />
+      )}
+
+      {previewFile && !openFile && (
+        <FilePreviewModal
+          file={previewFile}
+          projects={projects}
+          sessions={[]}
+          onClose={() => setPreviewFile(null)}
+          onUpdated={(patch) => handleUpdateFile(previewFile.id, patch)}
+        />
+      )}
     </div>
   );
 }

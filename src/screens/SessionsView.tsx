@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Archive, ChevronRight, FileText, Tag, Users, AlertCircle, CheckSquare, StickyNote } from "lucide-react";
-import { listSessions, archiveSession, loadSession, type Session, type LinkableType } from "../lib/db";
+import { Archive, ChevronRight, FileText, Tag, Users, AlertCircle, CheckSquare, StickyNote, File, Image as ImageIcon } from "lucide-react";
+import { listSessions, archiveSession, loadSession, type Session, type VaultFile, type LinkableType } from "../lib/db";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
+import FilePreviewModal from "../components/FilePreviewModal";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -26,6 +27,7 @@ interface SessionData {
   unresolved: string[];
   sideNotes: { text: string; mentors: string[]; tags: string[] }[];
   summary: string;
+  vaultFiles: VaultFile[];
 }
 
 export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTarget }: Props) {
@@ -33,6 +35,7 @@ export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTa
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(linkedTarget ?? null);
   const [expandedData, setExpandedData] = useState<Record<string, SessionData>>({});
+  const [previewFile, setPreviewFile] = useState<VaultFile | null>(null);
 
   useEffect(() => {
     listSessions().then((s) => {
@@ -70,7 +73,8 @@ export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTa
         const mentors = Object.keys(mentorParticipation).filter((k) => (mentorParticipation[k] ?? 0) > 0);
         const sideNotes = (result.sideNotes ?? []).map((n) => ({ text: n.text, mentors: n.mentors ?? [], tags: n.tags ?? [] }));
         const summary = result.session?.session_summary ?? "";
-        setExpandedData((prev) => ({ ...prev, [session.id]: { transcript: preview, tasks, questions, decisions, mentors, unresolved, sideNotes, summary } }));
+        const vaultFiles = result.vaultFiles ?? [];
+        setExpandedData((prev) => ({ ...prev, [session.id]: { transcript: preview, tasks, questions, decisions, mentors, unresolved, sideNotes, summary, vaultFiles } }));
       }
     }
   }
@@ -266,6 +270,33 @@ export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTa
                           </div>
                         )}
 
+                        {data.vaultFiles && data.vaultFiles.length > 0 && (
+                          <div className="col-span-2">
+                            <p className="text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: "#60A5FA" }}>
+                              <File size={11} style={{ color: "#60A5FA" }} />
+                              Files Discussed ({data.vaultFiles.length})
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {data.vaultFiles.map((f) => (
+                                <button
+                                  key={f.id}
+                                  onClick={() => setPreviewFile(f)}
+                                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-80"
+                                  style={{ backgroundColor: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.2)", color: "#93C5FD" }}
+                                >
+                                  {(f.file_type === "image" || f.mime_type?.startsWith("image/")) ? (
+                                    <ImageIcon size={12} style={{ color: "#60A5FA" }} />
+                                  ) : (
+                                    <FileText size={12} style={{ color: "#60A5FA" }} />
+                                  )}
+                                  {f.name.length > 24 ? f.name.slice(0, 24) + "…" : f.name}
+                                  <span className="text-[9px] uppercase tracking-widest opacity-60">{f.file_type}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="col-span-2">
                           <LinkedItemsPanel sourceType="session" sourceId={session.id} onNavigate={onNavigateLinked} />
                         </div>
@@ -305,6 +336,16 @@ export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTa
           </div>
         )}
       </div>
+
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          projects={[]}
+          sessions={sessions}
+          onClose={() => setPreviewFile(null)}
+          onUpdated={() => {}}
+        />
+      )}
     </div>
   );
 }

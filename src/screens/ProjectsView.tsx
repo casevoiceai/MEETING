@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Plus, ChevronRight, Archive, Trash2, CheckCircle, Circle, Clock,
-  FileText, AlignLeft, Tag, Link, Pencil, Check, X, Layers,
+  FileText, AlignLeft, Tag, Link, Pencil, Check, X, Layers, Upload,
+  Image as ImageIcon, File,
 } from "lucide-react";
 import {
   listProjects, createProject, archiveProject, renameProject, deleteProject,
   listProjectNotes, addProjectNote, deleteProjectNote,
   listProjectTasks, addProjectTask, updateTaskStatus, deleteProjectTask,
-  listVaultFilesByProject, listSideNotes, listTagsForProject,
-  type Project, type ProjectNote, type ProjectTask, type TaskStatus, type VaultFile, type SideNote, type TagEntry, type LinkableType,
+  listVaultFilesByProject, listSideNotes, listTagsForProject, listVaultFolders, deleteVaultFile,
+  type Project, type ProjectNote, type ProjectTask, type TaskStatus, type VaultFile, type SideNote, type TagEntry, type LinkableType, type VaultFolder,
 } from "../lib/db";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
+import FileUploadModal from "../components/FileUploadModal";
+import FilePreviewModal from "../components/FilePreviewModal";
 
 type DetailTab = "overview" | "files" | "notes" | "tasks" | "sessions" | "tags";
 
@@ -82,11 +85,21 @@ interface ProjectDetailProps {
   onNavigate?: (type: LinkableType, id: string) => void;
 }
 
+function VaultFileIcon({ file, size = 15 }: { file: VaultFile; size?: number }) {
+  const ft = file.file_type ?? "note";
+  const mt = file.mime_type ?? "";
+  if (ft === "image" || mt.startsWith("image/")) return <ImageIcon size={size} style={{ color: "#60A5FA" }} />;
+  if (ft === "pdf" || mt === "application/pdf") return <FileText size={size} style={{ color: "#F87171" }} />;
+  if (ft === "document") return <File size={size} style={{ color: "#A78BFA" }} />;
+  return <FileText size={size} style={{ color: GOLD, opacity: 0.7 }} />;
+}
+
 function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailProps) {
   const [tab, setTab] = useState<DetailTab>("overview");
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [files, setFiles] = useState<VaultFile[]>([]);
+  const [folders, setFolders] = useState<VaultFolder[]>([]);
   const [sideNotes, setSideNotes] = useState<SideNote[]>([]);
   const [tags, setTags] = useState<TagEntry[]>([]);
   const [newNoteText, setNewNoteText] = useState("");
@@ -96,6 +109,8 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
   const [renamingProject, setRenamingProject] = useState(false);
   const [renameDraft, setRenameDraft] = useState(project.name);
   const renameRef = useRef<HTMLInputElement>(null);
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [previewFile, setPreviewFile] = useState<VaultFile | null>(null);
 
   useEffect(() => {
     setLoaded(false);
@@ -106,12 +121,14 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
       listVaultFilesByProject(project.id),
       listSideNotes({ projectId: project.id, archived: false }),
       listTagsForProject(project.id),
-    ]).then(([n, t, f, sn, tg]) => {
+      listVaultFolders(),
+    ]).then(([n, t, f, sn, tg, fld]) => {
       setNotes(n);
       setTasks(t);
       setFiles(f);
       setSideNotes(sn);
       setTags(tg);
+      setFolders(fld);
       setLoaded(true);
     });
   }, [project.id]);
@@ -431,31 +448,83 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
             )}
 
             {tab === "files" && (
-              <div>
-                {files.length === 0 && (
-                  <p className="text-sm" style={{ color: DIM }}>
-                    No files linked. Open a file in the Vault and set its Linked Project to this project.
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>
+                    {files.length} file{files.length !== 1 ? "s" : ""} linked to this project
                   </p>
+                  <button
+                    onClick={() => setShowFileUpload(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold tracking-wider uppercase transition-all hover:opacity-80"
+                    style={{ backgroundColor: GOLD, color: NAVY }}
+                  >
+                    <Upload size={13} />
+                    Upload File
+                  </button>
+                </div>
+                {files.length === 0 && (
+                  <div
+                    className="flex flex-col items-center justify-center gap-3 py-10 rounded-2xl border-2 border-dashed cursor-pointer transition-all hover:border-opacity-60"
+                    style={{ borderColor: BORDER, color: DIM }}
+                    onClick={() => setShowFileUpload(true)}
+                  >
+                    <Upload size={28} style={{ color: DIM }} />
+                    <p className="text-sm">No files yet. Click to upload or link from Vault.</p>
+                  </div>
                 )}
                 <div className="flex flex-col gap-2">
                   {files.map((f) => (
-                    <div key={f.id} className="flex items-center gap-3 px-4 py-3.5 rounded-xl" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-                      <FileText size={15} style={{ color: GOLD, opacity: 0.7 }} />
+                    <div
+                      key={f.id}
+                      className="flex items-center gap-3 px-4 py-3.5 rounded-xl group cursor-pointer transition-all hover:border-opacity-60"
+                      style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}
+                      onClick={() => setPreviewFile(f)}
+                    >
+                      <VaultFileIcon file={f} size={17} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold" style={{ color: "#FFFFFF" }}>{f.name}</p>
                         {f.summary && <p className="text-xs mt-0.5 truncate" style={{ color: MUTED }}>{f.summary}</p>}
-                        {f.tags.length > 0 && (
-                          <div className="flex gap-1 mt-1.5 flex-wrap">
-                            {f.tags.map((t) => (
-                              <span key={t} className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: "rgba(201,168,76,0.12)", color: GOLD }}>{t}</span>
-                            ))}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded uppercase tracking-widest font-semibold" style={{ backgroundColor: "rgba(255,255,255,0.05)", color: DIM }}>{f.file_type ?? "note"}</span>
+                          {f.tags.slice(0, 2).map((t) => (
+                            <span key={t} className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: "rgba(201,168,76,0.12)", color: GOLD }}>{t}</span>
+                          ))}
+                        </div>
                       </div>
-                      <span className="text-xs flex-shrink-0" style={{ color: DIM }}>{new Date(f.updated_at).toLocaleDateString()}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs" style={{ color: DIM }}>{new Date(f.updated_at).toLocaleDateString()}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteVaultFile(f.id).then(() => setFiles((p) => p.filter((x) => x.id !== f.id))); }}
+                          className="opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity p-1"
+                        >
+                          <Trash2 size={12} style={{ color: "#F87171" }} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
+
+                {showFileUpload && (
+                  <FileUploadModal
+                    folders={folders}
+                    projects={[project]}
+                    defaultProjectId={project.id}
+                    onClose={() => setShowFileUpload(false)}
+                    onUploaded={(record) => {
+                      setFiles((prev) => [record, ...prev]);
+                    }}
+                  />
+                )}
+
+                {previewFile && (
+                  <FilePreviewModal
+                    file={previewFile}
+                    projects={[project]}
+                    sessions={[]}
+                    onClose={() => setPreviewFile(null)}
+                    onUpdated={(patch) => setFiles((prev) => prev.map((f) => f.id === previewFile.id ? { ...f, ...patch } : f))}
+                  />
+                )}
               </div>
             )}
 

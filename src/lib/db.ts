@@ -116,6 +116,10 @@ export interface VaultFile {
   archived: boolean;
   created_at: string;
   updated_at: string;
+  storage_path: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  original_name: string | null;
 }
 
 function todayKey(): string {
@@ -555,7 +559,7 @@ export async function createVaultFile(name: string, folderId?: string | null): P
 
 export async function updateVaultFile(
   id: string,
-  patch: Partial<Pick<VaultFile, "name" | "content" | "summary" | "tags" | "folder_id" | "linked_project_id" | "linked_session_id" | "file_type">>
+  patch: Partial<Pick<VaultFile, "name" | "content" | "summary" | "tags" | "folder_id" | "linked_project_id" | "linked_session_id" | "file_type" | "storage_path" | "file_size" | "mime_type" | "original_name">>
 ): Promise<void> {
   await supabase
     .from("vault_files")
@@ -564,7 +568,79 @@ export async function updateVaultFile(
 }
 
 export async function deleteVaultFile(id: string): Promise<void> {
+  const { data } = await supabase.from("vault_files").select("storage_path").eq("id", id).maybeSingle();
+  if (data?.storage_path) {
+    await supabase.storage.from("vault-files").remove([data.storage_path]);
+  }
   await supabase.from("vault_files").delete().eq("id", id);
+}
+
+function detectFileType(mimeType: string, fileName: string): string {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType === "text/plain") return "text";
+  if (mimeType.includes("word") || fileName.endsWith(".docx") || fileName.endsWith(".doc")) return "document";
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "image";
+  if (ext === "pdf") return "pdf";
+  if (["txt", "md"].includes(ext)) return "text";
+  if (["doc", "docx"].includes(ext)) return "document";
+  return "file";
+}
+
+export async function uploadFileToVault(
+  file: File,
+  options: {
+    folderId?: string | null;
+    linkedSessionId?: string | null;
+    linkedProjectId?: string | null;
+    tags?: string[];
+    summary?: string;
+  } = {}
+): Promise<VaultFile> {
+  const ext = file.name.split(".").pop() ?? "bin";
+  const storagePath = `uploads/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const fileType = detectFileType(file.type, file.name);
+
+  const { error: uploadError } = await supabase.storage
+    .from("vault-files")
+    .upload(storagePath, file, { contentType: file.type, upsert: false });
+  if (uploadError) throw uploadError;
+
+  let textContent = "";
+  if (fileType === "text") {
+    try { textContent = await file.text(); } catch { textContent = ""; }
+  }
+
+  const { data, error } = await supabase
+    .from("vault_files")
+    .insert({
+      name: file.name,
+      original_name: file.name,
+      storage_path: storagePath,
+      file_size: file.size,
+      mime_type: file.type,
+      file_type: fileType,
+      content: textContent,
+      summary: options.summary ?? "",
+      tags: options.tags ?? [],
+      folder_id: options.folderId ?? null,
+      linked_session_id: options.linkedSessionId ?? null,
+      linked_project_id: options.linkedProjectId ?? null,
+      archived: false,
+    })
+    .select()
+    .single();
+  if (error) {
+    await supabase.storage.from("vault-files").remove([storagePath]);
+    throw error;
+  }
+  return data as VaultFile;
+}
+
+export function getVaultFileUrl(storagePath: string): string {
+  const { data } = supabase.storage.from("vault-files").getPublicUrl(storagePath);
+  return data.publicUrl;
 }
 
 export async function updateSession(
