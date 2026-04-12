@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { X, Tag } from "lucide-react";
-import { ALL_MENTOR_NAMES } from "../lib/mentors";
+import { TEAM_ROSTER } from "../lib/mentors";
 
 export interface SideNote {
   text: string;
@@ -26,11 +26,15 @@ function MentorPickerModal({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const mentorList = useMemo(() => ALL_MENTOR_NAMES, []);
-
   const filtered = useMemo(
-    () => mentorList.filter((m) => m.toLowerCase().includes(query.toLowerCase()) && !selected.includes(m)),
-    [mentorList, query, selected]
+    () => TEAM_ROSTER.filter(
+      (m) =>
+        (m.name.toLowerCase().includes(query.toLowerCase()) ||
+          m.department.toLowerCase().includes(query.toLowerCase()) ||
+          m.skills.some((s) => s.toLowerCase().includes(query.toLowerCase()))) &&
+        !selected.includes(m.name)
+    ),
+    [query, selected]
   );
 
   useEffect(() => {
@@ -82,22 +86,34 @@ function MentorPickerModal({
 
       {open && (
         <div
-          className="absolute z-50 left-0 right-0 mt-1 rounded-xl overflow-hidden shadow-2xl"
-          style={{ backgroundColor: "#EDD98A", border: "1px solid #D6C47A", maxHeight: "200px", overflowY: "auto" }}
+          className="absolute z-50 left-0 right-0 mt-1 rounded-xl shadow-2xl overflow-y-auto"
+          style={{ backgroundColor: "#EDD98A", border: "1px solid #D6C47A", maxHeight: "260px" }}
         >
           {filtered.length === 0 && (
             <p className="px-4 py-2.5 text-xs" style={{ color: "#5A4E00" }}>
-              {query ? "No match." : "All mentors selected."}
+              {query ? "No match." : "All team members selected."}
             </p>
           )}
-          {filtered.map((name) => (
+          {filtered.map((member) => (
             <button
-              key={name}
-              onMouseDown={(e) => { e.preventDefault(); toggle(name); setQuery(""); }}
-              className="w-full text-left px-4 py-2.5 text-sm font-bold tracking-widest uppercase transition-colors hover:bg-yellow-200"
-              style={{ color: "#1B1B1B" }}
+              key={member.name}
+              onMouseDown={(e) => { e.preventDefault(); toggle(member.name); setQuery(""); }}
+              className="w-full text-left px-4 py-2.5 transition-colors hover:bg-yellow-200 border-b last:border-b-0"
+              style={{ borderColor: "rgba(0,0,0,0.06)" }}
             >
-              {name}
+              <p className="text-xs font-bold tracking-widest uppercase leading-tight" style={{ color: "#1B1B1B" }}>
+                {member.name}
+              </p>
+              <p className="text-[10px] font-semibold tracking-wider mt-0.5 mb-1" style={{ color: "#7A6200" }}>
+                {member.department}
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {member.skills.map((skill) => (
+                  <p key={skill} className="text-[10px] leading-snug" style={{ color: "#5A4E00" }}>
+                    · {skill}
+                  </p>
+                ))}
+              </div>
             </button>
           ))}
         </div>

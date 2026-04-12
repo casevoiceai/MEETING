@@ -10,7 +10,7 @@ import {
   listProjects, addProjectTask,
   type SideNote, type TagEntry, type VaultFolder, type VaultFile, type Project,
 } from "../lib/db";
-import { ALL_MENTOR_NAMES } from "../lib/mentors";
+import { TEAM_ROSTER } from "../lib/mentors";
 
 type MainTab = "files" | "notes";
 type ViewMode = "grid" | "table";
@@ -621,11 +621,15 @@ function MentorPicker({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const mentorList = useMemo(() => ALL_MENTOR_NAMES, []);
-
   const filtered = useMemo(
-    () => mentorList.filter((m) => m.toLowerCase().includes(query.toLowerCase()) && !selected.includes(m)),
-    [mentorList, query, selected]
+    () => TEAM_ROSTER.filter(
+      (m) =>
+        (m.name.toLowerCase().includes(query.toLowerCase()) ||
+          m.department.toLowerCase().includes(query.toLowerCase()) ||
+          m.skills.some((s) => s.toLowerCase().includes(query.toLowerCase()))) &&
+        !selected.includes(m.name)
+    ),
+    [query, selected]
   );
 
   useEffect(() => {
@@ -680,14 +684,26 @@ function MentorPicker({
           {filtered.length === 0 && (
             <p className="px-3 py-2.5 text-xs" style={{ color: DIM }}>No team members match.</p>
           )}
-          {filtered.map((name) => (
+          {filtered.map((member) => (
             <button
-              key={name}
-              onMouseDown={(e) => { e.preventDefault(); toggle(name); setQuery(""); }}
-              className="w-full text-left px-3 py-2.5 text-sm font-bold tracking-widest uppercase transition-colors hover:bg-white/5"
-              style={{ color: MUTED }}
+              key={member.name}
+              onMouseDown={(e) => { e.preventDefault(); toggle(member.name); setQuery(""); }}
+              className="w-full text-left px-3 py-2.5 transition-colors hover:bg-white/5 border-b last:border-b-0"
+              style={{ borderColor: "rgba(255,255,255,0.04)" }}
             >
-              {name}
+              <p className="text-xs font-bold tracking-widest uppercase leading-tight" style={{ color: MUTED }}>
+                {member.name}
+              </p>
+              <p className="text-[10px] font-semibold tracking-wider mt-0.5 mb-1" style={{ color: GOLD, opacity: 0.7 }}>
+                {member.department}
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {member.skills.map((skill) => (
+                  <p key={skill} className="text-[10px] leading-snug" style={{ color: DIM }}>
+                    · {skill}
+                  </p>
+                ))}
+              </div>
             </button>
           ))}
         </div>
