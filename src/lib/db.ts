@@ -324,6 +324,33 @@ export async function archiveProject(projectId: string): Promise<void> {
   await supabase.from("projects").update({ archived: true }).eq("id", projectId);
 }
 
+export async function renameProject(projectId: string, name: string): Promise<void> {
+  const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  await supabase.from("projects").update({ name, slug }).eq("id", projectId);
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await supabase.from("projects").delete().eq("id", projectId);
+}
+
+export async function listTagsForProject(projectId: string): Promise<TagEntry[]> {
+  const [filesRes, notesRes, sideNotesRes] = await Promise.all([
+    supabase.from("vault_files").select("tags").eq("linked_project_id", projectId).eq("archived", false),
+    supabase.from("project_notes").select("tags").eq("project_id", projectId).eq("archived", false),
+    supabase.from("side_notes").select("tags").eq("project_id", projectId).eq("archived", false),
+  ]);
+  const allTags = new Set<string>();
+  (filesRes.data ?? []).forEach((r: { tags: string[] }) => (r.tags ?? []).forEach((t) => allTags.add(t)));
+  (notesRes.data ?? []).forEach((r: { tags: string[] }) => (r.tags ?? []).forEach((t) => allTags.add(t)));
+  (sideNotesRes.data ?? []).forEach((r: { tags: string[] }) => (r.tags ?? []).forEach((t) => allTags.add(t)));
+  if (allTags.size === 0) return [];
+  const { data } = await supabase
+    .from("tag_registry")
+    .select("*")
+    .in("tag", Array.from(allTags));
+  return (data ?? []) as TagEntry[];
+}
+
 export async function addProjectNote(
   projectId: string,
   text: string,
