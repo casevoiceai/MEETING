@@ -47,8 +47,55 @@ interface JulieRouting {
   action?: "route" | "summarize" | "acknowledge" | "refocus";
 }
 
+interface MentorMeta {
+  department: string;
+  realName: string;
+  bullets: string[];
+}
+
+const MENTOR_META: Record<string, MentorMeta> = {
+  MARK:    { department: "STRATEGY",           realName: "Mark Reeves",   bullets: ["Strategic direction", "Vision & positioning", "High-level decisions"] },
+  SCOUT:   { department: "STRATEGY",           realName: "Scout",         bullets: ["Market intelligence", "Competitive landscape", "Opportunity mapping"] },
+  DOC:     { department: "CRITICAL SYSTEMS",   realName: "Dr. Dana Cruz",  bullets: ["Safety & harm analysis", "Emotional impact", "User wellbeing"] },
+  CIPHER:  { department: "CRITICAL SYSTEMS",   realName: "Cipher",        bullets: ["Data & privacy", "Trust architecture", "Ethics & consent"] },
+  TECHGUY: { department: "CRITICAL SYSTEMS",   realName: "Tyler Marsh",   bullets: ["Engineering & systems", "Build feasibility", "Technical debt"] },
+  RICK:    { department: "CRITICAL SYSTEMS",   realName: "Rick Alvarez",  bullets: ["Operational risk", "Failure scenarios", "Execution exposure"] },
+  SIGMA:   { department: "EXECUTION",          realName: "Sigma",         bullets: ["Workflows & systems", "Efficiency & scale", "Process design"] },
+  PAUL:    { department: "EXECUTION",          realName: "Paul Bennett",  bullets: ["Prioritization", "Cuts scope", "Forces a next step"] },
+  JAMES:   { department: "COMMUNICATION",      realName: "James",         bullets: ["Internal messaging", "Team alignment", "Clarity of voice"] },
+  MAILMAN: { department: "COMMUNICATION",      realName: "Mailman",       bullets: ["Outbound messaging", "Email & comms delivery", "Audience tone"] },
+  PAT:     { department: "INTELLIGENCE",       realName: "Pat Vance",     bullets: ["Pattern recognition", "Cross-session insight", "Repeated mistakes"] },
+  JERRY:   { department: "INTELLIGENCE",       realName: "Jerry",         bullets: ["Research & data", "Evidence gathering", "Fact-checking"] },
+  ALEX:    { department: "USER & EXPERIENCE",  realName: "Alex Morgan",   bullets: ["UX & usability", "Interface clarity", "Friction reduction"] },
+  ULYSES:  { department: "USER & EXPERIENCE",  realName: "Ulyses",        bullets: ["Real user perspective", "First impressions", "Honest reactions"] },
+  RAY:     { department: "USER & EXPERIENCE",  realName: "Ray",           bullets: ["Accessibility", "Inclusive design", "Barrier removal"] },
+  ATK:     { department: "LEGAL",              realName: "ATK",           bullets: ["Legal offense", "IP & claims", "Contract leverage"] },
+  DEF:     { department: "LEGAL",              realName: "DEF",           bullets: ["Legal defense", "Risk exposure", "Compliance shielding"] },
+  WATCHER: { department: "OPERATIONS",         realName: "Watcher",       bullets: ["Monitoring & alerts", "System health", "Silent observation"] },
+  KAREN:   { department: "OPERATIONS",         realName: "Karen",         bullets: ["Admin & logistics", "Process enforcement", "Keeps things moving"] },
+  THATGUY: { department: "OPERATIONS",         realName: "That Guy",      bullets: ["The wild card", "Unconventional takes", "Asks what no one will"] },
+  JAMISON: { department: "COMMUNICATION",      realName: "James Jamison", bullets: ["Copy & tone", "Message clarity", "Word choices"] },
+  SAM:     { department: "EXECUTION",          realName: "Sam",           bullets: ["Task ownership", "Who does what", "Timeline tracking"] },
+  JULIE:   { department: "FACILITATION",       realName: "Julie",         bullets: ["Routes all messages", "Meeting facilitator", "Session memory"] },
+};
+
+const DEPARTMENT_ORDER = ["STRATEGY", "CRITICAL SYSTEMS", "EXECUTION", "COMMUNICATION", "INTELLIGENCE", "USER & EXPERIENCE", "LEGAL", "OPERATIONS", "FACILITATION"];
+
+const DEPARTMENT_COLORS: Record<string, string> = {
+  "STRATEGY":          "#C9A84C",
+  "CRITICAL SYSTEMS":  "#E07B5A",
+  "EXECUTION":         "#5A9BD3",
+  "COMMUNICATION":     "#6BAF8E",
+  "INTELLIGENCE":      "#A07BC9",
+  "USER & EXPERIENCE": "#5AB8A8",
+  "LEGAL":             "#C97B7B",
+  "OPERATIONS":        "#7B8FA8",
+  "FACILITATION":      "#8A9BB5",
+};
+
 const INITIAL_MENTORS: Mentor[] = [
-  { id: "prez",    name: "PREZ",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.7,  commentWeight: 0.6, riskSensitivity: 0.8,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "mark",    name: "MARK",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.7,  commentWeight: 0.6, riskSensitivity: 0.8,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "scout",   name: "SCOUT",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.4,  commentWeight: 0.7, riskSensitivity: 0.6,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "jamison", name: "JAMISON", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.2,  commentWeight: 0.8, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "doc",     name: "DOC",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.9,  commentWeight: 0.7, riskSensitivity: 1.0,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "tech9",   name: "TECHGUY", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.7, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
@@ -59,6 +106,16 @@ const INITIAL_MENTORS: Mentor[] = [
   { id: "paul",    name: "PAUL",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.7, riskSensitivity: 0.4,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "pat",     name: "PAT",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.2,  commentWeight: 0.5, riskSensitivity: 0.5,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "ulyses",  name: "ULYSES",  status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.3,  commentWeight: 0.8, riskSensitivity: 0.3,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "sigma",   name: "SIGMA",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.4,  commentWeight: 0.7, riskSensitivity: 0.5,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "james",   name: "JAMES",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.3,  commentWeight: 0.8, riskSensitivity: 0.4,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "mailman", name: "MAILMAN", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.2,  commentWeight: 0.8, riskSensitivity: 0.3,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "jerry",   name: "JERRY",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.3,  commentWeight: 0.7, riskSensitivity: 0.5,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "ray",     name: "RAY",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.3,  commentWeight: 0.7, riskSensitivity: 0.5,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "atk",     name: "ATK",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.6, riskSensitivity: 0.8,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "def",     name: "DEF",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.6, riskSensitivity: 0.9,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "watcher", name: "WATCHER", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.1,  commentWeight: 0.4, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "karen",   name: "KAREN",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.4,  commentWeight: 0.6, riskSensitivity: 0.5,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "thatguy", name: "THATGUY", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.6,  commentWeight: 0.9, riskSensitivity: 0.3,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "julie",   name: "JULIE",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.0,  commentWeight: 0.0, riskSensitivity: 0.0,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
 ];
 
@@ -101,7 +158,7 @@ const STATUS_DOT: Record<MentorStatus, string> = {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-const ALL_MENTOR_NAMES = ["PREZ", "JAMISON", "DOC", "TECHGUY", "SAM", "CIPHER", "RICK", "ALEX", "PAUL", "PAT", "ULYSES"];
+const ALL_MENTOR_NAMES = ["MARK", "SCOUT", "JAMISON", "DOC", "TECHGUY", "SAM", "CIPHER", "RICK", "ALEX", "PAUL", "PAT", "ULYSES", "SIGMA", "JAMES", "MAILMAN", "JERRY", "RAY", "ATK", "DEF", "WATCHER", "KAREN", "THATGUY"];
 
 function isHighRisk(message: string): boolean {
   const lower = message.toLowerCase();
@@ -344,14 +401,14 @@ export default function StaffMeetingRoom({ sessionId }: Props) {
 MEETING MODE: ${currentMode}
 MENTOR TURN COUNTS THIS SESSION: ${JSON.stringify(mentorCounts)}
 LEAST SPOKEN MENTORS (in order): ${leastSpoken.join(", ")}
-${anyoneElse ? "USER ASKED 'ANYONE ELSE' — do NOT route to PREZ. Pick from those who have spoken least." : ""}
+${anyoneElse ? "USER ASKED 'ANYONE ELSE' — do NOT route to MARK. Pick from those who have spoken least." : ""}
 ${forcedMentors ? `USER EXPLICITLY SELECTED: ${forcedMentors.join(", ")} — route to them.` : ""}
 
 Your job is to decide who should speak. Return ONLY valid JSON in this exact format:
 {"mentors":["NAME1"],"line":"optional brief line you want to say out loud","action":"route"}
 
 Rules:
-- mentors: 1 or 2 names from [PREZ, JAMISON, DOC, TECHGUY, SAM, CIPHER, RICK, ALEX, PAUL, PAT, ULYSES]
+- mentors: 1 or 2 names from [MARK, SCOUT, JAMISON, DOC, TECHGUY, SAM, CIPHER, RICK, ALEX, PAUL, PAT, ULYSES, SIGMA, JAMES, MAILMAN, JERRY, RAY, ATK, DEF, WATCHER, KAREN, THATGUY]
 - Never include JULIE in mentors
 - If user is venting/emotional: include your "line" acknowledging it briefly, still route
 - "line" is OPTIONAL — only include if you have something worth saying (not to fill space)
@@ -605,12 +662,14 @@ Rules:
   }
 
   const lastNote = sideNotes[sideNotes.length - 1];
+  const [showMemoryPanel, setShowMemoryPanel] = useState(true);
 
   return (
     <div
-      className="flex-1 flex flex-col min-h-0"
+      className="flex-1 flex min-h-0"
       style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif" }}
     >
+    <div className="flex-1 flex flex-col min-h-0">
       {showSideNoteModal && (
         <SideNoteModal
           usedTags={usedTags}
@@ -655,98 +714,93 @@ Rules:
         </span>
       </div>
 
-      <div className="px-6 pt-5 pb-4">
+      <div className="px-6 pt-4 pb-3 overflow-y-auto" style={{ maxHeight: "320px" }}>
         <p className="text-xs tracking-widest uppercase mb-3" style={{ color: "#8A9BB5" }}>
           Team
         </p>
-        <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-12">
-          {mentors.map((mentor) => {
-            const isSelected = selectedMentors.includes(mentor.name);
-            const isJulie = mentor.name === "JULIE";
-
-            if (isJulie) {
-              return (
-                <button
-                  key={mentor.id}
-                  onClick={() => handleMentorClick(mentor)}
-                  className={[
-                    "aspect-square flex flex-col items-center justify-center rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden",
-                    mentor.status === "working" ? "animate-pulse" : "",
-                  ].join(" ")}
-                  style={{
-                    backgroundColor: "#0F1F36",
-                    border: isSelected
-                      ? "1px solid #8A9BB5"
-                      : mentor.status === "working"
-                      ? "1px solid #3A4F6A"
-                      : "1px solid #1B2A4A",
-                    boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.15)" : "none",
-                  }}
-                  title="JULIE — Facilitator. Routes every message. Ask for a summary or select to direct."
-                >
-                  <span
-                    className="absolute top-2 right-2 w-2 h-2 rounded-full"
-                    style={{
-                      backgroundColor: mentor.status === "working" ? "#60AEFF" : "#1B2A4A",
-                    }}
-                  />
-                  <span className="text-xs font-bold tracking-widest leading-none" style={{ color: "#8A9BB5" }}>
-                    JULIE
-                  </span>
-                  <span className="mt-1.5 text-[9px] tracking-widest uppercase font-medium" style={{ color: "#3A4F6A" }}>
-                    {mentor.status === "working" ? "ROUTING" : "HOST"}
-                  </span>
-                </button>
-              );
-            }
-
-            const participation = meetingState.mentorParticipation[mentor.name] ?? 0;
-
-            return (
-              <button
-                key={mentor.id}
-                onClick={() => handleMentorClick(mentor)}
-                className={[
-                  "aspect-square flex flex-col items-center justify-center rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden",
-                  mentor.status === "working" ? "animate-pulse" : "",
-                ].join(" ")}
-                style={{
-                  ...STATUS_STYLES[mentor.status],
-                  boxShadow: isSelected
-                    ? "0 0 0 1.5px #C9A84C, 0 0 12px 3px rgba(201,168,76,0.25)"
-                    : "none",
-                }}
-                title={
-                  mentor.status === "ready"
-                    ? "Click to receive result"
-                    : isSelected
-                    ? `Deselect ${mentor.name}`
-                    : `Select ${mentor.name}`
-                }
+        {DEPARTMENT_ORDER.map((dept) => {
+          const deptMentors = mentors.filter((m) => MENTOR_META[m.name]?.department === dept);
+          if (deptMentors.length === 0) return null;
+          const deptColor = DEPARTMENT_COLORS[dept] ?? "#8A9BB5";
+          return (
+            <div key={dept} className="mb-4">
+              <p
+                className="text-[9px] tracking-widest uppercase font-bold mb-2"
+                style={{ color: deptColor, opacity: 0.7 }}
               >
-                {participation > 0 && (
-                  <span
-                    className="absolute top-1.5 left-1.5 text-[8px] font-bold"
-                    style={{ color: "#3A4F6A" }}
-                  >
-                    {participation}
-                  </span>
-                )}
-                <span
-                  className="absolute top-2 right-2 w-2 h-2 rounded-full"
-                  style={{ backgroundColor: STATUS_DOT[mentor.status] }}
-                />
-                <span className="text-xs font-bold tracking-widest leading-none">{mentor.name}</span>
-                <span
-                  className="mt-1.5 text-[9px] tracking-widest uppercase font-medium"
-                  style={{ color: STATUS_DOT[mentor.status] }}
-                >
-                  {STATUS_LABEL[mentor.status]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+                {dept}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {deptMentors.map((mentor) => {
+                  const isSelected = selectedMentors.includes(mentor.name);
+                  const isJulie = mentor.name === "JULIE";
+                  const meta = MENTOR_META[mentor.name];
+                  const participation = meetingState.mentorParticipation[mentor.name] ?? 0;
+
+                  if (isJulie) {
+                    return (
+                      <button
+                        key={mentor.id}
+                        onClick={() => handleMentorClick(mentor)}
+                        className={["flex flex-col rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden", mentor.status === "working" ? "animate-pulse" : ""].join(" ")}
+                        style={{
+                          backgroundColor: "#0F1F36",
+                          border: isSelected ? "1px solid #8A9BB5" : mentor.status === "working" ? "1px solid #3A4F6A" : "1px solid #1B2A4A",
+                          boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.15)" : "none",
+                          width: "120px",
+                          padding: "10px 12px",
+                        }}
+                        title="JULIE — Facilitator"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold tracking-widest" style={{ color: "#8A9BB5" }}>JULIE</span>
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: mentor.status === "working" ? "#60AEFF" : "#1B2A4A" }} />
+                        </div>
+                        <span className="text-[8px] tracking-widest uppercase" style={{ color: "#3A4F6A" }}>
+                          {mentor.status === "working" ? "ROUTING" : "HOST"}
+                        </span>
+                        {meta?.bullets.slice(0, 2).map((b, i) => (
+                          <span key={i} className="text-[8px] leading-tight mt-0.5 block" style={{ color: "#2A3D5E" }}>· {b}</span>
+                        ))}
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={mentor.id}
+                      onClick={() => handleMentorClick(mentor)}
+                      className={["flex flex-col rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden", mentor.status === "working" ? "animate-pulse" : ""].join(" ")}
+                      style={{
+                        ...STATUS_STYLES[mentor.status],
+                        boxShadow: isSelected ? `0 0 0 1.5px ${deptColor}, 0 0 12px 3px ${deptColor}33` : "none",
+                        width: "120px",
+                        padding: "10px 12px",
+                      }}
+                      title={mentor.status === "ready" ? "Click to receive result" : isSelected ? `Deselect ${mentor.name}` : `Select ${mentor.name}`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-bold tracking-widest" style={{ color: isSelected ? deptColor : "#FFFFFF" }}>{mentor.name}</span>
+                        <div className="flex items-center gap-1">
+                          {participation > 0 && (
+                            <span className="text-[8px] font-bold" style={{ color: "#3A4F6A" }}>{participation}</span>
+                          )}
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_DOT[mentor.status] }} />
+                        </div>
+                      </div>
+                      {meta?.realName && (
+                        <span className="text-[8px] mb-1 block" style={{ color: "#3A4F6A" }}>{meta.realName}</span>
+                      )}
+                      {meta?.bullets.slice(0, 2).map((b, i) => (
+                        <span key={i} className="text-[8px] leading-tight block" style={{ color: isSelected ? `${deptColor}99` : "#2A3D5E" }}>· {b}</span>
+                      ))}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {sideNotes.length > 0 && (
@@ -925,6 +979,111 @@ Rules:
           Select mentor tiles to direct your message. JULIE always decides who speaks. Ask "where are we" for a summary.
         </p>
       </div>
+    </div>
+
+      {showMemoryPanel ? (
+        <div
+          className="flex-shrink-0 flex flex-col border-l overflow-y-auto"
+          style={{ width: "220px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
+        >
+          <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <span className="text-[9px] tracking-widest uppercase font-bold" style={{ color: "#8A9BB5" }}>Session Memory</span>
+            <button onClick={() => setShowMemoryPanel(false)} className="text-[10px] opacity-40 hover:opacity-80" style={{ color: "#8A9BB5" }}>×</button>
+          </div>
+
+          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#F87171" }}>
+              Unanswered ({meetingState.openQuestions.length})
+            </p>
+            {meetingState.openQuestions.length === 0 ? (
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {meetingState.openQuestions.slice(-5).map((q, i) => (
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {q.slice(0, 60)}{q.length > 60 ? "…" : ""}</p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#5A9BD3" }}>
+              Active Tasks ({meetingState.assignedTasks.length})
+            </p>
+            {meetingState.assignedTasks.length === 0 ? (
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None assigned</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {meetingState.assignedTasks.slice(-6).map((t, i) => (
+                  <div key={i}>
+                    <p className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>{t.task.slice(0, 50)}{t.task.length > 50 ? "…" : ""}</p>
+                    <p className="text-[9px]" style={{ color: "#3A4F6A" }}>→ {t.owner}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#4ADE80" }}>
+              Decisions ({meetingState.decisionsMade.length})
+            </p>
+            {meetingState.decisionsMade.length === 0 ? (
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None recorded</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {meetingState.decisionsMade.slice(-5).map((d, i) => (
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {d.slice(0, 60)}{d.length > 60 ? "…" : ""}</p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#C9A84C" }}>
+              Active Topics
+            </p>
+            {meetingState.activeTopics.length === 0 ? (
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {meetingState.activeTopics.slice(-4).map((t, i) => (
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {t.slice(0, 55)}{t.length > 55 ? "…" : ""}</p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="px-3 py-3">
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#8A9BB5" }}>
+              Participation
+            </p>
+            {Object.keys(meetingState.mentorParticipation).length === 0 ? (
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>No responses yet</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {Object.entries(meetingState.mentorParticipation)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([name, count]) => (
+                    <div key={name} className="flex items-center justify-between">
+                      <span className="text-[9px] tracking-widest uppercase font-semibold" style={{ color: "#3A4F6A" }}>{name}</span>
+                      <span className="text-[9px]" style={{ color: "#C9A84C" }}>{count}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowMemoryPanel(true)}
+          className="flex-shrink-0 flex items-center justify-center border-l hover:opacity-80 transition-opacity"
+          style={{ width: "24px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
+          title="Show session memory"
+        >
+          <span className="text-[8px] tracking-widest uppercase font-bold" style={{ color: "#2A3D5E", writingMode: "vertical-rl" }}>Memory</span>
+        </button>
+      )}
     </div>
   );
 }

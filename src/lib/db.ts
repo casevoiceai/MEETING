@@ -332,3 +332,79 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus): Prom
 export async function deleteProjectTask(id: string): Promise<void> {
   await supabase.from("project_tasks").delete().eq("id", id);
 }
+
+export interface VaultFolder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  created_at: string;
+}
+
+export interface VaultFile {
+  id: string;
+  folder_id: string | null;
+  name: string;
+  content: string;
+  summary: string;
+  tags: string[];
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listVaultFolders(): Promise<VaultFolder[]> {
+  const { data } = await supabase.from("vault_folders").select("*").order("name");
+  return (data ?? []) as VaultFolder[];
+}
+
+export async function createVaultFolder(name: string, parentId?: string): Promise<VaultFolder> {
+  const { data, error } = await supabase
+    .from("vault_folders")
+    .insert({ name, parent_id: parentId ?? null })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as VaultFolder;
+}
+
+export async function renameVaultFolder(id: string, name: string): Promise<void> {
+  await supabase.from("vault_folders").update({ name }).eq("id", id);
+}
+
+export async function deleteVaultFolder(id: string): Promise<void> {
+  await supabase.from("vault_folders").delete().eq("id", id);
+}
+
+export async function listVaultFiles(folderId?: string | null): Promise<VaultFile[]> {
+  let q = supabase.from("vault_files").select("*").eq("archived", false);
+  if (folderId !== undefined) {
+    if (folderId === null) q = q.is("folder_id", null);
+    else q = q.eq("folder_id", folderId);
+  }
+  const { data } = await q.order("updated_at", { ascending: false });
+  return (data ?? []) as VaultFile[];
+}
+
+export async function createVaultFile(name: string, folderId?: string | null): Promise<VaultFile> {
+  const { data, error } = await supabase
+    .from("vault_files")
+    .insert({ name, folder_id: folderId ?? null, content: "", summary: "", tags: [] })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as VaultFile;
+}
+
+export async function updateVaultFile(
+  id: string,
+  patch: Partial<Pick<VaultFile, "name" | "content" | "summary" | "tags" | "folder_id">>
+): Promise<void> {
+  await supabase
+    .from("vault_files")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id);
+}
+
+export async function deleteVaultFile(id: string): Promise<void> {
+  await supabase.from("vault_files").delete().eq("id", id);
+}

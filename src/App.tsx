@@ -16,6 +16,37 @@ const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "projects", label: "Projects" },
 ];
 
+const navBaseStyle: React.CSSProperties = {
+  color: "#8A9BB5",
+  border: "1px solid transparent",
+  transition: "all 0.15s ease",
+};
+const navActiveStyle: React.CSSProperties = {
+  backgroundColor: "#1B2A4A",
+  color: "#C9A84C",
+  border: "1px solid rgba(201,168,76,0.3)",
+};
+
+function NavButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  const [hovered, setHovered] = useState(false);
+  const style: React.CSSProperties = active
+    ? navActiveStyle
+    : hovered
+    ? { ...navBaseStyle, color: "#C9A84C", border: "1px solid rgba(201,168,76,0.15)" }
+    : navBaseStyle;
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="px-3 py-1.5 text-xs font-bold tracking-wider uppercase rounded"
+      style={style}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<View>("meeting");
   const [session, setSession] = useState<Session | null>(null);
@@ -37,18 +68,13 @@ export default function App() {
           MyStatement_AI
         </span>
         {NAV_ITEMS.map((item) => (
-          <button
+          <NavButton
             key={item.id}
+            active={view === item.id}
             onClick={() => setView(item.id)}
-            className="px-3 py-1.5 text-xs font-semibold tracking-wider uppercase rounded transition-all duration-150"
-            style={
-              view === item.id
-                ? { backgroundColor: "#1B2A4A", color: "#FFFFFF", border: "1px solid #2A3D5E" }
-                : { color: "#3A4F6A", border: "1px solid transparent" }
-            }
           >
             {item.label}
-          </button>
+          </NavButton>
         ))}
         <div className="ml-auto">
           {session && (
