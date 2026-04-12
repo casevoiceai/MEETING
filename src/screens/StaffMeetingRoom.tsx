@@ -54,6 +54,11 @@ const INITIAL_MENTORS: Mentor[] = [
   { id: "tech9",   name: "TECHGUY", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.7, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "sam",     name: "SAM",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.4,  commentWeight: 0.6, riskSensitivity: 0.6,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "cipher",  name: "CIPHER",  status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.85, commentWeight: 0.6, riskSensitivity: 1.0,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "rick",    name: "RICK",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.6,  commentWeight: 0.7, riskSensitivity: 0.9,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "alex",    name: "ALEX",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.3,  commentWeight: 0.8, riskSensitivity: 0.5,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "paul",    name: "PAUL",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.7, riskSensitivity: 0.4,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "pat",     name: "PAT",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.2,  commentWeight: 0.5, riskSensitivity: 0.5,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "ulyses",  name: "ULYSES",  status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.3,  commentWeight: 0.8, riskSensitivity: 0.3,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
   { id: "julie",   name: "JULIE",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.0,  commentWeight: 0.0, riskSensitivity: 0.0,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
 ];
 
@@ -96,7 +101,7 @@ const STATUS_DOT: Record<MentorStatus, string> = {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-const ALL_MENTOR_NAMES = ["PREZ", "JAMISON", "DOC", "TECHGUY", "SAM", "CIPHER"];
+const ALL_MENTOR_NAMES = ["PREZ", "JAMISON", "DOC", "TECHGUY", "SAM", "CIPHER", "RICK", "ALEX", "PAUL", "PAT", "ULYSES"];
 
 function isHighRisk(message: string): boolean {
   const lower = message.toLowerCase();
@@ -346,7 +351,7 @@ Your job is to decide who should speak. Return ONLY valid JSON in this exact for
 {"mentors":["NAME1"],"line":"optional brief line you want to say out loud","action":"route"}
 
 Rules:
-- mentors: 1 or 2 names from [PREZ, JAMISON, DOC, TECHGUY, SAM, CIPHER]
+- mentors: 1 or 2 names from [PREZ, JAMISON, DOC, TECHGUY, SAM, CIPHER, RICK, ALEX, PAUL, PAT, ULYSES]
 - Never include JULIE in mentors
 - If user is venting/emotional: include your "line" acknowledging it briefly, still route
 - "line" is OPTIONAL — only include if you have something worth saying (not to fill space)
@@ -654,7 +659,7 @@ Rules:
         <p className="text-xs tracking-widest uppercase mb-3" style={{ color: "#8A9BB5" }}>
           Team
         </p>
-        <div className="grid grid-cols-4 gap-3 sm:grid-cols-7">
+        <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-12">
           {mentors.map((mentor) => {
             const isSelected = selectedMentors.includes(mentor.name);
             const isJulie = mentor.name === "JULIE";
