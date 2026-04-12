@@ -86,6 +86,15 @@ function getBestMentor(message: string): string | null {
   return null;
 }
 
+function isTooSimilar(newText: string, history: string[]): boolean {
+  const lower = newText.toLowerCase();
+  return history.some((h) => lower.includes(h.slice(0, 20)));
+}
+
+function isQuestion(text: string): boolean {
+  return text.trimEnd().endsWith("?");
+}
+
 const MAX_RESPONSES_PER_TURN = 2;
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -106,6 +115,7 @@ export default function StaffMeetingRoom() {
   const currentTurnId = useRef(0);
   const messagesRef = useRef<Message[]>([]);
   const mentorsRef = useRef<Mentor[]>(INITIAL_MENTORS);
+  const recentTopics = useRef<string[]>([]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -248,8 +258,16 @@ export default function StaffMeetingRoom() {
       const data = await res.json();
       if (!data.response) throw new Error("Empty response");
 
+      const followUpText = data.response as string;
+      if (isTooSimilar(followUpText, recentTopics.current)) {
+        removeMessageById(thinkingId);
+        return;
+      }
+
+      recentTopics.current = [...recentTopics.current, followUpText.toLowerCase()].slice(-3);
+
       removeMessageById(thinkingId);
-      addMessage(`${chosen.name}: ${data.response}`, "mentor", chosen.name, [originalMentorName]);
+      addMessage(`${chosen.name}: ${followUpText}`, "mentor", chosen.name, [originalMentorName]);
     } catch {
       removeMessageById(thinkingId);
     } finally {
@@ -284,6 +302,23 @@ export default function StaffMeetingRoom() {
     let responseText = "";
     try {
       responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode);
+
+      const lastWasQuestion = recentTopics.current.length > 0 && isQuestion(recentTopics.current[recentTopics.current.length - 1]);
+      if (isTooSimilar(responseText, recentTopics.current)) {
+        removeMessageById(thinkingId);
+        return;
+      }
+
+      if (isQuestion(responseText) && lastWasQuestion) {
+        responseText = await fetchMentorResponse(mentor.name, `${userMessage}\n\n[Instruction: Do NOT ask a question. Give a concrete suggestion or recommendation instead.]`, currentMode);
+        if (isTooSimilar(responseText, recentTopics.current)) {
+          removeMessageById(thinkingId);
+          return;
+        }
+      }
+
+      recentTopics.current = [...recentTopics.current, responseText.toLowerCase()].slice(-3);
+
       removeMessageById(thinkingId);
       addMessage(`${mentor.name}: ${responseText}`, "mentor", mentor.name, ["YOU"]);
     } catch {
@@ -432,6 +467,7 @@ export default function StaffMeetingRoom() {
 
     currentTurnId.current += 1;
     const turnId = currentTurnId.current;
+    recentTopics.current = [];
     const currentMode = mode;
 
     const taskPattern = /^([A-Za-z0-9]+):\s*.+$/;
