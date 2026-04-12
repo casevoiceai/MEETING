@@ -86,6 +86,18 @@ function getBestMentor(message: string): string | null {
   return null;
 }
 
+function isHighRisk(message: string): boolean {
+  const lower = message.toLowerCase();
+  return [
+    "remove safeguards",
+    "disable safety",
+    "ignore rules",
+    "bypass",
+    "no restrictions",
+    "skip checks",
+  ].some((k) => lower.includes(k));
+}
+
 function isTooSimilar(newText: string, history: string[]): boolean {
   const lower = newText.toLowerCase();
   return history.some((h) => lower.includes(h.slice(0, 20)));
@@ -116,6 +128,7 @@ export default function StaffMeetingRoom() {
   const messagesRef = useRef<Message[]>([]);
   const mentorsRef = useRef<Mentor[]>(INITIAL_MENTORS);
   const recentTopics = useRef<string[]>([]);
+  const highRiskTurnId = useRef<number | null>(null);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -334,7 +347,7 @@ export default function StaffMeetingRoom() {
       );
     }
 
-    if (responseText) {
+    if (responseText && highRiskTurnId.current !== turnId) {
       setTimeout(() => {
         maybeTriggerFollowUp(mentor.name, responseText, userMessage, currentMode, turnId);
       }, 800);
@@ -486,6 +499,21 @@ export default function StaffMeetingRoom() {
     const activeMentorObjs = mentors.filter((m) => selectedMentors.includes(m.name));
     setSelectedMentors([]);
     setInput("");
+
+    if (isHighRisk(trimmed)) {
+      highRiskTurnId.current = turnId;
+      const doc = mentors.find((m) => m.name === "DOC");
+      const cipher = mentors.find((m) => m.name === "CIPHER");
+      if (doc) {
+        const riskPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Respond with a clear concern, explain what could go wrong in concrete terms, and do NOT respond with only a question.]`;
+        setTimeout(() => dispatchMentorResponse(doc, riskPrompt, currentMode, turnId), 400);
+      }
+      if (cipher) {
+        const trustPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Respond by addressing trust, safety, and the impact on users. Be direct and specific.]`;
+        setTimeout(() => dispatchMentorResponse(cipher, trustPrompt, currentMode, turnId), 1800);
+      }
+      return;
+    }
 
     if (activeMentorObjs.length > 0) {
       const nonTaskTargets = activeMentorObjs.filter((m) => m.name !== taskMentorName);
