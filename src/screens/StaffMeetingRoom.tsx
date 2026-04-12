@@ -86,10 +86,15 @@ export default function StaffMeetingRoom() {
   const msgCounter = useRef(0);
   const currentTurnId = useRef(0);
   const messagesRef = useRef<Message[]>([]);
+  const mentorsRef = useRef<Mentor[]>(INITIAL_MENTORS);
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    mentorsRef.current = mentors;
+  }, [mentors]);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -166,6 +171,79 @@ export default function StaffMeetingRoom() {
     return data.response as string;
   }
 
+  async function maybeTriggerFollowUp(
+    originalMentorName: string,
+    lastResponseText: string,
+    userMessage: string,
+    currentMode: Mode,
+    turnId: number
+  ) {
+    if (Math.random() > 0.30) return;
+
+    const currentMentors = mentorsRef.current;
+    const otherMentors = currentMentors.filter(
+      (m) => m.name !== originalMentorName && m.status === "idle"
+    );
+    if (otherMentors.length === 0) return;
+
+    const relevant = otherMentors.filter((m) => isMentorRelevant(m.name, lastResponseText));
+    const pool = relevant.length > 0 ? relevant : otherMentors;
+
+    const sorted = [...pool].sort((a, b) => b.commentWeight - a.commentWeight);
+    const topWeight = sorted[0].commentWeight;
+    const topTier = sorted.filter((m) => m.commentWeight === topWeight);
+    const chosen = topTier[Math.floor(Math.random() * topTier.length)];
+
+    setMentors((prev) =>
+      prev.map((m) => m.id === chosen.id ? { ...m, status: "working" } : m)
+    );
+
+    const thinkingId = addMessage(
+      `${chosen.name} is thinking...`,
+      "mentor",
+      chosen.name,
+      [originalMentorName],
+      true
+    );
+
+    try {
+      const contextMessage = `${originalMentorName} just said: "${lastResponseText}"\n\nOriginal topic: ${userMessage}`;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/mentor-response`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          mentor: chosen.name,
+          message: contextMessage,
+          mode: currentMode,
+          recentTranscript: messagesRef.current
+            .filter((m) => !m.isThinking)
+            .slice(-10)
+            .map((m) => ({ speaker: m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR"), text: m.text })),
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.response) throw new Error("Empty response");
+
+      removeMessageById(thinkingId);
+      addMessage(`${chosen.name}: ${data.response}`, "mentor", chosen.name, [originalMentorName]);
+    } catch {
+      removeMessageById(thinkingId);
+    } finally {
+      setMentors((prev) =>
+        prev.map((m) => {
+          if (m.id !== chosen.id) return m;
+          if (m.hasTask) return m;
+          return { ...m, status: "idle", hasInterrupt: false, hasComment: false, lastRespondedTurn: turnId };
+        })
+      );
+    }
+  }
+
   async function dispatchMentorResponse(
     mentor: Mentor,
     userMessage: string,
@@ -184,10 +262,11 @@ export default function StaffMeetingRoom() {
       true
     );
 
+    let responseText = "";
     try {
-      const text = await fetchMentorResponse(mentor.name, userMessage, currentMode);
+      responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode);
       removeMessageById(thinkingId);
-      addMessage(`${mentor.name}: ${text}`, "mentor", mentor.name, ["YOU"]);
+      addMessage(`${mentor.name}: ${responseText}`, "mentor", mentor.name, ["YOU"]);
     } catch {
       removeMessageById(thinkingId);
       addMessage(`${mentor.name}: I hit a problem generating a response.`, "mentor", mentor.name, ["YOU"]);
@@ -199,6 +278,12 @@ export default function StaffMeetingRoom() {
           return { ...m, status: "idle", hasInterrupt: false, hasComment: false, lastRespondedTurn: turnId };
         })
       );
+    }
+
+    if (responseText) {
+      setTimeout(() => {
+        maybeTriggerFollowUp(mentor.name, responseText, userMessage, currentMode, turnId);
+      }, 800);
     }
   }
 
