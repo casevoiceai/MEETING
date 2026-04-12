@@ -1,7 +1,15 @@
+import StaffMeetingRoom from "./screens/StaffMeetingRoom";
+
 export default function App() {
   return (
-    <div style={{ padding: 40, color: "white", background: "#0D1B2E" }}>
-      <h1>APP IS RUNNING</h1>
+    <div
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "#0D1B2E",
+        color: "#FFFFFF",
+      }}
+    >
+      <StaffMeetingRoom sessionId={null} sessionKey={null} />
     </div>
   );
 }
