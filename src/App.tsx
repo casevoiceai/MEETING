@@ -9,13 +9,15 @@ import GlobalSearch from "./screens/GlobalSearch";
 import EmailView from "./screens/EmailView";
 import IntegrationsView from "./screens/IntegrationsView";
 import SourceOfTruthPanel from "./components/SourceOfTruthPanel";
+import CriticalPathPanel from "./components/CriticalPathPanel";
 import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
 import { getPendingCount } from "./lib/approval";
+import { getLastBackupLog, isBackupOverdue } from "./lib/criticalPath";
 import OfflineStatusBar from "./components/OfflineStatusBar";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import BackupExportModal from "./components/BackupExportModal";
 
-type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations" | "source-of-truth";
+type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations" | "source-of-truth" | "recovery";
 
 const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "meeting", label: "Meeting" },
@@ -26,6 +28,7 @@ const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "projects", label: "Projects" },
   { id: "integrations", label: "Integrations" },
   { id: "source-of-truth", label: "Source of Truth" },
+  { id: "recovery", label: "Recovery" },
 ];
 
 function NavButton({
@@ -72,6 +75,7 @@ export default function App() {
   const [backupOpen, setBackupOpen] = useState(false);
   const [linkedNavTarget, setLinkedNavTarget] = useState<{ type: LinkableType; id: string } | null>(null);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+  const [backupOverdue, setBackupOverdue] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -87,6 +91,10 @@ export default function App() {
       getPendingCount().then(setPendingApprovalCount).catch(() => {});
     }, 15000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  useEffect(() => {
+    getLastBackupLog().then((log) => setBackupOverdue(isBackupOverdue(log))).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -150,7 +158,7 @@ export default function App() {
             key={item.id}
             active={view === item.id}
             onClick={() => setView(item.id)}
-            badge={item.id === "integrations" ? pendingApprovalCount : undefined}
+            badge={item.id === "integrations" ? pendingApprovalCount : item.id === "recovery" && backupOverdue ? 1 : undefined}
           >
             {item.label}
           </NavButton>
@@ -218,6 +226,7 @@ export default function App() {
         {view === "projects" && <ProjectsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "project" ? linkedNavTarget.id : undefined} />}
         {view === "integrations" && <IntegrationsView onPendingChange={setPendingApprovalCount} />}
         {view === "source-of-truth" && <SourceOfTruthPanel sessionKey={sessionKey} />}
+        {view === "recovery" && <CriticalPathPanel />}
       </div>
 
       {searchOpen && (

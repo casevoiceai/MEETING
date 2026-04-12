@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { TIER0_ITEMS } from "./criticalPath";
 
 export type ExportFormat = "json" | "markdown" | "html";
 
@@ -301,4 +302,69 @@ export async function quickBackup(format: ExportFormat = "json"): Promise<void> 
   const scope: BackupScope = { sessions: true, notes: true, projects: true, filesMetadata: true };
   const { blob, filename } = await runExport(format, scope);
   downloadBlob(blob, filename);
+}
+
+export interface Tier0BackupResult {
+  blob: Blob;
+  filename: string;
+  itemsExported: string[];
+  counts: Record<string, number>;
+}
+
+export async function exportTier0(): Promise<Tier0BackupResult> {
+  const scope: BackupScope = { sessions: true, notes: true, projects: true, filesMetadata: true };
+  const data = await fetchAll(scope);
+
+  const [sotResult, integResult, approvalResult] = await Promise.all([
+    supabase.from("source_of_truth").select("*").order("entry_date", { ascending: false }),
+    supabase.from("integration_settings").select("id,notion_enabled,drive_enabled,fallback_mode,created_at,updated_at"),
+    supabase.from("approval_log").select("*").order("created_at", { ascending: false }).limit(500),
+  ]);
+
+  const sourceOfTruth = (sotResult.data ?? []) as Record<string, unknown>[];
+  const integrationSettings = (integResult.data ?? []) as Record<string, unknown>[];
+  const approvalLog = (approvalResult.data ?? []) as Record<string, unknown>[];
+
+  const ts = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
+
+  const payload: Record<string, unknown> = {
+    __manifest: {
+      exportedAt: new Date().toISOString(),
+      type: "tier0_critical_path",
+      version: "1.0",
+      tier0Items: TIER0_ITEMS.map((i) => i.id),
+    },
+    source_of_truth: sourceOfTruth,
+    sessions: data.sessions,
+    session_transcripts: data.transcripts,
+    julie_reports: data.julieReports,
+    side_notes: data.sideNotes,
+    projects: data.projects,
+    project_notes: data.projectNotes,
+    project_tasks: data.projectTasks,
+    vault_folders: data.vaultFolders,
+    vault_files: data.vaultFiles,
+    tags: data.tags,
+    integration_settings: integrationSettings,
+    approval_log: approvalLog,
+  };
+
+  const content = JSON.stringify(payload, null, 2);
+  const blob = new Blob([content], { type: "application/json" });
+  const filename = `tier0_critical_path_${ts}.json`;
+
+  const itemsExported = TIER0_ITEMS.map((i) => i.id);
+
+  const counts: Record<string, number> = {
+    source_of_truth: sourceOfTruth.length,
+    sessions: data.sessions.length,
+    notes: data.sideNotes.length,
+    projects: data.projects.length,
+    vault_files: data.vaultFiles.length,
+    tags: data.tags.length,
+    approval_log: approvalLog.length,
+    integration_settings: integrationSettings.length,
+  };
+
+  return { blob, filename, itemsExported, counts };
 }
