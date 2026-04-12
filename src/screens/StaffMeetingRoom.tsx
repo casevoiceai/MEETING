@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
+import { upsertTranscript, upsertJulieReport, saveSideNote, upsertTags, type TranscriptMessage } from "../lib/db";
 
 type MentorStatus = "idle" | "assigned" | "working" | "ready" | "blocked";
 type Mode = "brainstorm" | "command";
@@ -15,6 +16,7 @@ interface Mentor {
   riskSensitivity: number;
   lastRespondedTurn: number | null;
   hasTask: boolean;
+  turnCount: number;
 }
 
 interface MeetingState {
@@ -36,16 +38,23 @@ interface Message {
   sender?: string;
   targets?: string[];
   isThinking?: boolean;
+  isJulie?: boolean;
+}
+
+interface JulieRouting {
+  mentors: string[];
+  line?: string;
+  action?: "route" | "summarize" | "acknowledge" | "refocus";
 }
 
 const INITIAL_MENTORS: Mentor[] = [
-  { id: "prez",    name: "PREZ",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.7,  commentWeight: 0.6, riskSensitivity: 0.8,  lastRespondedTurn: null, hasTask: false },
-  { id: "jamison", name: "JAMISON", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.2,  commentWeight: 0.8, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false },
-  { id: "doc",     name: "DOC",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.9,  commentWeight: 0.7, riskSensitivity: 1.0,  lastRespondedTurn: null, hasTask: false },
-  { id: "tech9",   name: "TECHGUY", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.7, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false },
-  { id: "sam",     name: "SAM",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.4,  commentWeight: 0.6, riskSensitivity: 0.6,  lastRespondedTurn: null, hasTask: false },
-  { id: "cipher",  name: "CIPHER",  status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.85, commentWeight: 0.6, riskSensitivity: 1.0,  lastRespondedTurn: null, hasTask: false },
-  { id: "julie",   name: "JULIE",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.0,  commentWeight: 0.0, riskSensitivity: 0.0,  lastRespondedTurn: null, hasTask: false },
+  { id: "prez",    name: "PREZ",    status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.7,  commentWeight: 0.6, riskSensitivity: 0.8,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "jamison", name: "JAMISON", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.2,  commentWeight: 0.8, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "doc",     name: "DOC",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.9,  commentWeight: 0.7, riskSensitivity: 1.0,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "tech9",   name: "TECHGUY", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.7, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "sam",     name: "SAM",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.4,  commentWeight: 0.6, riskSensitivity: 0.6,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "cipher",  name: "CIPHER",  status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.85, commentWeight: 0.6, riskSensitivity: 1.0,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
+  { id: "julie",   name: "JULIE",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.0,  commentWeight: 0.0, riskSensitivity: 0.0,  lastRespondedTurn: null, hasTask: false, turnCount: 0 },
 ];
 
 const INITIAL_MEETING_STATE: MeetingState = {
@@ -84,65 +93,10 @@ const STATUS_DOT: Record<MentorStatus, string> = {
   blocked:  "#F87171",
 };
 
-const OPEN_FLOOR_TRIGGERS = [
-  "anyone else",
-  "thoughts",
-  "what do you all think",
-  "who else",
-  "other ideas",
-];
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-const OPEN_FLOOR_MENTOR_DOMAINS: { name: string; keywords: string[] }[] = [
-  { name: "JAMISON", keywords: ["message", "copy", "tone", "word", "sound", "clear", "write", "language"] },
-  { name: "TECHGUY", keywords: ["build", "how", "system", "implement", "code", "engineer", "tech", "stack"] },
-  { name: "SAM",     keywords: ["plan", "steps", "process", "who", "own", "ship", "timeline", "next"] },
-  { name: "DOC",     keywords: ["risk", "harm", "safe", "issue", "problem", "concern", "danger"] },
-  { name: "CIPHER",  keywords: ["data", "privacy", "trust", "consent", "ethics", "expose"] },
-];
-
-function selectOpenFloorMentors(lastSpeaker: string | null, messageText: string): string[] {
-  const lower = messageText.toLowerCase();
-
-  const scored = OPEN_FLOOR_MENTOR_DOMAINS
-    .filter((m) => m.name !== "PREZ" && m.name !== "JULIE" && m.name !== lastSpeaker)
-    .map((m) => ({
-      name: m.name,
-      score: m.keywords.filter((k) => lower.includes(k)).length,
-    }))
-    .sort((a, b) => b.score - a.score);
-
-  const withScore = scored.filter((m) => m.score > 0);
-  const pool = withScore.length >= 2 ? withScore : scored;
-
-  return pool.slice(0, 2).map((m) => m.name);
-}
-
-const MENTOR_KEYWORDS: Record<string, string[]> = {
-  DOC:     ["risk", "problem", "issue", "concern", "wrong"],
-  CIPHER:  ["data", "privacy", "user", "trust"],
-  TECHGUY: ["build", "how", "system", "implement", "code"],
-  SAM:     ["next", "plan", "steps", "who", "process"],
-  JAMISON: ["user", "message", "sound", "clear", "write"],
-};
-
-const MENTOR_PRIORITY: Record<string, string[]> = {
-  TECHGUY: ["build", "how", "implement", "system", "code"],
-  DOC:     ["risk", "issue", "problem", "danger"],
-  CIPHER:  ["data", "privacy", "trust"],
-  SAM:     ["plan", "steps", "process", "who"],
-  JAMISON: ["message", "clear", "write"],
-};
-
-function getBestMentor(message: string): string | null {
-  const lower = message.toLowerCase();
-  for (const mentor in MENTOR_PRIORITY) {
-    const keywords = MENTOR_PRIORITY[mentor];
-    if (keywords.some((k) => lower.includes(k))) {
-      return mentor;
-    }
-  }
-  return null;
-}
+const ALL_MENTOR_NAMES = ["PREZ", "JAMISON", "DOC", "TECHGUY", "SAM", "CIPHER"];
 
 function isHighRisk(message: string): boolean {
   const lower = message.toLowerCase();
@@ -167,12 +121,30 @@ function isQuestion(text: string): boolean {
   return text.trimEnd().endsWith("?");
 }
 
-const MAX_RESPONSES_PER_TURN = 2;
+function isSummaryRequest(text: string): boolean {
+  const lower = text.toLowerCase();
+  return ["summary", "where are we", "recap", "what have we decided", "what's open", "status check"].some(
+    (k) => lower.includes(k)
+  );
+}
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+function isOpenFloor(text: string): boolean {
+  const lower = text.toLowerCase();
+  return ["anyone else", "thoughts", "what do you all think", "who else", "other ideas"].some(
+    (t) => lower.includes(t)
+  );
+}
 
-export default function StaffMeetingRoom() {
+function isAnyoneElse(text: string): boolean {
+  const lower = text.toLowerCase();
+  return lower.includes("anyone else") || lower.includes("who else");
+}
+
+interface Props {
+  sessionId: string | null;
+}
+
+export default function StaffMeetingRoom({ sessionId }: Props) {
   const [mentors, setMentors] = useState<Mentor[]>(INITIAL_MENTORS);
   const [mode, setMode] = useState<Mode>("brainstorm");
   const [input, setInput] = useState("");
@@ -191,20 +163,74 @@ export default function StaffMeetingRoom() {
   const meetingStateRef = useRef<MeetingState>(INITIAL_MEETING_STATE);
   const recentTopics = useRef<string[]>([]);
   const highRiskTurnId = useRef<number | null>(null);
+  const lastJulieSpeakTurn = useRef<number>(-10);
+
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { mentorsRef.current = mentors; }, [mentors]);
+  useEffect(() => { meetingStateRef.current = meetingState; }, [meetingState]);
 
   useEffect(() => {
-    messagesRef.current = messages;
+    if (transcriptRef.current) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    }
   }, [messages]);
 
-  useEffect(() => {
-    mentorsRef.current = mentors;
-  }, [mentors]);
+  const persistSession = useCallback(() => {
+    if (!sessionId) return;
+    const persistable: TranscriptMessage[] = messagesRef.current
+      .filter((m) => !m.isThinking)
+      .map((m) => ({ id: m.id, text: m.text, speaker: m.speaker, sender: m.sender, targets: m.targets }));
+    upsertTranscript(sessionId, persistable).catch(() => {});
+    const s = meetingStateRef.current;
+    upsertJulieReport(sessionId, {
+      open_questions: s.openQuestions,
+      answered_questions: s.answeredQuestions,
+      assigned_tasks: s.assignedTasks,
+      unresolved_topics: s.unresolvedTopics,
+      active_topics: s.activeTopics,
+      decisions_made: s.decisionsMade,
+      pending_decisions: s.pendingDecisions,
+      mentor_participation: s.mentorParticipation,
+      dropped_ideas: s.droppedIdeas,
+    }).catch(() => {});
+  }, [sessionId]);
 
   useEffect(() => {
-    meetingStateRef.current = meetingState;
-  }, [meetingState]);
+    const timer = setTimeout(persistSession, 2000);
+    return () => clearTimeout(timer);
+  }, [messages, meetingState, persistSession]);
+
+  function nextId() {
+    msgCounter.current += 1;
+    return msgCounter.current;
+  }
+
+  function addMessage(text: string, speaker: "you" | "mentor", sender?: string, targets?: string[], isThinking?: boolean, isJulie?: boolean): number {
+    const id = nextId();
+    setMessages((prev) => [...prev, { id, text, speaker, sender, targets, isThinking, isJulie }]);
+    return id;
+  }
+
+  function removeMessageById(id: number) {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+  }
+
+  function toggleMentorSelection(name: string) {
+    setSelectedMentors((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+    );
+  }
+
+  function removeSelectedMentor(name: string) {
+    setSelectedMentors((prev) => prev.filter((n) => n !== name));
+  }
+
+  function setMentorStatus(name: string, status: MentorStatus) {
+    setMentors((prev) => prev.map((m) => (m.name === name ? { ...m, status } : m)));
+  }
 
   function trackMentorTurn(mentorName: string) {
+    setMentors((prev) => prev.map((m) => m.name === mentorName ? { ...m, turnCount: m.turnCount + 1 } : m));
     setMeetingState((prev) => ({
       ...prev,
       mentorParticipation: {
@@ -253,56 +279,11 @@ export default function StaffMeetingRoom() {
     }));
   }
 
-  function isSummaryRequest(text: string): boolean {
-    const lower = text.toLowerCase();
-    return ["summary", "where are we", "recap", "what have we decided", "what's open", "status check"].some(
-      (k) => lower.includes(k)
-    );
-  }
-
-  useEffect(() => {
-    if (transcriptRef.current) {
-      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  function setMentorStatus(name: string, status: MentorStatus) {
-    setMentors((prev) =>
-      prev.map((m) => (m.name === name ? { ...m, status } : m))
-    );
-  }
-
-  function nextId() {
-    msgCounter.current += 1;
-    return msgCounter.current;
-  }
-
-  function addMessage(text: string, speaker: "you" | "mentor", sender?: string, targets?: string[], isThinking?: boolean): number {
-    const id = nextId();
-    setMessages((prev) => [...prev, { id, text, speaker, sender, targets, isThinking }]);
-    return id;
-  }
-
-  function removeMessageById(id: number) {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
-  }
-
-  function toggleMentorSelection(name: string) {
-    setSelectedMentors((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
-    );
-  }
-
-  function removeSelectedMentor(name: string) {
-    setSelectedMentors((prev) => prev.filter((n) => n !== name));
-  }
-
-  function isMentorRelevant(mentorName: string, text: string): boolean {
-    if (mentorName === "PREZ") return true;
-    const keywords = MENTOR_KEYWORDS[mentorName];
-    if (!keywords) return true;
-    const lower = text.toLowerCase();
-    return keywords.some((kw) => lower.includes(kw));
+  function getRecentTranscript(limit = 8) {
+    return messagesRef.current
+      .filter((m) => !m.isThinking)
+      .slice(-limit)
+      .map((m) => ({ speaker: m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR"), text: m.text }));
   }
 
   async function fetchMentorResponse(
@@ -310,20 +291,15 @@ export default function StaffMeetingRoom() {
     userMessage: string,
     currentMode: Mode,
     isInterrupt = false,
-    isOpenFloor = false
+    isOpenFloorMsg = false
   ): Promise<string> {
-    const recent = messagesRef.current
-      .filter((m) => !m.isThinking)
-      .slice(-8)
-      .map((m) => ({ speaker: m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR"), text: m.text }));
-
     const body: Record<string, unknown> = {
       mentor: mentorName,
       message: userMessage,
       mode: currentMode,
-      recentTranscript: recent,
+      recentTranscript: getRecentTranscript(),
       isInterrupt,
-      isOpenFloor,
+      isOpenFloor: isOpenFloorMsg,
     };
 
     if (mentorName === "JULIE") {
@@ -334,7 +310,7 @@ export default function StaffMeetingRoom() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify(body),
     });
@@ -345,84 +321,51 @@ export default function StaffMeetingRoom() {
     return data.response as string;
   }
 
-  async function maybeTriggerFollowUp(
-    originalMentorName: string,
-    lastResponseText: string,
-    userMessage: string,
-    currentMode: Mode,
-    turnId: number
-  ) {
-    if (Math.random() > 0.30) return;
-
+  async function askJulieToRoute(userMessage: string, currentMode: Mode, forcedMentors?: string[]): Promise<JulieRouting> {
+    const participationMap = meetingStateRef.current.mentorParticipation;
     const currentMentors = mentorsRef.current;
-    const otherMentors = currentMentors.filter(
-      (m) => m.name !== originalMentorName && m.name !== "JULIE" && m.status === "idle"
-    );
-    if (otherMentors.length === 0) return;
 
-    const relevant = otherMentors.filter((m) => isMentorRelevant(m.name, lastResponseText));
-    const pool = relevant.length > 0 ? relevant : otherMentors;
+    const mentorCounts = ALL_MENTOR_NAMES.map((name) => ({
+      name,
+      count: participationMap[name] ?? 0,
+      turnCount: currentMentors.find((m) => m.name === name)?.turnCount ?? 0,
+    }));
 
-    const sorted = [...pool].sort((a, b) => b.commentWeight - a.commentWeight);
-    const topWeight = sorted[0].commentWeight;
-    const topTier = sorted.filter((m) => m.commentWeight === topWeight);
-    const chosen = topTier[Math.floor(Math.random() * topTier.length)];
+    const leastSpoken = [...mentorCounts].sort((a, b) => a.count - b.count).map((m) => m.name);
 
-    setMentors((prev) =>
-      prev.map((m) => m.id === chosen.id ? { ...m, status: "working" } : m)
-    );
+    const anyoneElse = isAnyoneElse(userMessage);
 
-    const thinkingId = addMessage(
-      `${chosen.name} is thinking...`,
-      "mentor",
-      chosen.name,
-      [originalMentorName],
-      true
-    );
+    const juliePrompt = `USER MESSAGE: "${userMessage}"
+MEETING MODE: ${currentMode}
+MENTOR TURN COUNTS THIS SESSION: ${JSON.stringify(mentorCounts)}
+LEAST SPOKEN MENTORS (in order): ${leastSpoken.join(", ")}
+${anyoneElse ? "USER ASKED 'ANYONE ELSE' — do NOT route to PREZ. Pick from those who have spoken least." : ""}
+${forcedMentors ? `USER EXPLICITLY SELECTED: ${forcedMentors.join(", ")} — route to them.` : ""}
+
+Your job is to decide who should speak. Return ONLY valid JSON in this exact format:
+{"mentors":["NAME1"],"line":"optional brief line you want to say out loud","action":"route"}
+
+Rules:
+- mentors: 1 or 2 names from [PREZ, JAMISON, DOC, TECHGUY, SAM, CIPHER]
+- Never include JULIE in mentors
+- If user is venting/emotional: include your "line" acknowledging it briefly, still route
+- "line" is OPTIONAL — only include if you have something worth saying (not to fill space)
+- If user asks for summary: set action to "summarize" and include your full summary in "line", mentors: []
+- If it's simple acknowledgment ("ok", "got it", "thanks"): action "acknowledge", mentors: [], no line
+- Prefer mentors who have spoken less. Avoid letting one mentor dominate.
+- Only pick 2 mentors if both domains are clearly relevant
+- Return ONLY the JSON object, no other text`;
 
     try {
-      const contextMessage = `${originalMentorName} just said: "${lastResponseText}"\n\nOriginal topic: ${userMessage}`;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/mentor-response`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          mentor: chosen.name,
-          message: contextMessage,
-          mode: currentMode,
-          recentTranscript: messagesRef.current
-            .filter((m) => !m.isThinking)
-            .slice(-10)
-            .map((m) => ({ speaker: m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR"), text: m.text })),
-        }),
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!data.response) throw new Error("Empty response");
-
-      const followUpText = data.response as string;
-      if (isTooSimilar(followUpText, recentTopics.current)) {
-        removeMessageById(thinkingId);
-        return;
-      }
-
-      recentTopics.current = [...recentTopics.current, followUpText.toLowerCase()].slice(-3);
-
-      removeMessageById(thinkingId);
-      addMessage(`${chosen.name}: ${followUpText}`, "mentor", chosen.name, [originalMentorName]);
+      const raw = await fetchMentorResponse("JULIE", juliePrompt, currentMode);
+      const cleaned = raw.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(cleaned) as JulieRouting;
+      if (!Array.isArray(parsed.mentors)) parsed.mentors = [];
+      parsed.mentors = parsed.mentors.filter((n) => ALL_MENTOR_NAMES.includes(n));
+      return parsed;
     } catch {
-      removeMessageById(thinkingId);
-    } finally {
-      setMentors((prev) =>
-        prev.map((m) => {
-          if (m.id !== chosen.id) return m;
-          if (m.hasTask) return m;
-          return { ...m, status: "idle", hasInterrupt: false, hasComment: false, lastRespondedTurn: turnId };
-        })
-      );
+      const fallback = leastSpoken.find((n) => n !== "PREZ") ?? "PREZ";
+      return { mentors: [fallback], action: "route" };
     }
   }
 
@@ -432,32 +375,32 @@ export default function StaffMeetingRoom() {
     currentMode: Mode,
     turnId: number,
     isInterrupt = false,
-    isOpenFloor = false
+    isOpenFloorMsg = false,
+    delayMs = 0
   ) {
-    setMentors((prev) =>
-      prev.map((m) => m.id === mentor.id ? { ...m, status: "working" } : m)
-    );
+    await new Promise((r) => setTimeout(r, delayMs));
+    if (currentTurnId.current !== turnId) return;
 
-    const thinkingId = addMessage(
-      `${mentor.name} is thinking...`,
-      "mentor",
-      mentor.name,
-      ["YOU"],
-      true
-    );
+    setMentors((prev) => prev.map((m) => m.id === mentor.id ? { ...m, status: "working" } : m));
+
+    const thinkingId = addMessage(`${mentor.name} is thinking...`, "mentor", mentor.name, ["YOU"], true);
 
     let responseText = "";
     try {
-      responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode, isInterrupt, isOpenFloor);
+      responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode, isInterrupt, isOpenFloorMsg);
 
-      const lastWasQuestion = recentTopics.current.length > 0 && isQuestion(recentTopics.current[recentTopics.current.length - 1]);
       if (!isInterrupt && isTooSimilar(responseText, recentTopics.current)) {
         removeMessageById(thinkingId);
         return;
       }
 
+      const lastWasQuestion = recentTopics.current.length > 0 && isQuestion(recentTopics.current[recentTopics.current.length - 1]);
       if (!isInterrupt && isQuestion(responseText) && lastWasQuestion) {
-        responseText = await fetchMentorResponse(mentor.name, `${userMessage}\n\n[Instruction: Do NOT ask a question. Give a concrete suggestion or recommendation instead.]`, currentMode);
+        responseText = await fetchMentorResponse(
+          mentor.name,
+          `${userMessage}\n\n[Instruction: Do NOT ask a question. Give a concrete suggestion or recommendation instead.]`,
+          currentMode
+        );
         if (isTooSimilar(responseText, recentTopics.current)) {
           removeMessageById(thinkingId);
           return;
@@ -489,121 +432,15 @@ export default function StaffMeetingRoom() {
         })
       );
     }
-
-    if (responseText && highRiskTurnId.current !== turnId) {
-      setTimeout(() => {
-        maybeTriggerFollowUp(mentor.name, responseText, userMessage, currentMode, turnId);
-      }, 800);
-    }
-  }
-
-  async function triggerOpenFloor(
-    selectedNames: string[],
-    userMessage: string,
-    currentMode: Mode,
-    turnId: number
-  ) {
-    for (let i = 0; i < selectedNames.length; i++) {
-      const name = selectedNames[i];
-      const mentor = mentorsRef.current.find((m) => m.name === name);
-      if (!mentor) continue;
-      const delay = i * 1400;
-      setTimeout(() => {
-        dispatchMentorResponse(mentor, userMessage, currentMode, turnId, false, true);
-      }, delay);
-    }
-  }
-
-  function triggerSignals(targetMentors: Mentor[], messageText: string, currentMode: Mode) {
-    const turnId = currentTurnId.current;
-    const riskFactor = messageText.length > 20 ? 1 : 0.5;
-
-    type SignalResult = { id: string; hasInterrupt: boolean; hasComment: boolean };
-
-    const eligibleMentors = targetMentors.filter(
-      (m) => m.lastRespondedTurn !== turnId && m.name !== "JULIE"
-    );
-
-    if (eligibleMentors.length === 0) return;
-
-    const bestMentorMatch = getBestMentor(messageText);
-    const relevantMentors = eligibleMentors.filter((m) => isMentorRelevant(m.name, messageText));
-    const nonPrezRelevant = relevantMentors.filter((m) => m.name !== "PREZ");
-    const poolMentors = nonPrezRelevant.length > 0
-      ? (bestMentorMatch ? relevantMentors : nonPrezRelevant)
-      : relevantMentors.length > 0
-      ? relevantMentors
-      : eligibleMentors;
-
-    let signals: SignalResult[] = poolMentors.map((m) => {
-      const interruptChance = m.interruptWeight * m.riskSensitivity * riskFactor;
-      const commentChance = m.commentWeight;
-      const roll = Math.random();
-      if (roll < interruptChance) return { id: m.id, hasInterrupt: true, hasComment: false };
-      if (roll < commentChance) return { id: m.id, hasInterrupt: false, hasComment: true };
-      return { id: m.id, hasInterrupt: false, hasComment: false };
-    });
-
-    const anyResponded = signals.some((s) => s.hasInterrupt || s.hasComment);
-    if (!anyResponded) {
-      const sorted = [...poolMentors].sort((a, b) => b.commentWeight - a.commentWeight);
-      const topWeight = sorted[0].commentWeight;
-      const topTier = sorted.filter((m) => m.commentWeight === topWeight);
-      const chosen = topTier[Math.floor(Math.random() * topTier.length)];
-      signals = signals.map((s) =>
-        s.id === chosen.id ? { ...s, hasComment: true } : s
-      );
-      if (!signals.find((s) => s.id === chosen.id)) {
-        signals.push({ id: chosen.id, hasInterrupt: false, hasComment: true });
-      }
-    }
-
-    const allResponding = signals.filter((s) => s.hasInterrupt || s.hasComment);
-
-    const bestMentorName = getBestMentor(messageText);
-
-    const sorted = [...allResponding].sort((a, b) => {
-      const mA = poolMentors.find((m) => m.id === a.id);
-      const mB = poolMentors.find((m) => m.id === b.id);
-      if (!mA || !mB) return 0;
-
-      if (bestMentorName) {
-        const aIsBest = mA.name === bestMentorName;
-        const bIsBest = mB.name === bestMentorName;
-        if (aIsBest && !bIsBest) return -1;
-        if (bIsBest && !aIsBest) return 1;
-        const aIsPrez = mA.name === "PREZ";
-        const bIsPrez = mB.name === "PREZ";
-        if (aIsPrez && !bIsPrez) return 1;
-        if (bIsPrez && !aIsPrez) return -1;
-      }
-
-      if (a.hasInterrupt !== b.hasInterrupt) return a.hasInterrupt ? -1 : 1;
-      if (mB.riskSensitivity !== mA.riskSensitivity) return mB.riskSensitivity - mA.riskSensitivity;
-      return mB.interruptWeight - mA.interruptWeight;
-    });
-
-    const respondingSignals = sorted.slice(0, MAX_RESPONSES_PER_TURN);
-    const silencedSignals = sorted.slice(MAX_RESPONSES_PER_TURN);
-
-    const silencedIds = new Set(silencedSignals.map((s) => s.id));
-    setMentors((prev) =>
-      prev.map((m) => {
-        if (silencedIds.has(m.id)) {
-          return { ...m, hasInterrupt: false, hasComment: false };
-        }
-        return m;
-      })
-    );
-
-    respondingSignals.forEach((s) => {
-      const mentor = poolMentors.find((m) => m.id === s.id);
-      if (!mentor) return;
-      dispatchMentorResponse(mentor, messageText, currentMode, turnId);
-    });
   }
 
   function handleMentorClick(mentor: Mentor) {
+    if (mentor.name === "JULIE") {
+      toggleMentorSelection(mentor.name);
+      inputRef.current?.focus();
+      return;
+    }
+
     if (mentor.status === "ready" && mentor.hasTask) {
       addMessage(`${mentor.name}: Task complete. Ready for your review.`, "mentor", mentor.name, ["YOU"]);
       setMentors((prev) =>
@@ -613,12 +450,6 @@ export default function StaffMeetingRoom() {
             : m
         )
       );
-      return;
-    }
-
-    if (mentor.hasInterrupt || mentor.hasComment) {
-      toggleMentorSelection(mentor.name);
-      inputRef.current?.focus();
       return;
     }
 
@@ -634,7 +465,7 @@ export default function StaffMeetingRoom() {
     setTimeout(() => setMentorStatus(mentorName, "ready"), 3000);
   }
 
-  function handleSend() {
+  async function handleSend() {
     const trimmed = input.trim();
     if (!trimmed) return;
 
@@ -642,6 +473,8 @@ export default function StaffMeetingRoom() {
     const turnId = currentTurnId.current;
     recentTopics.current = [];
     const currentMode = mode;
+    const explicitTargets = selectedMentors.filter((n) => n !== "JULIE");
+    const julieSelected = selectedMentors.includes("JULIE");
 
     const targets = selectedMentors.length > 0 ? [...selectedMentors] : ["ALL"];
     addMessage(trimmed, "you", "YOU", targets);
@@ -670,15 +503,15 @@ export default function StaffMeetingRoom() {
 
     if (isHighRisk(trimmed)) {
       highRiskTurnId.current = turnId;
-      const doc = mentors.find((m) => m.name === "DOC");
-      const cipher = mentors.find((m) => m.name === "CIPHER");
+      const doc = mentorsRef.current.find((m) => m.name === "DOC");
+      const cipher = mentorsRef.current.find((m) => m.name === "CIPHER");
       if (doc) {
         const riskPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Start with a firm interrupt phrase. State the specific risk immediately. Name one concrete consequence. Do not soften the message. Do not ask a question.]`;
-        setTimeout(() => dispatchMentorResponse(doc, riskPrompt, currentMode, turnId, true), 400);
+        dispatchMentorResponse(doc, riskPrompt, currentMode, turnId, true, false, 400);
       }
       if (cipher) {
         const trustPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Start with a firm interrupt phrase. State how this breaks user trust and system safety. Name the user impact directly. Do not soften the message. Do not ask a question.]`;
-        setTimeout(() => dispatchMentorResponse(cipher, trustPrompt, currentMode, turnId, true), 1800);
+        dispatchMentorResponse(cipher, trustPrompt, currentMode, turnId, true, false, 1800);
       }
       return;
     }
@@ -686,54 +519,82 @@ export default function StaffMeetingRoom() {
     const taskPattern = /^([A-Za-z0-9]+):\s*.+$/;
     const taskMatch = trimmed.match(taskPattern);
     const taskMentorName = taskMatch
-      ? mentors.find((m) => m.name === taskMatch[1].toUpperCase())?.name ?? null
+      ? mentorsRef.current.find((m) => m.name === taskMatch[1].toUpperCase())?.name ?? null
       : null;
 
-    if (taskMentorName) {
+    if (taskMentorName && taskMentorName !== "JULIE") {
       assignMentor(taskMentorName);
       trackAssignedTask(trimmed, taskMentorName);
+      return;
     }
 
-    if (isSummaryRequest(trimmed)) {
-      const julie = mentors.find((m) => m.name === "JULIE");
+    if (julieSelected && !isSummaryRequest(trimmed)) {
+      const julie = mentorsRef.current.find((m) => m.name === "JULIE");
       if (julie) {
-        setTimeout(() => dispatchMentorResponse(julie, trimmed, currentMode, turnId), 400);
-        return;
+        await dispatchMentorResponse(julie, trimmed, currentMode, turnId);
       }
+      return;
     }
 
-    const isOpenFloor = OPEN_FLOOR_TRIGGERS.some((trigger) =>
-      trimmed.toLowerCase().includes(trigger)
-    );
+    setMentors((prev) => prev.map((m) => m.name === "JULIE" ? { ...m, status: "working" } : m));
 
-    const activeMentorObjs = mentors.filter((m) => selectedMentors.includes(m.name));
-
-    if (isOpenFloor) {
-      const recentMentorMessages = messagesRef.current
-        .filter((m) => m.speaker === "mentor" && !m.isThinking)
-        .slice(-1);
-      const lastSpeaker = recentMentorMessages[0]?.sender ?? null;
-      const openFloorNames = selectOpenFloorMentors(lastSpeaker, trimmed);
-      setTimeout(() => triggerOpenFloor(openFloorNames, trimmed, currentMode, turnId), 400);
-    } else if (activeMentorObjs.length > 0) {
-      const nonTaskTargets = activeMentorObjs.filter((m) => m.name !== taskMentorName);
-      nonTaskTargets.slice(0, MAX_RESPONSES_PER_TURN).forEach((mentor) => {
-        setTimeout(() => dispatchMentorResponse(mentor, trimmed, currentMode, turnId), 400);
-      });
-    } else {
-      const conversationTargets = mentors.filter((m) => m.name !== taskMentorName);
-      setTimeout(() => triggerSignals(conversationTargets, trimmed, currentMode), 600);
+    let routing: JulieRouting;
+    try {
+      routing = await askJulieToRoute(trimmed, currentMode, explicitTargets.length > 0 ? explicitTargets : undefined);
+    } catch {
+      routing = { mentors: ["PREZ"], action: "route" };
+    } finally {
+      setMentors((prev) => prev.map((m) => m.name === "JULIE" ? { ...m, status: "idle" } : m));
     }
+
+    const turnId2 = currentTurnId.current;
+    if (turnId2 !== turnId) return;
+
+    if (routing.action === "summarize" && routing.line) {
+      addMessage(`JULIE: ${routing.line}`, "mentor", "JULIE", ["ALL"], false, true);
+      lastJulieSpeakTurn.current = turnId;
+      return;
+    }
+
+    if (routing.action === "acknowledge") {
+      return;
+    }
+
+    if (routing.line && routing.line.trim()) {
+      addMessage(`JULIE: ${routing.line}`, "mentor", "JULIE", ["ALL"], false, true);
+      lastJulieSpeakTurn.current = turnId;
+    }
+
+    const mentorsToCall = routing.mentors
+      .map((name) => mentorsRef.current.find((m) => m.name === name))
+      .filter((m): m is Mentor => !!m && m.status === "idle");
+
+    const isOpenFloorMsg = isOpenFloor(trimmed);
+
+    mentorsToCall.forEach((mentor, i) => {
+      dispatchMentorResponse(mentor, trimmed, currentMode, turnId, false, isOpenFloorMsg, i * 1200);
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") handleSend();
   }
 
-  function handleSaveNote(note: SideNote, newTags: string[]) {
+  async function handleSaveNote(note: SideNote, newTags: string[]) {
     setSideNotes((prev) => [...prev, note]);
     if (newTags.length > 0) {
       setUsedTags((prev) => [...prev, ...newTags]);
+      await upsertTags(newTags);
+    }
+    if (sessionId) {
+      await saveSideNote({
+        session_id: sessionId,
+        project_id: null,
+        text: note.text,
+        mentors: note.mentors,
+        tags: note.tags,
+        archived: false,
+      });
     }
     setShowSideNoteModal(false);
   }
@@ -742,7 +603,7 @@ export default function StaffMeetingRoom() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="flex-1 flex flex-col min-h-0"
       style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif" }}
     >
       {showSideNoteModal && (
@@ -753,14 +614,18 @@ export default function StaffMeetingRoom() {
         />
       )}
 
-      {/* TOP BAR */}
       <div
         className="flex items-center justify-between px-6 py-3 border-b"
         style={{ borderColor: "#1B2A4A" }}
       >
-        <span className="text-sm font-semibold tracking-widest uppercase" style={{ color: "#C9A84C" }}>
-          Staff Meeting Room
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold tracking-widest uppercase" style={{ color: "#C9A84C" }}>
+            Staff Meeting Room
+          </span>
+          <span className="text-[10px] tracking-widest uppercase px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(138,155,181,0.1)", color: "#8A9BB5" }}>
+            JULIE facilitating
+          </span>
+        </div>
         <div className="flex gap-2">
           {(["brainstorm", "command"] as Mode[]).map((m) => (
             <button
@@ -785,12 +650,11 @@ export default function StaffMeetingRoom() {
         </span>
       </div>
 
-      {/* MENTOR GRID */}
       <div className="px-6 pt-5 pb-4">
         <p className="text-xs tracking-widest uppercase mb-3" style={{ color: "#8A9BB5" }}>
-          Mentors
+          Team
         </p>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-7">
+        <div className="grid grid-cols-4 gap-3 sm:grid-cols-7">
           {mentors.map((mentor) => {
             const isSelected = selectedMentors.includes(mentor.name);
             const isJulie = mentor.name === "JULIE";
@@ -805,28 +669,33 @@ export default function StaffMeetingRoom() {
                     mentor.status === "working" ? "animate-pulse" : "",
                   ].join(" ")}
                   style={{
-                    backgroundColor: "#111D30",
-                    border: isSelected ? "1px solid #8A9BB5" : "1px solid #1B2A4A",
-                    boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.2)" : "none",
+                    backgroundColor: "#0F1F36",
+                    border: isSelected
+                      ? "1px solid #8A9BB5"
+                      : mentor.status === "working"
+                      ? "1px solid #3A4F6A"
+                      : "1px solid #1B2A4A",
+                    boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.15)" : "none",
                   }}
-                  title="JULIE — Bridge Host. Ask for a summary or select to route."
+                  title="JULIE — Facilitator. Routes every message. Ask for a summary or select to direct."
                 >
                   <span
                     className="absolute top-2 right-2 w-2 h-2 rounded-full"
-                    style={{ backgroundColor: mentor.status === "working" ? "#60AEFF" : "#2A3D5E" }}
+                    style={{
+                      backgroundColor: mentor.status === "working" ? "#60AEFF" : "#1B2A4A",
+                    }}
                   />
                   <span className="text-xs font-bold tracking-widest leading-none" style={{ color: "#8A9BB5" }}>
                     JULIE
                   </span>
-                  <span
-                    className="mt-1.5 text-[9px] tracking-widest uppercase font-medium"
-                    style={{ color: "#3A4F6A" }}
-                  >
-                    HOST
+                  <span className="mt-1.5 text-[9px] tracking-widest uppercase font-medium" style={{ color: "#3A4F6A" }}>
+                    {mentor.status === "working" ? "ROUTING" : "HOST"}
                   </span>
                 </button>
               );
             }
+
+            const participation = meetingState.mentorParticipation[mentor.name] ?? 0;
 
             return (
               <button
@@ -834,63 +703,40 @@ export default function StaffMeetingRoom() {
                 onClick={() => handleMentorClick(mentor)}
                 className={[
                   "aspect-square flex flex-col items-center justify-center rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden",
-                  mentor.status === "working" && !mentor.hasInterrupt ? "animate-pulse" : "",
+                  mentor.status === "working" ? "animate-pulse" : "",
                 ].join(" ")}
                 style={{
                   ...STATUS_STYLES[mentor.status],
-                  boxShadow: mentor.hasInterrupt
-                    ? "0 0 0 2px #F87171, 0 0 14px 4px rgba(248,113,113,0.45)"
-                    : isSelected
+                  boxShadow: isSelected
                     ? "0 0 0 1.5px #C9A84C, 0 0 12px 3px rgba(201,168,76,0.25)"
                     : "none",
                 }}
                 title={
-                  mentor.hasInterrupt
-                    ? `${mentor.name}: INTERRUPT — click to respond`
-                    : mentor.hasComment
-                    ? `${mentor.name}: has a comment — click to hear it`
-                    : mentor.status === "ready"
+                  mentor.status === "ready"
                     ? "Click to receive result"
                     : isSelected
                     ? `Deselect ${mentor.name}`
                     : `Select ${mentor.name}`
                 }
               >
-                {mentor.hasInterrupt && (
+                {participation > 0 && (
                   <span
-                    className="absolute top-0 left-0 right-0 h-1 animate-pulse"
-                    style={{ backgroundColor: "#F87171" }}
-                  />
+                    className="absolute top-1.5 left-1.5 text-[8px] font-bold"
+                    style={{ color: "#3A4F6A" }}
+                  >
+                    {participation}
+                  </span>
                 )}
-
-                {mentor.hasComment && !mentor.hasInterrupt && (
-                  <span
-                    className="absolute top-2 left-2 w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "#C9A84C", boxShadow: "0 0 6px 1px rgba(201,168,76,0.6)" }}
-                  />
-                )}
-
                 <span
                   className="absolute top-2 right-2 w-2 h-2 rounded-full"
                   style={{ backgroundColor: STATUS_DOT[mentor.status] }}
                 />
-
                 <span className="text-xs font-bold tracking-widest leading-none">{mentor.name}</span>
                 <span
                   className="mt-1.5 text-[9px] tracking-widest uppercase font-medium"
-                  style={{
-                    color: mentor.hasInterrupt
-                      ? "#F87171"
-                      : mentor.hasComment
-                      ? "#C9A84C"
-                      : STATUS_DOT[mentor.status],
-                  }}
+                  style={{ color: STATUS_DOT[mentor.status] }}
                 >
-                  {mentor.hasInterrupt
-                    ? "INTERRUPT"
-                    : mentor.hasComment
-                    ? "COMMENT"
-                    : STATUS_LABEL[mentor.status]}
+                  {STATUS_LABEL[mentor.status]}
                 </span>
               </button>
             );
@@ -898,7 +744,6 @@ export default function StaffMeetingRoom() {
         </div>
       </div>
 
-      {/* SIDE NOTES BAR */}
       {sideNotes.length > 0 && (
         <div
           className="mx-6 mb-3 px-4 py-2.5 rounded-lg flex items-start gap-3 text-xs"
@@ -933,7 +778,6 @@ export default function StaffMeetingRoom() {
         </div>
       )}
 
-      {/* TRANSCRIPT */}
       <div className="flex-1 flex flex-col min-h-0 px-6 pb-2">
         <p className="text-xs tracking-widest uppercase mb-2" style={{ color: "#8A9BB5" }}>
           Transcript
@@ -945,7 +789,7 @@ export default function StaffMeetingRoom() {
         >
           {messages.length === 0 ? (
             <p className="text-sm text-center mt-8" style={{ color: "#3A4F6A" }}>
-              No messages yet. Select mentors and type below to begin.
+              No messages yet. JULIE will route your message to the right mentors.
             </p>
           ) : (
             <div className="flex flex-col gap-1.5">
@@ -953,6 +797,7 @@ export default function StaffMeetingRoom() {
                 const isYou = msg.speaker === "you";
                 const sender = msg.sender ?? (isYou ? "YOU" : "MENTOR");
                 const targets = msg.targets ?? ["ALL"];
+                const isJulieMsg = msg.isJulie || sender === "JULIE";
                 return (
                   <div
                     key={msg.id}
@@ -960,7 +805,10 @@ export default function StaffMeetingRoom() {
                     style={{
                       backgroundColor: msg.isThinking
                         ? "rgba(255,255,255,0.015)"
+                        : isJulieMsg
+                        ? "rgba(138,155,181,0.04)"
                         : "rgba(255,255,255,0.03)",
+                      borderLeft: isJulieMsg && !msg.isThinking ? "2px solid #2A3D5E" : "none",
                     }}
                   >
                     <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
@@ -969,6 +817,8 @@ export default function StaffMeetingRoom() {
                         style={
                           isYou
                             ? { color: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.1)" }
+                            : isJulieMsg
+                            ? { color: "#8A9BB5", backgroundColor: "rgba(138,155,181,0.1)" }
                             : { color: "#4ADE80", backgroundColor: "rgba(74,222,128,0.1)" }
                         }
                       >
@@ -980,11 +830,7 @@ export default function StaffMeetingRoom() {
                           <span
                             key={t}
                             className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
-                            style={{
-                              color: "#8A9BB5",
-                              border: "1px solid #3A4F6A",
-                              backgroundColor: "transparent",
-                            }}
+                            style={{ color: "#8A9BB5", border: "1px solid #3A4F6A" }}
                           >
                             ALL
                           </span>
@@ -1002,7 +848,7 @@ export default function StaffMeetingRoom() {
                     <p
                       className="text-sm leading-relaxed"
                       style={{
-                        color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : "#D0DFEE",
+                        color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : isJulieMsg ? "#8A9BB5" : "#D0DFEE",
                         fontStyle: msg.isThinking ? "italic" : "normal",
                       }}
                     >
@@ -1016,7 +862,6 @@ export default function StaffMeetingRoom() {
         </div>
       </div>
 
-      {/* INPUT BAR */}
       <div className="px-6 py-4 border-t" style={{ borderColor: "#1B2A4A" }}>
         {selectedMentors.length > 0 && (
           <div className="flex gap-2 mb-2.5 flex-wrap">
@@ -1025,9 +870,8 @@ export default function StaffMeetingRoom() {
                 key={name}
                 className="flex items-center gap-1 text-[10px] tracking-widest uppercase font-semibold px-2 py-0.5 rounded"
                 style={{
-                  backgroundColor: "transparent",
-                  color: "#C9A84C",
-                  border: "1px solid #C9A84C",
+                  color: name === "JULIE" ? "#8A9BB5" : "#C9A84C",
+                  border: `1px solid ${name === "JULIE" ? "#8A9BB5" : "#C9A84C"}`,
                 }}
               >
                 {name}
@@ -1049,7 +893,7 @@ export default function StaffMeetingRoom() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message..."
+            placeholder="Type your message... JULIE routes it to the right people."
             className="flex-1 px-4 py-3 rounded-lg text-sm outline-none transition-all"
             style={{
               backgroundColor: "#1B2A4A",
@@ -1073,7 +917,7 @@ export default function StaffMeetingRoom() {
           </button>
         </div>
         <p className="text-xs mt-2" style={{ color: "#3A4F6A" }}>
-          Click mentor tiles to select targets. Leave unselected to message all. Click a ready mentor to receive their result.
+          Select mentor tiles to direct your message. JULIE always decides who speaks. Ask "where are we" for a summary.
         </p>
       </div>
     </div>
