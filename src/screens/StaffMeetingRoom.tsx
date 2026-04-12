@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
-import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, type TranscriptMessage } from "../lib/db";
+import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, type TranscriptMessage, type JulieReport } from "../lib/db";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
 
 type MentorStatus = "idle" | "assigned" | "working" | "ready" | "blocked";
@@ -20,6 +20,14 @@ interface Mentor {
   turnCount: number;
 }
 
+interface CarryoverItem {
+  text: string;
+  type: "task" | "question" | "topic";
+  owner?: string;
+  resolved: boolean;
+  fromSession: string;
+}
+
 interface MeetingState {
   openQuestions: string[];
   answeredQuestions: { question: string; answer: string }[];
@@ -30,6 +38,9 @@ interface MeetingState {
   pendingDecisions: string[];
   mentorParticipation: Record<string, number>;
   droppedIdeas: string[];
+  filesDiscussed: string[];
+  notesCreated: string[];
+  carryoverItems: CarryoverItem[];
 }
 
 interface Message {
@@ -132,6 +143,9 @@ const INITIAL_MEETING_STATE: MeetingState = {
   pendingDecisions: [],
   mentorParticipation: {},
   droppedIdeas: [],
+  filesDiscussed: [],
+  notesCreated: [],
+  carryoverItems: [],
 };
 
 const STATUS_STYLES: Record<MentorStatus, React.CSSProperties> = {
@@ -296,16 +310,36 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
     const prevKey = yesterday.toISOString().slice(0, 10);
     loadSession(prevKey).then((result) => {
       if (!result?.julieReport) return;
-      const unresolved = result.julieReport.unresolved_topics ?? [];
-      const openQs = result.julieReport.open_questions ?? [];
-      const carryForward = [...unresolved, ...openQs].filter(Boolean);
-      if (carryForward.length === 0) return;
+      const report = result.julieReport as JulieReport;
+      const unresolvedTopics = (report.unresolved_topics ?? []).filter(Boolean);
+      const openQs = (report.open_questions ?? []).filter(Boolean);
+      const assignedTasks = (report.assigned_tasks ?? []).filter((t) => t.task);
+      const prevSessionKey = prevKey;
+
+      const carryoverItems: CarryoverItem[] = [
+        ...unresolvedTopics.map((t) => ({ text: t, type: "topic" as const, resolved: false, fromSession: prevSessionKey })),
+        ...openQs.map((q) => ({ text: q, type: "question" as const, resolved: false, fromSession: prevSessionKey })),
+        ...assignedTasks.map((t) => ({ text: t.task, type: "task" as const, owner: t.owner, resolved: false, fromSession: prevSessionKey })),
+      ];
+
+      if (carryoverItems.length === 0) return;
+
       setMeetingState((prev) => ({
         ...prev,
-        unresolvedTopics: carryForward,
-        openQuestions: [...carryForward, ...prev.openQuestions],
+        carryoverItems,
+        unresolvedTopics: [...unresolvedTopics, ...prev.unresolvedTopics],
+        openQuestions: [...openQs, ...prev.openQuestions],
       }));
-      const carryMsg = `Carrying forward ${carryForward.length} unresolved item${carryForward.length > 1 ? "s" : ""} from last session: ${carryForward.slice(0, 2).map((s) => s.slice(0, 40)).join("; ")}${carryForward.length > 2 ? "…" : ""}`;
+
+      const taskCount = assignedTasks.length;
+      const qCount = openQs.length;
+      const topicCount = unresolvedTopics.length;
+      const parts: string[] = [];
+      if (taskCount > 0) parts.push(`${taskCount} unfinished task${taskCount > 1 ? "s" : ""}`);
+      if (qCount > 0) parts.push(`${qCount} open question${qCount > 1 ? "s" : ""}`);
+      if (topicCount > 0) parts.push(`${topicCount} unresolved topic${topicCount > 1 ? "s" : ""}`);
+
+      const carryMsg = `We still have ${parts.join(", ")} from last session (${prevSessionKey}). I've loaded them into session memory. Let's pick up where we left off.`;
       setMessages((prev) => [...prev, { id: -1, text: `JULIE: ${carryMsg}`, speaker: "mentor", sender: "JULIE", targets: ["ALL"], isJulie: true }]);
     }).catch(() => {});
   }, [sessionKey]);
@@ -337,10 +371,23 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
     const mentorsInvolved = Object.keys(s.mentorParticipation).filter((k) => (s.mentorParticipation[k] ?? 0) > 0);
     const topicsSummary = [...s.decisionsMade.slice(0, 2), ...s.activeTopics.slice(0, 3)];
     const summary = buildSessionSummary(s);
+
+    const unresolvedTasks = s.assignedTasks.filter((t) =>
+      !s.answeredQuestions.some((aq) => aq.question.includes(t.task.slice(0, 20)))
+    );
+    const unresolvedQs = s.openQuestions;
+    const unresolvedTopics = s.unresolvedTopics;
+
     updateSession(sessionId, {
       mentors_involved: mentorsInvolved,
       key_topics: topicsSummary,
       session_summary: summary || undefined,
+      carryover_tasks: unresolvedTasks,
+      carryover_questions: unresolvedQs,
+      carryover_topics: unresolvedTopics,
+      files_discussed: s.filesDiscussed,
+      notes_created: s.notesCreated,
+      participants: mentorsInvolved,
     }).catch(() => {});
   }, [sessionId]);
 
@@ -423,6 +470,29 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
     }));
   }
 
+  function trackFileDiscussed(fileId: string) {
+    setMeetingState((prev) => {
+      if (prev.filesDiscussed.includes(fileId)) return prev;
+      return { ...prev, filesDiscussed: [...prev.filesDiscussed, fileId] };
+    });
+  }
+
+  function trackNoteCreated(noteId: string) {
+    setMeetingState((prev) => {
+      if (prev.notesCreated.includes(noteId)) return prev;
+      return { ...prev, notesCreated: [...prev.notesCreated, noteId] };
+    });
+  }
+
+  function resolveCarryoverItem(text: string) {
+    setMeetingState((prev) => ({
+      ...prev,
+      carryoverItems: prev.carryoverItems.map((item) =>
+        item.text.slice(0, 30) === text.slice(0, 30) ? { ...item, resolved: true } : item
+      ),
+    }));
+  }
+
   function trackAssignedTask(task: string, owner: string) {
     setMeetingState((prev) => ({
       ...prev,
@@ -457,7 +527,11 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
     };
 
     if (mentorName === "JULIE") {
-      body.meetingState = meetingStateRef.current;
+      const s = meetingStateRef.current;
+      body.meetingState = s;
+      body.carryoverItems = s.carryoverItems;
+      body.filesDiscussed = s.filesDiscussed;
+      body.notesCreated = s.notesCreated;
     }
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/mentor-response`, {
@@ -615,7 +689,18 @@ Rules:
         const matched = openQs.find((q) =>
           responseText.toLowerCase().includes(q.toLowerCase().slice(0, 30))
         );
-        if (matched) markQuestionAnswered(matched, responseText);
+        if (matched) {
+          markQuestionAnswered(matched, responseText);
+          resolveCarryoverItem(matched);
+        }
+      }
+
+      const carryover = meetingStateRef.current.carryoverItems.filter((c) => !c.resolved);
+      if (carryover.length > 0) {
+        const resolvedCarryItem = carryover.find((c) =>
+          responseText.toLowerCase().includes(c.text.toLowerCase().slice(0, 25))
+        );
+        if (resolvedCarryItem) resolveCarryoverItem(resolvedCarryItem.text);
       }
 
       removeMessageById(thinkingId);
@@ -795,7 +880,7 @@ Rules:
       await upsertTags(newTags);
     }
     if (sessionId) {
-      await saveSideNote({
+      const saved = await saveSideNote({
         session_id: sessionId,
         project_id: null,
         text: note.text,
@@ -803,6 +888,7 @@ Rules:
         tags: note.tags,
         archived: false,
       });
+      if (saved?.id) trackNoteCreated(saved.id);
     }
     setShowSideNoteModal(false);
   }
@@ -1173,16 +1259,36 @@ Rules:
       {showMemoryPanel && (
         <div
           className="flex-shrink-0 flex flex-col border-l overflow-y-auto"
-          style={{ width: "200px", minWidth: "200px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
+          style={{ width: "220px", minWidth: "220px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
         >
           <div className="flex items-center justify-between px-3 py-2.5 border-b flex-shrink-0" style={{ borderColor: "#1B2A4A" }}>
             <span className="text-[9px] tracking-widest uppercase font-bold" style={{ color: "#8A9BB5" }}>Session Memory</span>
             <button onClick={() => setShowMemoryPanel(false)} className="text-xs opacity-40 hover:opacity-80 leading-none" style={{ color: "#8A9BB5" }}>×</button>
           </div>
 
+          {meetingState.carryoverItems.length > 0 && (
+            <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A", backgroundColor: "rgba(249,115,22,0.04)" }}>
+              <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5 flex items-center gap-1" style={{ color: "#F97316" }}>
+                <span>⟳</span> Carryover ({meetingState.carryoverItems.filter((c) => !c.resolved).length} open)
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {meetingState.carryoverItems.slice(0, 6).map((item, i) => (
+                  <div key={i} className="flex items-start gap-1">
+                    <span className="text-[8px] mt-0.5 flex-shrink-0" style={{ color: item.resolved ? "#2A3D5E" : item.type === "task" ? "#5A9BD3" : item.type === "question" ? "#F87171" : "#F97316" }}>
+                      {item.type === "task" ? "T" : item.type === "question" ? "?" : "~"}
+                    </span>
+                    <p className="text-[10px] leading-snug" style={{ color: item.resolved ? "#2A3D5E" : "#8A9BB5", textDecoration: item.resolved ? "line-through" : "none" }}>
+                      {item.text.slice(0, 50)}{item.text.length > 50 ? "…" : ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
             <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#F87171" }}>
-              Unanswered ({meetingState.openQuestions.length})
+              Open Questions ({meetingState.openQuestions.length})
             </p>
             {meetingState.openQuestions.length === 0 ? (
               <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None</p>
@@ -1190,6 +1296,21 @@ Rules:
               <div className="flex flex-col gap-1">
                 {meetingState.openQuestions.slice(-5).map((q, i) => (
                   <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {q.slice(0, 55)}{q.length > 55 ? "…" : ""}</p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#4ADE80" }}>
+              Decisions ({meetingState.decisionsMade.length})
+            </p>
+            {meetingState.decisionsMade.length === 0 ? (
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None recorded</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {meetingState.decisionsMade.slice(-5).map((d, i) => (
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {d.slice(0, 55)}{d.length > 55 ? "…" : ""}</p>
                 ))}
               </div>
             )}
@@ -1214,23 +1335,8 @@ Rules:
           </div>
 
           <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#4ADE80" }}>
-              Decisions ({meetingState.decisionsMade.length})
-            </p>
-            {meetingState.decisionsMade.length === 0 ? (
-              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None recorded</p>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {meetingState.decisionsMade.slice(-5).map((d, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {d.slice(0, 55)}{d.length > 55 ? "…" : ""}</p>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
             <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#C9A84C" }}>
-              Active Topics
+              Active Topics ({meetingState.activeTopics.length})
             </p>
             {meetingState.activeTopics.length === 0 ? (
               <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None</p>
@@ -1243,9 +1349,9 @@ Rules:
             )}
           </div>
 
-          <div className="px-3 py-2.5">
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#8A9BB5" }}>
-              Participation
+          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#A07BC9" }}>
+              Team Involved
             </p>
             {Object.keys(meetingState.mentorParticipation).length === 0 ? (
               <p className="text-[10px]" style={{ color: "#2A3D5E" }}>No responses yet</p>
@@ -1256,12 +1362,34 @@ Rules:
                   .map(([name, count]) => (
                     <div key={name} className="flex items-center justify-between">
                       <span className="text-[9px] tracking-widest uppercase font-semibold" style={{ color: "#3A4F6A" }}>{name}</span>
-                      <span className="text-[9px]" style={{ color: "#C9A84C" }}>{count}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: "#C9A84C", backgroundColor: "rgba(201,168,76,0.1)" }}>{count}</span>
                     </div>
                   ))}
               </div>
             )}
           </div>
+
+          {meetingState.notesCreated.length > 0 && (
+            <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+              <p className="text-[9px] tracking-widest uppercase font-semibold mb-1" style={{ color: "#10B981" }}>
+                Notes Created ({meetingState.notesCreated.length})
+              </p>
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>{meetingState.notesCreated.length} side note{meetingState.notesCreated.length > 1 ? "s" : ""} saved this session</p>
+            </div>
+          )}
+
+          {meetingState.answeredQuestions.length > 0 && (
+            <div className="px-3 py-2.5">
+              <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#2A6A3A" }}>
+                Resolved ({meetingState.answeredQuestions.length})
+              </p>
+              <div className="flex flex-col gap-1">
+                {meetingState.answeredQuestions.slice(-3).map((aq, i) => (
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#2A4D3A" }}>✓ {aq.question.slice(0, 45)}{aq.question.length > 45 ? "…" : ""}</p>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

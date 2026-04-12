@@ -958,7 +958,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { mentor, message, mode, recentTranscript, isInterrupt, isOpenFloor, meetingState, humorDial, humorStyle } = await req.json();
+    const { mentor, message, mode, recentTranscript, isInterrupt, isOpenFloor, meetingState, humorDial, humorStyle, carryoverItems, filesDiscussed, notesCreated } = await req.json();
 
     const profile = MENTOR_PROFILES[mentor];
     if (!profile) {
@@ -1005,6 +1005,22 @@ Deno.serve(async (req: Request) => {
 - Speak like someone briefly chiming in, not presenting.`
       : "";
 
+    const carryoverContext = mentor === "JULIE" && carryoverItems && Array.isArray(carryoverItems) && carryoverItems.length > 0
+      ? (() => {
+          const open = carryoverItems.filter((c: { resolved: boolean }) => !c.resolved);
+          const resolved = carryoverItems.filter((c: { resolved: boolean }) => c.resolved);
+          const tasks = open.filter((c: { type: string }) => c.type === "task");
+          const questions = open.filter((c: { type: string }) => c.type === "question");
+          const topics = open.filter((c: { type: string }) => c.type === "topic");
+          const lines: string[] = [];
+          if (tasks.length > 0) lines.push(`Carryover tasks (${tasks.length}): ${tasks.map((c: { text: string; owner?: string }) => `"${c.text.slice(0, 60)}"${c.owner ? ` [${c.owner}]` : ""}`).join("; ")}`);
+          if (questions.length > 0) lines.push(`Carryover questions (${questions.length}): ${questions.map((c: { text: string }) => `"${c.text.slice(0, 60)}"`).join("; ")}`);
+          if (topics.length > 0) lines.push(`Carryover topics (${topics.length}): ${topics.map((c: { text: string }) => `"${c.text.slice(0, 60)}"`).join("; ")}`);
+          if (resolved.length > 0) lines.push(`Already resolved this session: ${resolved.length}`);
+          return `\n\nCARRYOVER FROM PREVIOUS SESSION:\n${lines.join("\n")}\nAs JULIE, you KNOW about these items. When relevant, naturally reference them: "We still have X unresolved from last session." or "Earlier we said we'd revisit this." or "This connects to what was unresolved last time."\nDo NOT robotically list them — weave them in naturally when they're relevant to the current message.`;
+        })()
+      : "";
+
     const meetingStateContext = mentor === "JULIE" && meetingState
       ? `\nCURRENT MEETING STATE:
 Open questions: ${JSON.stringify(meetingState.openQuestions ?? [])}
@@ -1015,7 +1031,9 @@ Active topics: ${JSON.stringify(meetingState.activeTopics ?? [])}
 Decisions made: ${JSON.stringify(meetingState.decisionsMade ?? [])}
 Pending decisions: ${JSON.stringify(meetingState.pendingDecisions ?? [])}
 Mentor participation (turn counts): ${JSON.stringify(meetingState.mentorParticipation ?? {})}
-Dropped ideas: ${JSON.stringify(meetingState.droppedIdeas ?? [])}`
+Dropped ideas: ${JSON.stringify(meetingState.droppedIdeas ?? [])}
+Notes created this session: ${notesCreated ? (notesCreated as string[]).length : 0}
+Files discussed this session: ${filesDiscussed ? (filesDiscussed as string[]).length : 0}${carryoverContext}`
       : "";
 
     const effectiveHumorDial = (isInterrupt || mentor === "DOC" || mentor === "CIPHER") ? 1 : (humorDial ?? 2);

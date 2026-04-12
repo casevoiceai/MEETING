@@ -11,6 +11,12 @@ export interface Session {
   session_summary?: string;
   key_topics?: string[];
   mentors_involved?: string[];
+  carryover_tasks?: { task: string; owner: string }[];
+  carryover_questions?: string[];
+  carryover_topics?: string[];
+  files_discussed?: string[];
+  notes_created?: string[];
+  participants?: string[];
 }
 
 export interface SessionTranscript {
@@ -535,7 +541,7 @@ export async function deleteVaultFile(id: string): Promise<void> {
 
 export async function updateSession(
   sessionId: string,
-  patch: Partial<Pick<Session, "session_summary" | "key_topics" | "mentors_involved">>
+  patch: Partial<Pick<Session, "session_summary" | "key_topics" | "mentors_involved" | "carryover_tasks" | "carryover_questions" | "carryover_topics" | "files_discussed" | "notes_created" | "participants">>
 ): Promise<void> {
   await supabase.from("sessions").update(patch).eq("id", sessionId);
 }
