@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, Shield } from "lucide-react";
+import { Search, Shield, Download } from "lucide-react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import SessionsView from "./screens/SessionsView";
 import VaultView from "./screens/VaultView";
@@ -12,6 +12,7 @@ import { getOrCreateSession, loadSession, type Session, type SearchResult, type 
 import { getPendingCount } from "./lib/approval";
 import OfflineStatusBar from "./components/OfflineStatusBar";
 import SystemHealthPanel from "./components/SystemHealthPanel";
+import BackupExportModal from "./components/BackupExportModal";
 
 type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations";
 
@@ -66,6 +67,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
   const [linkedNavTarget, setLinkedNavTarget] = useState<{ type: LinkableType; id: string } | null>(null);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -172,6 +174,16 @@ export default function App() {
             )}
           </div>
 
+          <button
+            onClick={() => setBackupOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all hover:opacity-80"
+            style={{ backgroundColor: "rgba(201,168,76,0.06)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.2)" }}
+            title="Export Backup"
+          >
+            <Download size={11} />
+            <span className="text-[10px] font-bold tracking-widest uppercase">Backup</span>
+          </button>
+
           <SystemHealthPanel />
 
           <OfflineStatusBar />
@@ -210,6 +222,10 @@ export default function App() {
           onNavigate={handleSearchNavigate}
           onClose={() => setSearchOpen(false)}
         />
+      )}
+
+      {backupOpen && (
+        <BackupExportModal onClose={() => setBackupOpen(false)} />
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { AlertTriangle, X, ShieldAlert, Database, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, X, ShieldAlert, Database, CheckCircle2, Download } from "lucide-react";
 import { saveSnapshot, getRiskColors, getRiskLabel, getDefaultConfirmWord, type GuardrailConfig, type GuardrailRisk } from "../lib/guardrail";
+import BackupExportModal from "./BackupExportModal";
 
 const NAVY = "#0D1B2E";
 const CARD = "#111D30";
@@ -20,6 +21,7 @@ export default function DestructiveConfirmModal({ config, onConfirm, onCancel }:
   const [typedText, setTypedText] = useState("");
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showBackupModal, setShowBackupModal] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmWord = config.typedConfirmationWord ?? getDefaultConfirmWord(config.actionType);
   const colors = getRiskColors(config.risk);
@@ -103,12 +105,22 @@ export default function DestructiveConfirmModal({ config, onConfirm, onCancel }:
               className="rounded-xl p-4 flex flex-col gap-3"
               style={{ backgroundColor: backupConfirmed ? "rgba(74,222,128,0.05)" : CARD, border: `1px solid ${backupConfirmed ? "rgba(74,222,128,0.25)" : BORDER}` }}
             >
-              <div className="flex items-center gap-2">
-                <Database size={14} style={{ color: backupConfirmed ? "#4ADE80" : MUTED }} />
-                <p className="text-xs font-bold tracking-widest uppercase" style={{ color: backupConfirmed ? "#4ADE80" : MUTED }}>Backup Check</p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Database size={14} style={{ color: backupConfirmed ? "#4ADE80" : MUTED }} />
+                  <p className="text-xs font-bold tracking-widest uppercase" style={{ color: backupConfirmed ? "#4ADE80" : MUTED }}>Backup Check</p>
+                </div>
+                <button
+                  onClick={() => setShowBackupModal(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase hover:opacity-80 transition-opacity"
+                  style={{ backgroundColor: "rgba(201,168,76,0.1)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.25)" }}
+                >
+                  <Download size={10} />
+                  Take Backup
+                </button>
               </div>
               <p className="text-xs leading-relaxed" style={{ color: DIM }}>
-                Before proceeding, confirm that a backup of this data exists or that you accept this action is irreversible.
+                Before proceeding, export a backup or confirm you accept this action is irreversible.
               </p>
               <label className="flex items-center gap-3 cursor-pointer group">
                 <div
@@ -130,6 +142,14 @@ export default function DestructiveConfirmModal({ config, onConfirm, onCancel }:
                 </span>
               </label>
             </div>
+          )}
+
+          {showBackupModal && (
+            <BackupExportModal
+              onClose={() => { setShowBackupModal(false); setBackupConfirmed(true); }}
+              title="Pre-Action Backup"
+              subtitle="Export a snapshot before this destructive action"
+            />
           )}
 
           {config.requireTypedConfirmation && (
