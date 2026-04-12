@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Archive, ChevronRight, FileText, Tag, Users, AlertCircle, CheckSquare } from "lucide-react";
+import { Archive, ChevronRight, FileText, Tag, Users, AlertCircle, CheckSquare, StickyNote } from "lucide-react";
 import { listSessions, archiveSession, loadSession, type Session } from "../lib/db";
 
 const GOLD = "#C9A84C";
@@ -21,6 +21,8 @@ interface SessionData {
   decisions: string[];
   mentors: string[];
   unresolved: string[];
+  sideNotes: { text: string; mentors: string[]; tags: string[] }[];
+  summary: string;
 }
 
 export default function SessionsView({ onOpenSession }: Props) {
@@ -55,7 +57,9 @@ export default function SessionsView({ onOpenSession }: Props) {
         const unresolved = result.julieReport?.unresolved_topics ?? [];
         const mentorParticipation = result.julieReport?.mentor_participation ?? {};
         const mentors = Object.keys(mentorParticipation).filter((k) => (mentorParticipation[k] ?? 0) > 0);
-        setExpandedData((prev) => ({ ...prev, [session.id]: { transcript: preview, tasks, questions, decisions, mentors, unresolved } }));
+        const sideNotes = (result.sideNotes ?? []).map((n) => ({ text: n.text, mentors: n.mentors ?? [], tags: n.tags ?? [] }));
+        const summary = result.session?.session_summary ?? "";
+        setExpandedData((prev) => ({ ...prev, [session.id]: { transcript: preview, tasks, questions, decisions, mentors, unresolved, sideNotes, summary } }));
       }
     }
   }
@@ -136,6 +140,13 @@ export default function SessionsView({ onOpenSession }: Props) {
                     {!data && <p className="text-sm pt-4" style={{ color: DIM }}>Loading preview...</p>}
                     {data && (
                       <div className="pt-4 grid grid-cols-2 gap-4">
+                        {data.summary && (
+                          <div className="col-span-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.15)" }}>
+                            <p className="text-[10px] font-bold tracking-widest uppercase mb-1" style={{ color: GOLD }}>Summary</p>
+                            <p className="text-xs leading-relaxed" style={{ color: TEXT }}>{data.summary}</p>
+                          </div>
+                        )}
+
                         {data.mentors.length > 0 && (
                           <div className="col-span-2 flex items-center gap-2 flex-wrap">
                             <Users size={13} style={{ color: MUTED }} />
@@ -213,6 +224,32 @@ export default function SessionsView({ onOpenSession }: Props) {
                             <div className="flex flex-col gap-1">
                               {data.unresolved.map((u, i) => (
                                 <p key={i} className="text-xs leading-relaxed px-3 py-2 rounded-lg" style={{ color: "#FB923C", backgroundColor: "rgba(249,115,22,0.06)", border: `1px solid rgba(249,115,22,0.2)` }}>{u}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {data.sideNotes.length > 0 && (
+                          <div className="col-span-2">
+                            <p className="text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: MUTED }}>
+                              <StickyNote size={11} />
+                              Side Notes ({data.sideNotes.length})
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              {data.sideNotes.map((n, i) => (
+                                <div key={i} className="px-3 py-2.5 rounded-xl" style={{ backgroundColor: "#F5E6A3", border: "1px solid #D6C47A" }}>
+                                  <p className="text-xs leading-relaxed" style={{ color: "#1B1B1B" }}>{n.text}</p>
+                                  {(n.mentors.length > 0 || n.tags.length > 0) && (
+                                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                      {n.mentors.map((m) => (
+                                        <span key={m} className="text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "#C9A84C33", color: "#3A2D00", border: "1px solid #C9A84C66" }}>{m}</span>
+                                      ))}
+                                      {n.tags.map((t) => (
+                                        <span key={t} className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "#D6C47A", color: "#1B1B1B" }}>{t}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               ))}
                             </div>
                           </div>

@@ -181,6 +181,7 @@ export async function loadSession(sessionKey: string): Promise<{
   session: Session;
   transcript: SessionTranscript | null;
   julieReport: JulieReport | null;
+  sideNotes: SideNote[];
 } | null> {
   const { data: session } = await supabase
     .from("sessions")
@@ -190,22 +191,17 @@ export async function loadSession(sessionKey: string): Promise<{
 
   if (!session) return null;
 
-  const { data: transcript } = await supabase
-    .from("session_transcripts")
-    .select("*")
-    .eq("session_id", session.id)
-    .maybeSingle();
-
-  const { data: julieReport } = await supabase
-    .from("julie_reports")
-    .select("*")
-    .eq("session_id", session.id)
-    .maybeSingle();
+  const [transcriptRes, julieReportRes, sideNotesRes] = await Promise.all([
+    supabase.from("session_transcripts").select("*").eq("session_id", session.id).maybeSingle(),
+    supabase.from("julie_reports").select("*").eq("session_id", session.id).maybeSingle(),
+    supabase.from("side_notes").select("*").eq("session_id", session.id).eq("archived", false).order("created_at", { ascending: true }),
+  ]);
 
   return {
     session: session as Session,
-    transcript: transcript as SessionTranscript | null,
-    julieReport: julieReport as JulieReport | null,
+    transcript: transcriptRes.data as SessionTranscript | null,
+    julieReport: julieReportRes.data as JulieReport | null,
+    sideNotes: (sideNotesRes.data ?? []) as SideNote[],
   };
 }
 

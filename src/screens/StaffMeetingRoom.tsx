@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
-import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, type TranscriptMessage } from "../lib/db";
+import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, type TranscriptMessage } from "../lib/db";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
 
 type MentorStatus = "idle" | "assigned" | "working" | "ready" | "blocked";
@@ -204,6 +204,49 @@ function isAnyoneElse(text: string): boolean {
   return lower.includes("anyone else") || lower.includes("who else");
 }
 
+function detectDecision(text: string): string | null {
+  const lower = text.toLowerCase();
+  const triggers = [
+    "we should", "we will", "we need to", "let's go with", "decided to",
+    "agreed to", "the decision is", "moving forward with", "go with",
+    "we're going to", "plan is to", "recommend", "recommendation:",
+  ];
+  for (const t of triggers) {
+    const idx = lower.indexOf(t);
+    if (idx !== -1) {
+      const snippet = text.slice(idx, idx + 120).split(/[.!?\n]/)[0].trim();
+      if (snippet.length > 15) return snippet;
+    }
+  }
+  return null;
+}
+
+function detectTask(text: string): { task: string; owner: string } | null {
+  const lower = text.toLowerCase();
+  const triggers = [
+    "should handle", "will take care of", "can own", "needs to", "should look into",
+    "should review", "should draft", "needs a review", "should check",
+    "i'll", "i will", "i can",
+  ];
+  for (const t of triggers) {
+    const idx = lower.indexOf(t);
+    if (idx !== -1) {
+      const snippet = text.slice(Math.max(0, idx - 10), idx + 100).split(/[.!?\n]/)[0].trim();
+      if (snippet.length > 10) return { task: snippet, owner: "TBD" };
+    }
+  }
+  return null;
+}
+
+function buildSessionSummary(state: MeetingState): string {
+  const parts: string[] = [];
+  if (state.activeTopics.length > 0) parts.push(`Topics: ${state.activeTopics.slice(0, 3).join("; ")}`);
+  if (state.decisionsMade.length > 0) parts.push(`Decisions: ${state.decisionsMade.slice(0, 2).join("; ")}`);
+  if (state.assignedTasks.length > 0) parts.push(`Tasks: ${state.assignedTasks.slice(0, 2).map((t) => `${t.owner}: ${t.task.slice(0, 40)}`).join("; ")}`);
+  if (state.openQuestions.length > 0) parts.push(`Unresolved: ${state.openQuestions.slice(0, 2).join("; ")}`);
+  return parts.join(" · ");
+}
+
 interface Props {
   sessionId: string | null;
   sessionKey?: string | null;
@@ -235,6 +278,27 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   useEffect(() => { meetingStateRef.current = meetingState; }, [meetingState]);
 
   useEffect(() => {
+    if (!sessionKey) return;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const prevKey = yesterday.toISOString().slice(0, 10);
+    loadSession(prevKey).then((result) => {
+      if (!result?.julieReport) return;
+      const unresolved = result.julieReport.unresolved_topics ?? [];
+      const openQs = result.julieReport.open_questions ?? [];
+      const carryForward = [...unresolved, ...openQs].filter(Boolean);
+      if (carryForward.length === 0) return;
+      setMeetingState((prev) => ({
+        ...prev,
+        unresolvedTopics: carryForward,
+        openQuestions: [...carryForward, ...prev.openQuestions],
+      }));
+      const carryMsg = `Carrying forward ${carryForward.length} unresolved item${carryForward.length > 1 ? "s" : ""} from last session: ${carryForward.slice(0, 2).map((s) => s.slice(0, 40)).join("; ")}${carryForward.length > 2 ? "…" : ""}`;
+      setMessages((prev) => [...prev, { id: -1, text: `JULIE: ${carryMsg}`, speaker: "mentor", sender: "JULIE", targets: ["ALL"], isJulie: true }]);
+    }).catch(() => {});
+  }, [sessionKey]);
+
+  useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     }
@@ -260,9 +324,11 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
     }).catch(() => {});
     const mentorsInvolved = Object.keys(s.mentorParticipation).filter((k) => (s.mentorParticipation[k] ?? 0) > 0);
     const topicsSummary = [...s.decisionsMade.slice(0, 2), ...s.activeTopics.slice(0, 3)];
+    const summary = buildSessionSummary(s);
     updateSession(sessionId, {
       mentors_involved: mentorsInvolved,
       key_topics: topicsSummary,
+      session_summary: summary || undefined,
     }).catch(() => {});
   }, [sessionId]);
 
@@ -483,6 +549,23 @@ Rules:
 
       recentTopics.current = [...recentTopics.current, responseText.toLowerCase()].slice(-3);
       trackMentorTurn(mentor.name);
+
+      const detectedDecision = detectDecision(responseText);
+      if (detectedDecision) {
+        setMeetingState((prev) => {
+          if (prev.decisionsMade.includes(detectedDecision)) return prev;
+          return { ...prev, decisionsMade: [...prev.decisionsMade, detectedDecision] };
+        });
+      }
+
+      const detectedTask = detectTask(responseText);
+      if (detectedTask && !isInterrupt) {
+        setMeetingState((prev) => {
+          const exists = prev.assignedTasks.some((t) => t.task === detectedTask.task);
+          if (exists) return prev;
+          return { ...prev, assignedTasks: [...prev.assignedTasks, { task: detectedTask.task, owner: mentor.name }] };
+        });
+      }
 
       const openQs = meetingStateRef.current.openQuestions;
       if (openQs.length > 0) {
