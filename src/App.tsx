@@ -8,13 +8,14 @@ import ProjectsView from "./screens/ProjectsView";
 import GlobalSearch from "./screens/GlobalSearch";
 import EmailView from "./screens/EmailView";
 import IntegrationsView from "./screens/IntegrationsView";
+import SourceOfTruthPanel from "./components/SourceOfTruthPanel";
 import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
 import { getPendingCount } from "./lib/approval";
 import OfflineStatusBar from "./components/OfflineStatusBar";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import BackupExportModal from "./components/BackupExportModal";
 
-type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations";
+type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations" | "source-of-truth";
 
 const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "meeting", label: "Meeting" },
@@ -24,6 +25,7 @@ const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "tags", label: "Tags" },
   { id: "projects", label: "Projects" },
   { id: "integrations", label: "Integrations" },
+  { id: "source-of-truth", label: "Source of Truth" },
 ];
 
 function NavButton({
@@ -215,6 +217,7 @@ export default function App() {
         {view === "tags" && <TagsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "tag" ? linkedNavTarget.id : undefined} />}
         {view === "projects" && <ProjectsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "project" ? linkedNavTarget.id : undefined} />}
         {view === "integrations" && <IntegrationsView onPendingChange={setPendingApprovalCount} />}
+        {view === "source-of-truth" && <SourceOfTruthPanel sessionKey={sessionKey} />}
       </div>
 
       {searchOpen && (

@@ -3,6 +3,7 @@ import SideNoteModal, { SideNote } from "./SideNoteModal";
 import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, uploadFileToVault, getIntegrationSettings, type TranscriptMessage, type JulieReport, type VaultFile, type SideNote as DBSideNote } from "../lib/db";
 import { syncFileToDrive, syncTranscriptToDrive, syncSideNoteToDrive, queueJulieReportForNotion } from "../lib/integrations";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
+import { readSourceOfTruth, formatSourceOfTruthForJulie, type SourceOfTruthEntry } from "../lib/sourceOfTruth";
 import FileUploadModal from "../components/FileUploadModal";
 import FilePreviewModal from "../components/FilePreviewModal";
 
@@ -328,10 +329,17 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   const lastJulieSpeakTurn = useRef<number>(-10);
   const lastSpeakerRef = useRef<string | null>(null);
   const recentSpeakersRef = useRef<string[]>([]);
+  const sotEntriesRef = useRef<SourceOfTruthEntry[]>([]);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { mentorsRef.current = mentors; }, [mentors]);
   useEffect(() => { meetingStateRef.current = meetingState; }, [meetingState]);
+
+  useEffect(() => {
+    readSourceOfTruth(50).then((entries) => {
+      sotEntriesRef.current = entries;
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!sessionKey) return;
@@ -686,6 +694,7 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
       body.carryoverItems = s.carryoverItems;
       body.filesDiscussed = s.filesDiscussed;
       body.notesCreated = s.notesCreated;
+      body.sourceOfTruth = formatSourceOfTruthForJulie(sotEntriesRef.current);
     }
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/mentor-response`, {
