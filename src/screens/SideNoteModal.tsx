@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { X, Tag } from "lucide-react";
 import { TEAM_ROSTER } from "../lib/mentors";
 
@@ -24,22 +25,29 @@ function MentorPickerModal({
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  const roster = TEAM_ROSTER.length > 0 ? TEAM_ROSTER : [];
 
   const filtered = useMemo(
-    () => TEAM_ROSTER.filter(
+    () => roster.filter(
       (m) =>
         (m.name.toLowerCase().includes(query.toLowerCase()) ||
           m.department.toLowerCase().includes(query.toLowerCase()) ||
           m.skills.some((s) => s.toLowerCase().includes(query.toLowerCase()))) &&
         !selected.includes(m.name)
     ),
-    [query, selected]
+    [query, selected, roster]
   );
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current && !containerRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     }
@@ -47,19 +55,49 @@ function MentorPickerModal({
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  function openDropdown() {
+    if (triggerRef.current) {
+      setDropdownRect(triggerRef.current.getBoundingClientRect());
+    }
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (open && triggerRef.current) {
+      setDropdownRect(triggerRef.current.getBoundingClientRect());
+    }
+  }, [open, selected]);
+
   function toggle(name: string) {
     onChange(selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]);
   }
 
+  const dropdownStyle = dropdownRect
+    ? {
+        position: "fixed" as const,
+        top: dropdownRect.bottom + 4,
+        left: dropdownRect.left,
+        width: dropdownRect.width,
+        zIndex: 9999,
+        backgroundColor: "#EDD98A",
+        border: "1px solid #D6C47A",
+        borderRadius: "12px",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+        maxHeight: "360px",
+        overflowY: "auto" as const,
+      }
+    : {};
+
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef}>
       <div
-        className="flex flex-wrap gap-1.5 px-3 py-2 rounded-xl cursor-text min-h-[42px]"
+        ref={triggerRef}
+        className="flex flex-wrap gap-1.5 px-3 py-2 rounded-xl cursor-text min-h-[44px]"
         style={{
           backgroundColor: "rgba(255,255,255,0.35)",
           border: `1px solid ${open ? "#B8943C" : "#D6C47A"}`,
         }}
-        onClick={() => setOpen(true)}
+        onClick={openDropdown}
       >
         {selected.map((m) => (
           <span
@@ -79,18 +117,15 @@ function MentorPickerModal({
           style={{ color: "#1B1B1B" }}
           placeholder={selected.length === 0 ? "Tag team members..." : ""}
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
+          onChange={(e) => { setQuery(e.target.value); openDropdown(); }}
+          onFocus={openDropdown}
         />
       </div>
 
-      {open && (
-        <div
-          className="absolute z-50 left-0 right-0 mt-1 rounded-xl shadow-2xl overflow-y-auto"
-          style={{ backgroundColor: "#EDD98A", border: "1px solid #D6C47A", maxHeight: "260px" }}
-        >
+      {open && dropdownRect && createPortal(
+        <div style={dropdownStyle}>
           {filtered.length === 0 && (
-            <p className="px-4 py-2.5 text-xs" style={{ color: "#5A4E00" }}>
+            <p className="px-4 py-3 text-sm font-semibold" style={{ color: "#5A4E00" }}>
               {query ? "No match." : "All team members selected."}
             </p>
           )}
@@ -99,16 +134,16 @@ function MentorPickerModal({
               key={member.name}
               onMouseDown={(e) => { e.preventDefault(); toggle(member.name); setQuery(""); }}
               className="w-full text-left px-4 py-3 transition-colors hover:bg-yellow-200 border-b last:border-b-0"
-              style={{ borderColor: "rgba(0,0,0,0.06)", minHeight: "68px" }}
+              style={{ borderColor: "rgba(0,0,0,0.08)" }}
             >
               <p className="text-sm font-bold tracking-widest uppercase leading-tight" style={{ color: "#1B1B1B" }}>
                 {member.name}
               </p>
-              <p className="text-xs font-semibold tracking-wider mt-0.5 mb-1.5" style={{ color: "#7A6200" }}>
+              <p className="text-xs font-semibold tracking-wider mt-0.5 mb-1" style={{ color: "#7A6200" }}>
                 {member.department}
               </p>
               <div className="flex flex-col gap-0.5">
-                {member.skills.map((skill) => (
+                {member.skills.slice(0, 2).map((skill) => (
                   <p key={skill} className="text-xs leading-snug" style={{ color: "#5A4E00" }}>
                     · {skill}
                   </p>
@@ -116,7 +151,8 @@ function MentorPickerModal({
               </div>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
