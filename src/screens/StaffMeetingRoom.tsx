@@ -662,14 +662,85 @@ Rules:
   }
 
   const lastNote = sideNotes[sideNotes.length - 1];
-  const [showMemoryPanel, setShowMemoryPanel] = useState(true);
+  const [showMemoryPanel, setShowMemoryPanel] = useState(false);
+  const [activeDeptTab, setActiveDeptTab] = useState<string | null>(null);
+
+  const activeDepts = DEPARTMENT_ORDER.filter((dept) =>
+    mentors.some((m) => MENTOR_META[m.name]?.department === dept)
+  );
+  const currentDept = activeDeptTab ?? activeDepts[0] ?? null;
+
+  function renderMentorCard(mentor: Mentor) {
+    const isSelected = selectedMentors.includes(mentor.name);
+    const isJulie = mentor.name === "JULIE";
+    const meta = MENTOR_META[mentor.name];
+    const participation = meetingState.mentorParticipation[mentor.name] ?? 0;
+    const dept = meta?.department ?? "FACILITATION";
+    const deptColor = DEPARTMENT_COLORS[dept] ?? "#8A9BB5";
+
+    if (isJulie) {
+      return (
+        <button
+          key={mentor.id}
+          onClick={() => handleMentorClick(mentor)}
+          className={["flex flex-col rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 flex-shrink-0", mentor.status === "working" ? "animate-pulse" : ""].join(" ")}
+          style={{
+            backgroundColor: "#0F1F36",
+            border: isSelected ? "1px solid #8A9BB5" : mentor.status === "working" ? "1px solid #3A4F6A" : "1px solid #1B2A4A",
+            boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.15)" : "none",
+            width: "100px",
+            padding: "8px 10px",
+          }}
+          title="JULIE — Facilitator"
+        >
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[10px] font-bold tracking-widest" style={{ color: "#8A9BB5" }}>JULIE</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: mentor.status === "working" ? "#60AEFF" : "#1B2A4A" }} />
+          </div>
+          <span className="text-[8px] tracking-widest uppercase" style={{ color: "#3A4F6A" }}>
+            {mentor.status === "working" ? "ROUTING" : "HOST"}
+          </span>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        key={mentor.id}
+        onClick={() => handleMentorClick(mentor)}
+        className={["flex flex-col rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 flex-shrink-0", mentor.status === "working" ? "animate-pulse" : ""].join(" ")}
+        style={{
+          ...STATUS_STYLES[mentor.status],
+          boxShadow: isSelected ? `0 0 0 1.5px ${deptColor}, 0 0 10px 2px ${deptColor}33` : "none",
+          width: "100px",
+          padding: "8px 10px",
+        }}
+        title={mentor.status === "ready" ? "Click to receive result" : isSelected ? `Deselect ${mentor.name}` : `Select ${mentor.name}`}
+      >
+        <div className="flex items-center justify-between mb-0.5">
+          <span className="text-[10px] font-bold tracking-widest" style={{ color: isSelected ? deptColor : "#FFFFFF" }}>{mentor.name}</span>
+          <div className="flex items-center gap-1">
+            {participation > 0 && (
+              <span className="text-[8px] font-bold" style={{ color: "#3A4F6A" }}>{participation}</span>
+            )}
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_DOT[mentor.status] }} />
+          </div>
+        </div>
+        {meta?.realName && (
+          <span className="text-[8px] block" style={{ color: "#3A4F6A" }}>{meta.realName}</span>
+        )}
+        <span className="text-[8px] leading-tight block mt-0.5" style={{ color: isSelected ? `${deptColor}99` : "#2A3D5E" }}>
+          {meta?.bullets[0] ?? ""}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <div
-      className="flex-1 flex min-h-0"
+      className="flex-1 flex min-h-0 overflow-hidden"
       style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif" }}
     >
-    <div className="flex-1 flex flex-col min-h-0">
       {showSideNoteModal && (
         <SideNoteModal
           usedTags={usedTags}
@@ -678,321 +749,282 @@ Rules:
         />
       )}
 
-      <div
-        className="flex items-center justify-between px-6 py-3 border-b"
-        style={{ borderColor: "#1B2A4A" }}
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold tracking-widest uppercase" style={{ color: "#C9A84C" }}>
-            Staff Meeting Room
-          </span>
-          <span className="text-[10px] tracking-widest uppercase px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(138,155,181,0.1)", color: "#8A9BB5" }}>
-            JULIE facilitating
-          </span>
-        </div>
-        <div className="flex gap-2">
-          {(["brainstorm", "command"] as Mode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className="px-4 py-1.5 text-sm font-semibold tracking-wider uppercase rounded transition-all duration-150"
-              style={
-                mode === m
-                  ? { backgroundColor: "#C9A84C", color: "#0D1B2E" }
-                  : { backgroundColor: "#1B2A4A", color: "#8A9BB5" }
-              }
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <span className="text-xs tracking-widest uppercase" style={{ color: "#8A9BB5" }}>
-          Mode:{" "}
-          <span style={{ color: "#C9A84C" }} className="font-bold">
-            {mode.toUpperCase()}
-          </span>
-        </span>
-      </div>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-      <div className="px-6 pt-4 pb-3 overflow-y-auto" style={{ maxHeight: "320px" }}>
-        <p className="text-xs tracking-widest uppercase mb-3" style={{ color: "#8A9BB5" }}>
-          Team
-        </p>
-        {DEPARTMENT_ORDER.map((dept) => {
-          const deptMentors = mentors.filter((m) => MENTOR_META[m.name]?.department === dept);
-          if (deptMentors.length === 0) return null;
-          const deptColor = DEPARTMENT_COLORS[dept] ?? "#8A9BB5";
-          return (
-            <div key={dept} className="mb-4">
-              <p
-                className="text-[9px] tracking-widest uppercase font-bold mb-2"
-                style={{ color: deptColor, opacity: 0.7 }}
+        <div
+          className="flex items-center justify-between px-5 py-2.5 border-b flex-shrink-0"
+          style={{ borderColor: "#1B2A4A" }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold tracking-widest uppercase" style={{ color: "#C9A84C" }}>
+              Staff Meeting Room
+            </span>
+            <span className="text-[10px] tracking-widest uppercase px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(138,155,181,0.1)", color: "#8A9BB5" }}>
+              JULIE facilitating
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {(["brainstorm", "command"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className="px-3 py-1 text-xs font-semibold tracking-wider uppercase rounded transition-all duration-150"
+                style={
+                  mode === m
+                    ? { backgroundColor: "#C9A84C", color: "#0D1B2E" }
+                    : { backgroundColor: "#1B2A4A", color: "#8A9BB5" }
+                }
               >
-                {dept}
+                {m}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowMemoryPanel((v) => !v)}
+              className="px-3 py-1 text-xs font-semibold tracking-wider uppercase rounded transition-all duration-150 ml-1"
+              style={
+                showMemoryPanel
+                  ? { backgroundColor: "#1B2A4A", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.4)" }
+                  : { backgroundColor: "#1B2A4A", color: "#3A4F6A", border: "1px solid #1B2A4A" }
+              }
+              title="Toggle session memory panel"
+            >
+              Memory
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="flex-shrink-0 border-b"
+          style={{ borderColor: "#1B2A4A", backgroundColor: "#0A1525" }}
+        >
+          <div className="flex items-center gap-1 px-5 pt-2 pb-0 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+            {activeDepts.map((dept) => {
+              const deptColor = DEPARTMENT_COLORS[dept] ?? "#8A9BB5";
+              const isActive = dept === currentDept;
+              const hasActive = mentors.some(
+                (m) => MENTOR_META[m.name]?.department === dept && (m.status === "working" || selectedMentors.includes(m.name))
+              );
+              return (
+                <button
+                  key={dept}
+                  onClick={() => setActiveDeptTab(dept)}
+                  className="flex-shrink-0 px-3 py-1.5 text-[9px] font-bold tracking-widest uppercase rounded-t transition-all duration-150 relative"
+                  style={{
+                    color: isActive ? deptColor : "#3A4F6A",
+                    backgroundColor: isActive ? "rgba(255,255,255,0.04)" : "transparent",
+                    borderBottom: isActive ? `2px solid ${deptColor}` : "2px solid transparent",
+                  }}
+                >
+                  {dept}
+                  {hasActive && (
+                    <span
+                      className="absolute top-1 right-1 w-1 h-1 rounded-full"
+                      style={{ backgroundColor: deptColor }}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            className="flex gap-1.5 px-5 py-2 overflow-x-auto"
+            style={{ scrollbarWidth: "thin", scrollbarColor: "#1B2A4A transparent" }}
+          >
+            {currentDept &&
+              mentors
+                .filter((m) => MENTOR_META[m.name]?.department === currentDept)
+                .map((mentor) => renderMentorCard(mentor))
+            }
+          </div>
+        </div>
+
+        {sideNotes.length > 0 && (
+          <div
+            className="mx-5 mt-2 mb-0 px-3 py-2 rounded-lg flex items-center gap-3 text-xs flex-shrink-0"
+            style={{ backgroundColor: "#111D30", color: "#8A9BB5" }}
+          >
+            <div className="flex-1 min-w-0 flex items-center gap-2">
+              <span style={{ color: "#C9A84C" }} className="font-semibold whitespace-nowrap">
+                Side Notes ({sideNotes.length})
+              </span>
+              <span className="truncate text-[11px]">{lastNote?.text}</span>
+              {lastNote && lastNote.tags.map((t) => (
+                <span
+                  key={t}
+                  className="flex-shrink-0 inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold"
+                  style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowSideNoteModal(true)}
+              className="text-[10px] tracking-widest uppercase font-semibold whitespace-nowrap transition-colors hover:opacity-80 flex-shrink-0"
+              style={{ color: "#C9A84C" }}
+            >
+              + Add
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 flex flex-col min-h-0 px-5 pt-3 pb-2 overflow-hidden">
+          <p className="text-[9px] tracking-widest uppercase mb-1.5 flex-shrink-0" style={{ color: "#3A4F6A" }}>
+            Transcript
+          </p>
+          <div
+            ref={transcriptRef}
+            className="flex-1 overflow-y-auto rounded-lg p-3"
+            style={{ backgroundColor: "#111D30" }}
+          >
+            {messages.length === 0 ? (
+              <p className="text-sm text-center mt-8" style={{ color: "#3A4F6A" }}>
+                No messages yet. JULIE will route your message to the right mentors.
               </p>
-              <div className="flex flex-wrap gap-2">
-                {deptMentors.map((mentor) => {
-                  const isSelected = selectedMentors.includes(mentor.name);
-                  const isJulie = mentor.name === "JULIE";
-                  const meta = MENTOR_META[mentor.name];
-                  const participation = meetingState.mentorParticipation[mentor.name] ?? 0;
-
-                  if (isJulie) {
-                    return (
-                      <button
-                        key={mentor.id}
-                        onClick={() => handleMentorClick(mentor)}
-                        className={["flex flex-col rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden", mentor.status === "working" ? "animate-pulse" : ""].join(" ")}
-                        style={{
-                          backgroundColor: "#0F1F36",
-                          border: isSelected ? "1px solid #8A9BB5" : mentor.status === "working" ? "1px solid #3A4F6A" : "1px solid #1B2A4A",
-                          boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.15)" : "none",
-                          width: "120px",
-                          padding: "10px 12px",
-                        }}
-                        title="JULIE — Facilitator"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold tracking-widest" style={{ color: "#8A9BB5" }}>JULIE</span>
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: mentor.status === "working" ? "#60AEFF" : "#1B2A4A" }} />
-                        </div>
-                        <span className="text-[8px] tracking-widest uppercase" style={{ color: "#3A4F6A" }}>
-                          {mentor.status === "working" ? "ROUTING" : "HOST"}
-                        </span>
-                        {meta?.bullets.slice(0, 2).map((b, i) => (
-                          <span key={i} className="text-[8px] leading-tight mt-0.5 block" style={{ color: "#2A3D5E" }}>· {b}</span>
-                        ))}
-                      </button>
-                    );
-                  }
-
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {messages.map((msg) => {
+                  const isYou = msg.speaker === "you";
+                  const sender = msg.sender ?? (isYou ? "YOU" : "MENTOR");
+                  const targets = msg.targets ?? ["ALL"];
+                  const isJulieMsg = msg.isJulie || sender === "JULIE";
                   return (
-                    <button
-                      key={mentor.id}
-                      onClick={() => handleMentorClick(mentor)}
-                      className={["flex flex-col rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden", mentor.status === "working" ? "animate-pulse" : ""].join(" ")}
+                    <div
+                      key={msg.id}
+                      className="rounded-lg px-3 py-2.5"
                       style={{
-                        ...STATUS_STYLES[mentor.status],
-                        boxShadow: isSelected ? `0 0 0 1.5px ${deptColor}, 0 0 12px 3px ${deptColor}33` : "none",
-                        width: "120px",
-                        padding: "10px 12px",
+                        backgroundColor: msg.isThinking
+                          ? "rgba(255,255,255,0.015)"
+                          : isJulieMsg
+                          ? "rgba(138,155,181,0.04)"
+                          : "rgba(255,255,255,0.03)",
+                        borderLeft: isJulieMsg && !msg.isThinking ? "2px solid #2A3D5E" : "none",
                       }}
-                      title={mentor.status === "ready" ? "Click to receive result" : isSelected ? `Deselect ${mentor.name}` : `Select ${mentor.name}`}
                     >
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] font-bold tracking-widest" style={{ color: isSelected ? deptColor : "#FFFFFF" }}>{mentor.name}</span>
-                        <div className="flex items-center gap-1">
-                          {participation > 0 && (
-                            <span className="text-[8px] font-bold" style={{ color: "#3A4F6A" }}>{participation}</span>
-                          )}
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: STATUS_DOT[mentor.status] }} />
-                        </div>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                        <span
+                          className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
+                          style={
+                            isYou
+                              ? { color: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.1)" }
+                              : isJulieMsg
+                              ? { color: "#8A9BB5", backgroundColor: "rgba(138,155,181,0.1)" }
+                              : { color: "#4ADE80", backgroundColor: "rgba(74,222,128,0.1)" }
+                          }
+                        >
+                          {sender}
+                        </span>
+                        <span style={{ color: "#3A4F6A", fontSize: "10px" }}>→</span>
+                        {targets.map((t) =>
+                          t === "ALL" ? (
+                            <span
+                              key={t}
+                              className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
+                              style={{ color: "#8A9BB5", border: "1px solid #3A4F6A" }}
+                            >
+                              ALL
+                            </span>
+                          ) : (
+                            <span
+                              key={t}
+                              className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
+                              style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
+                            >
+                              {t}
+                            </span>
+                          )
+                        )}
                       </div>
-                      {meta?.realName && (
-                        <span className="text-[8px] mb-1 block" style={{ color: "#3A4F6A" }}>{meta.realName}</span>
-                      )}
-                      {meta?.bullets.slice(0, 2).map((b, i) => (
-                        <span key={i} className="text-[8px] leading-tight block" style={{ color: isSelected ? `${deptColor}99` : "#2A3D5E" }}>· {b}</span>
-                      ))}
-                    </button>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{
+                          color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : isJulieMsg ? "#8A9BB5" : "#D0DFEE",
+                          fontStyle: msg.isThinking ? "italic" : "normal",
+                        }}
+                      >
+                        {msg.text}
+                      </p>
+                    </div>
                   );
                 })}
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {sideNotes.length > 0 && (
-        <div
-          className="mx-6 mb-3 px-4 py-2.5 rounded-lg flex items-start gap-3 text-xs"
-          style={{ backgroundColor: "#111D30", color: "#8A9BB5" }}
-        >
-          <div className="flex-1 min-w-0">
-            <span style={{ color: "#C9A84C" }} className="font-semibold">
-              Side Notes ({sideNotes.length}):
-            </span>{" "}
-            <span className="truncate">{lastNote?.text}</span>
-            {lastNote && lastNote.tags.length > 0 && (
-              <span className="ml-2">
-                {lastNote.tags.map((t) => (
-                  <span
-                    key={t}
-                    className="inline-block mr-1 px-1.5 py-0.5 rounded text-[9px] font-semibold"
-                    style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </span>
             )}
           </div>
-          <button
-            onClick={() => setShowSideNoteModal(true)}
-            className="text-[10px] tracking-widest uppercase font-semibold whitespace-nowrap transition-colors hover:opacity-80"
-            style={{ color: "#C9A84C" }}
-          >
-            + Add
-          </button>
         </div>
-      )}
 
-      <div className="flex-1 flex flex-col min-h-0 px-6 pb-2">
-        <p className="text-xs tracking-widest uppercase mb-2" style={{ color: "#8A9BB5" }}>
-          Transcript
-        </p>
-        <div
-          ref={transcriptRef}
-          className="flex-1 overflow-y-auto rounded-lg p-4"
-          style={{ backgroundColor: "#111D30", minHeight: "200px" }}
-        >
-          {messages.length === 0 ? (
-            <p className="text-sm text-center mt-8" style={{ color: "#3A4F6A" }}>
-              No messages yet. JULIE will route your message to the right mentors.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {messages.map((msg) => {
-                const isYou = msg.speaker === "you";
-                const sender = msg.sender ?? (isYou ? "YOU" : "MENTOR");
-                const targets = msg.targets ?? ["ALL"];
-                const isJulieMsg = msg.isJulie || sender === "JULIE";
-                return (
-                  <div
-                    key={msg.id}
-                    className="rounded-lg px-3 py-2.5"
-                    style={{
-                      backgroundColor: msg.isThinking
-                        ? "rgba(255,255,255,0.015)"
-                        : isJulieMsg
-                        ? "rgba(138,155,181,0.04)"
-                        : "rgba(255,255,255,0.03)",
-                      borderLeft: isJulieMsg && !msg.isThinking ? "2px solid #2A3D5E" : "none",
-                    }}
+        <div className="px-5 py-3 border-t flex-shrink-0" style={{ borderColor: "#1B2A4A" }}>
+          {selectedMentors.length > 0 && (
+            <div className="flex gap-2 mb-2 flex-wrap">
+              {selectedMentors.map((name) => (
+                <span
+                  key={name}
+                  className="flex items-center gap-1 text-[10px] tracking-widest uppercase font-semibold px-2 py-0.5 rounded"
+                  style={{
+                    color: name === "JULIE" ? "#8A9BB5" : "#C9A84C",
+                    border: `1px solid ${name === "JULIE" ? "#8A9BB5" : "#C9A84C"}`,
+                  }}
+                >
+                  {name}
+                  <button
+                    onClick={() => removeSelectedMentor(name)}
+                    className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none"
+                    style={{ fontSize: "11px" }}
                   >
-                    <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                      <span
-                        className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
-                        style={
-                          isYou
-                            ? { color: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.1)" }
-                            : isJulieMsg
-                            ? { color: "#8A9BB5", backgroundColor: "rgba(138,155,181,0.1)" }
-                            : { color: "#4ADE80", backgroundColor: "rgba(74,222,128,0.1)" }
-                        }
-                      >
-                        {sender}
-                      </span>
-                      <span style={{ color: "#3A4F6A", fontSize: "10px" }}>→</span>
-                      {targets.map((t) =>
-                        t === "ALL" ? (
-                          <span
-                            key={t}
-                            className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
-                            style={{ color: "#8A9BB5", border: "1px solid #3A4F6A" }}
-                          >
-                            ALL
-                          </span>
-                        ) : (
-                          <span
-                            key={t}
-                            className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
-                            style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
-                          >
-                            {t}
-                          </span>
-                        )
-                      )}
-                    </div>
-                    <p
-                      className="text-sm leading-relaxed"
-                      style={{
-                        color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : isJulieMsg ? "#8A9BB5" : "#D0DFEE",
-                        fontStyle: msg.isThinking ? "italic" : "normal",
-                      }}
-                    >
-                      {msg.text}
-                    </p>
-                  </div>
-                );
-              })}
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           )}
-        </div>
-      </div>
-
-      <div className="px-6 py-4 border-t" style={{ borderColor: "#1B2A4A" }}>
-        {selectedMentors.length > 0 && (
-          <div className="flex gap-2 mb-2.5 flex-wrap">
-            {selectedMentors.map((name) => (
-              <span
-                key={name}
-                className="flex items-center gap-1 text-[10px] tracking-widest uppercase font-semibold px-2 py-0.5 rounded"
-                style={{
-                  color: name === "JULIE" ? "#8A9BB5" : "#C9A84C",
-                  border: `1px solid ${name === "JULIE" ? "#8A9BB5" : "#C9A84C"}`,
-                }}
-              >
-                {name}
-                <button
-                  onClick={() => removeSelectedMentor(name)}
-                  className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity leading-none"
-                  style={{ fontSize: "11px" }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
+          <div className="flex gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message... JULIE routes it to the right people."
+              className="flex-1 px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
+              style={{
+                backgroundColor: "#1B2A4A",
+                color: "#FFFFFF",
+                border: selectedMentors.length > 0 ? "1px solid rgba(201,168,76,0.5)" : "1px solid #2A3D5E",
+              }}
+            />
+            <button
+              onClick={handleSend}
+              className="px-4 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
+              style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
+            >
+              Send
+            </button>
+            <button
+              onClick={() => setShowSideNoteModal(true)}
+              className="px-4 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
+              style={{ backgroundColor: "#1B2A4A", color: "#8A9BB5", border: "1px solid #2A3D5E" }}
+            >
+              Note{sideNotes.length > 0 ? ` (${sideNotes.length})` : ""}
+            </button>
           </div>
-        )}
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your message... JULIE routes it to the right people."
-            className="flex-1 px-4 py-3 rounded-lg text-sm outline-none transition-all"
-            style={{
-              backgroundColor: "#1B2A4A",
-              color: "#FFFFFF",
-              border: selectedMentors.length > 0 ? "1px solid rgba(201,168,76,0.5)" : "1px solid #2A3D5E",
-            }}
-          />
-          <button
-            onClick={handleSend}
-            className="px-5 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
-            style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
-          >
-            Send
-          </button>
-          <button
-            onClick={() => setShowSideNoteModal(true)}
-            className="px-5 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
-            style={{ backgroundColor: "#1B2A4A", color: "#8A9BB5", border: "1px solid #2A3D5E" }}
-          >
-            Side Note{sideNotes.length > 0 ? ` (${sideNotes.length})` : ""}
-          </button>
+          <p className="text-[10px] mt-1.5" style={{ color: "#2A3D5E" }}>
+            Select mentor tiles to direct your message. JULIE always decides who speaks.
+          </p>
         </div>
-        <p className="text-xs mt-2" style={{ color: "#3A4F6A" }}>
-          Select mentor tiles to direct your message. JULIE always decides who speaks. Ask "where are we" for a summary.
-        </p>
       </div>
-    </div>
 
-      {showMemoryPanel ? (
+      {showMemoryPanel && (
         <div
           className="flex-shrink-0 flex flex-col border-l overflow-y-auto"
-          style={{ width: "220px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
+          style={{ width: "200px", minWidth: "200px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
         >
-          <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+          <div className="flex items-center justify-between px-3 py-2.5 border-b flex-shrink-0" style={{ borderColor: "#1B2A4A" }}>
             <span className="text-[9px] tracking-widest uppercase font-bold" style={{ color: "#8A9BB5" }}>Session Memory</span>
-            <button onClick={() => setShowMemoryPanel(false)} className="text-[10px] opacity-40 hover:opacity-80" style={{ color: "#8A9BB5" }}>×</button>
+            <button onClick={() => setShowMemoryPanel(false)} className="text-xs opacity-40 hover:opacity-80 leading-none" style={{ color: "#8A9BB5" }}>×</button>
           </div>
 
-          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#F87171" }}>
+          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#F87171" }}>
               Unanswered ({meetingState.openQuestions.length})
             </p>
             {meetingState.openQuestions.length === 0 ? (
@@ -1000,14 +1032,14 @@ Rules:
             ) : (
               <div className="flex flex-col gap-1">
                 {meetingState.openQuestions.slice(-5).map((q, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {q.slice(0, 60)}{q.length > 60 ? "…" : ""}</p>
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {q.slice(0, 55)}{q.length > 55 ? "…" : ""}</p>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#5A9BD3" }}>
+          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#5A9BD3" }}>
               Active Tasks ({meetingState.assignedTasks.length})
             </p>
             {meetingState.assignedTasks.length === 0 ? (
@@ -1016,7 +1048,7 @@ Rules:
               <div className="flex flex-col gap-1.5">
                 {meetingState.assignedTasks.slice(-6).map((t, i) => (
                   <div key={i}>
-                    <p className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>{t.task.slice(0, 50)}{t.task.length > 50 ? "…" : ""}</p>
+                    <p className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>{t.task.slice(0, 45)}{t.task.length > 45 ? "…" : ""}</p>
                     <p className="text-[9px]" style={{ color: "#3A4F6A" }}>→ {t.owner}</p>
                   </div>
                 ))}
@@ -1024,8 +1056,8 @@ Rules:
             )}
           </div>
 
-          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#4ADE80" }}>
+          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#4ADE80" }}>
               Decisions ({meetingState.decisionsMade.length})
             </p>
             {meetingState.decisionsMade.length === 0 ? (
@@ -1033,14 +1065,14 @@ Rules:
             ) : (
               <div className="flex flex-col gap-1">
                 {meetingState.decisionsMade.slice(-5).map((d, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {d.slice(0, 60)}{d.length > 60 ? "…" : ""}</p>
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {d.slice(0, 55)}{d.length > 55 ? "…" : ""}</p>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="px-3 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#C9A84C" }}>
+          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#C9A84C" }}>
               Active Topics
             </p>
             {meetingState.activeTopics.length === 0 ? (
@@ -1048,14 +1080,14 @@ Rules:
             ) : (
               <div className="flex flex-col gap-1">
                 {meetingState.activeTopics.slice(-4).map((t, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {t.slice(0, 55)}{t.length > 55 ? "…" : ""}</p>
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {t.slice(0, 50)}{t.length > 50 ? "…" : ""}</p>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="px-3 py-3">
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-2" style={{ color: "#8A9BB5" }}>
+          <div className="px-3 py-2.5">
+            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#8A9BB5" }}>
               Participation
             </p>
             {Object.keys(meetingState.mentorParticipation).length === 0 ? (
@@ -1074,15 +1106,6 @@ Rules:
             )}
           </div>
         </div>
-      ) : (
-        <button
-          onClick={() => setShowMemoryPanel(true)}
-          className="flex-shrink-0 flex items-center justify-center border-l hover:opacity-80 transition-opacity"
-          style={{ width: "24px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
-          title="Show session memory"
-        >
-          <span className="text-[8px] tracking-widest uppercase font-bold" style={{ color: "#2A3D5E", writingMode: "vertical-rl" }}>Memory</span>
-        </button>
       )}
     </div>
   );
