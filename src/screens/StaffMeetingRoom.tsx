@@ -186,7 +186,8 @@ export default function StaffMeetingRoom() {
   async function fetchMentorResponse(
     mentorName: string,
     userMessage: string,
-    currentMode: Mode
+    currentMode: Mode,
+    isInterrupt = false
   ): Promise<string> {
     const recent = messagesRef.current
       .filter((m) => !m.isThinking)
@@ -204,6 +205,7 @@ export default function StaffMeetingRoom() {
         message: userMessage,
         mode: currentMode,
         recentTranscript: recent,
+        isInterrupt,
       }),
     });
 
@@ -298,7 +300,8 @@ export default function StaffMeetingRoom() {
     mentor: Mentor,
     userMessage: string,
     currentMode: Mode,
-    turnId: number
+    turnId: number,
+    isInterrupt = false
   ) {
     setMentors((prev) =>
       prev.map((m) => m.id === mentor.id ? { ...m, status: "working" } : m)
@@ -314,15 +317,15 @@ export default function StaffMeetingRoom() {
 
     let responseText = "";
     try {
-      responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode);
+      responseText = await fetchMentorResponse(mentor.name, userMessage, currentMode, isInterrupt);
 
       const lastWasQuestion = recentTopics.current.length > 0 && isQuestion(recentTopics.current[recentTopics.current.length - 1]);
-      if (isTooSimilar(responseText, recentTopics.current)) {
+      if (!isInterrupt && isTooSimilar(responseText, recentTopics.current)) {
         removeMessageById(thinkingId);
         return;
       }
 
-      if (isQuestion(responseText) && lastWasQuestion) {
+      if (!isInterrupt && isQuestion(responseText) && lastWasQuestion) {
         responseText = await fetchMentorResponse(mentor.name, `${userMessage}\n\n[Instruction: Do NOT ask a question. Give a concrete suggestion or recommendation instead.]`, currentMode);
         if (isTooSimilar(responseText, recentTopics.current)) {
           removeMessageById(thinkingId);
@@ -505,12 +508,12 @@ export default function StaffMeetingRoom() {
       const doc = mentors.find((m) => m.name === "DOC");
       const cipher = mentors.find((m) => m.name === "CIPHER");
       if (doc) {
-        const riskPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Respond with a clear concern, explain what could go wrong in concrete terms, and do NOT respond with only a question.]`;
-        setTimeout(() => dispatchMentorResponse(doc, riskPrompt, currentMode, turnId), 400);
+        const riskPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Start with a firm interrupt phrase. State the specific risk immediately. Name one concrete consequence. Do not soften the message. Do not ask a question.]`;
+        setTimeout(() => dispatchMentorResponse(doc, riskPrompt, currentMode, turnId, true), 400);
       }
       if (cipher) {
-        const trustPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Respond by addressing trust, safety, and the impact on users. Be direct and specific.]`;
-        setTimeout(() => dispatchMentorResponse(cipher, trustPrompt, currentMode, turnId), 1800);
+        const trustPrompt = `${trimmed}\n\n[Instruction: This is a high-risk request. Start with a firm interrupt phrase. State how this breaks user trust and system safety. Name the user impact directly. Do not soften the message. Do not ask a question.]`;
+        setTimeout(() => dispatchMentorResponse(cipher, trustPrompt, currentMode, turnId, true), 1800);
       }
       return;
     }

@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { mentor, message, mode, recentTranscript } = await req.json();
+    const { mentor, message, mode, recentTranscript, isInterrupt } = await req.json();
 
     const profile = MENTOR_PROFILES[mentor];
     if (!profile) {
@@ -64,6 +64,18 @@ Deno.serve(async (req: Request) => {
           .join("\n")
       : "";
 
+    const interruptInstructions = isInterrupt
+      ? `\nThis is a HIGH-RISK INTERRUPT. You must:
+- Open with a firm interruption phrase such as "Hold on." or "Stop." or "Wait."
+- Immediately state the specific risk — no preamble
+- Name one concrete consequence in plain terms
+- Keep tone controlled but firm and authoritative
+- Do NOT soften the message with words like "consider", "you may want to", or "it might be helpful"
+- Do NOT ask a question
+- Do NOT only explain — assert concern first
+- Structure: [Interrupt phrase]. [Risk statement]. [Concrete consequence].`
+      : "";
+
     const systemPrompt = `You are ${mentor}, a specialist in ${profile.role}.
 ${profile.style}
 Respond only from your area of expertise.
@@ -73,7 +85,7 @@ Do not use bullet points.
 Do not speak for other mentors.
 Do not prefix your response with your name.
 If the user's message is vague, ask one clarifying question from your specialty.
-The current meeting mode is: ${mode}.`;
+The current meeting mode is: ${mode}.${interruptInstructions}`;
 
     const userContent = transcriptContext
       ? `Recent conversation:\n${transcriptContext}\n\nLatest message: ${message}`
