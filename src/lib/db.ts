@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { scanFile } from "./quarantine";
 
 export type TaskStatus = "open" | "in_progress" | "done";
 
@@ -126,6 +127,9 @@ export interface VaultFile {
   file_size: number | null;
   mime_type: string | null;
   original_name: string | null;
+  quarantine_status: "pending" | "clean" | "quarantined" | "blocked";
+  quarantine_reason: string;
+  quarantine_scanned_at: string | null;
 }
 
 function todayKey(): string {
@@ -612,8 +616,18 @@ export async function uploadFileToVault(
     linkedProjectId?: string | null;
     tags?: string[];
     summary?: string;
+    onScanProgress?: (phase: string) => void;
   } = {}
 ): Promise<VaultFile> {
+  options.onScanProgress?.("Scanning file for threats...");
+  const scanResult = await scanFile(file);
+
+  if (scanResult.status === "blocked") {
+    throw new Error(`Upload blocked: ${scanResult.reason}`);
+  }
+
+  options.onScanProgress?.("Uploading...");
+
   const ext = file.name.split(".").pop() ?? "bin";
   const storagePath = `uploads/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
   const fileType = detectFileType(file.type, file.name);
@@ -644,6 +658,9 @@ export async function uploadFileToVault(
       linked_session_id: options.linkedSessionId ?? null,
       linked_project_id: options.linkedProjectId ?? null,
       archived: false,
+      quarantine_status: scanResult.status,
+      quarantine_reason: scanResult.reason,
+      quarantine_scanned_at: scanResult.scannedAt,
     })
     .select()
     .single();
@@ -652,6 +669,22 @@ export async function uploadFileToVault(
     throw error;
   }
   return data as VaultFile;
+}
+
+export async function updateVaultFileQuarantine(
+  id: string,
+  status: "clean" | "quarantined" | "blocked",
+  reason: string
+): Promise<void> {
+  await supabase
+    .from("vault_files")
+    .update({
+      quarantine_status: status,
+      quarantine_reason: reason,
+      quarantine_scanned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
 }
 
 export function getVaultFileUrl(storagePath: string): string {

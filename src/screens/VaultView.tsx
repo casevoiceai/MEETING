@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback, DragEvent, useMemo } from "re
 import {
   Trash2, Search, Plus, Folder, FolderOpen, FileText, Check, X,
   Table, LayoutGrid, Tag, Printer, Upload, Eye, EyeOff, Link, ChevronRight,
-  Image as ImageIcon, File,
+  Image as ImageIcon, File, Shield, ShieldAlert, ShieldX,
 } from "lucide-react";
+import { getStatusColors, getStatusLabel, isAccessBlocked } from "../lib/quarantine";
 import {
   listSideNotes, deleteSideNote, saveSideNote, updateSideNote, listAllTags, upsertTags,
   listVaultFolders, createVaultFolder, renameVaultFolder, deleteVaultFolder,
@@ -571,22 +572,41 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
                 >
                   <div className="flex items-start justify-between mb-3">
                     <VaultFileIcon file={file} size={18} />
-                    <button
-                      onClick={(e) => handleDeleteFile(file.id, e)}
-                      className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-0.5 transition-opacity"
-                    >
-                      <Trash2 size={12} style={{ color: "#F87171" }} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {file.quarantine_status && file.quarantine_status !== "clean" && (() => {
+                        const qc = getStatusColors(file.quarantine_status);
+                        const QIcon = file.quarantine_status === "blocked" ? ShieldX : ShieldAlert;
+                        return (
+                          <span
+                            className="flex items-center gap-0.5 text-[8px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded"
+                            style={{ color: qc.color, backgroundColor: qc.bg, border: `1px solid ${qc.border}` }}
+                            title={file.quarantine_reason || getStatusLabel(file.quarantine_status)}
+                          >
+                            <QIcon size={8} />
+                            {getStatusLabel(file.quarantine_status)}
+                          </span>
+                        );
+                      })()}
+                      <button
+                        onClick={(e) => handleDeleteFile(file.id, e)}
+                        className="opacity-0 group-hover:opacity-60 hover:opacity-100 p-0.5 transition-opacity"
+                      >
+                        <Trash2 size={12} style={{ color: "#F87171" }} />
+                      </button>
+                    </div>
                   </div>
                   <InlineEdit
                     value={file.name}
                     onSave={(n) => handleRenameFile(file.id, n)}
                     className="block text-sm font-semibold mb-1.5 w-full"
-                    style={{ color: "#FFFFFF" }}
+                    style={{ color: isAccessBlocked(file.quarantine_status) ? "#6A7D94" : "#FFFFFF" }}
                   />
                   <p className="text-xs mb-1.5 uppercase tracking-widest font-semibold" style={{ color: DIM }}>{file.file_type ?? "note"}</p>
-                  {file.summary && (
+                  {file.summary && !isAccessBlocked(file.quarantine_status) && (
                     <p className="text-xs leading-snug mb-2 line-clamp-2" style={{ color: MUTED }}>{file.summary}</p>
+                  )}
+                  {isAccessBlocked(file.quarantine_status) && (
+                    <p className="text-xs leading-snug mb-2 italic" style={{ color: "#3A4F6A" }}>Access restricted</p>
                   )}
                   <div className="flex flex-wrap gap-1">
                     {file.tags.slice(0, 2).map((t) => <TagBadge key={t} tag={t} />)}
@@ -601,7 +621,7 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                  {["Name", "Type", "Tags", "Linked Project", "Last Updated"].map((h) => (
+                  {["Name", "Type", "Security", "Tags", "Linked Project", "Last Updated"].map((h) => (
                     <th key={h} className="text-left py-2.5 px-3 text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>{h}</th>
                   ))}
                   <th className="w-10" />
@@ -629,6 +649,22 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
                         <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.06)", color: MUTED }}>
                           {file.file_type || "note"}
                         </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        {(() => {
+                          const qc = getStatusColors(file.quarantine_status ?? "clean");
+                          const QIcon = file.quarantine_status === "blocked" ? ShieldX : file.quarantine_status === "quarantined" ? ShieldAlert : Shield;
+                          return (
+                            <span
+                              className="flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded w-fit"
+                              style={{ color: qc.color, backgroundColor: qc.bg }}
+                              title={file.quarantine_reason || undefined}
+                            >
+                              <QIcon size={9} />
+                              {getStatusLabel(file.quarantine_status ?? "clean")}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex gap-1 flex-wrap">

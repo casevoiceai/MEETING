@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { X, Download, Tag, FileText, Image as ImageIcon, File, ExternalLink, Plus, Check } from "lucide-react";
+import { X, Download, Tag, FileText, Image as ImageIcon, File, ExternalLink, Plus, Check, Shield, ShieldAlert, ShieldX, ShieldCheck } from "lucide-react";
 import { getVaultFileUrl, updateVaultFile, upsertTags, type VaultFile, type Project, type Session } from "../lib/db";
+import { isAccessBlocked, getStatusColors, getStatusLabel } from "../lib/quarantine";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -27,6 +28,29 @@ function TypeIcon({ fileType, mimeType, size = 24 }: { fileType: string; mimeTyp
   return <File size={size} style={{ color: GOLD }} />;
 }
 
+function QuarantinePanel({ status, reason, scannedAt }: { status: string; reason: string; scannedAt: string | null }) {
+  const colors = getStatusColors(status);
+  const label = getStatusLabel(status);
+  const Icon = status === "blocked" ? ShieldX : ShieldAlert;
+  return (
+    <div
+      className="flex items-start gap-3 px-4 py-3 rounded-xl"
+      style={{ backgroundColor: colors.bg, border: `1px solid ${colors.border}` }}
+    >
+      <Icon size={16} style={{ color: colors.color, flexShrink: 0, marginTop: 1 }} />
+      <div>
+        <p className="text-xs font-bold tracking-widest uppercase" style={{ color: colors.color }}>{label}</p>
+        {reason && (
+          <p className="text-[10px] mt-1 leading-relaxed" style={{ color: MUTED }}>{reason}</p>
+        )}
+        {scannedAt && (
+          <p className="text-[9px] mt-1.5" style={{ color: DIM }}>Scanned {new Date(scannedAt).toLocaleString()}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   file: VaultFile;
   projects: Project[];
@@ -47,8 +71,11 @@ export default function FilePreviewModal({ file, projects, sessions, onClose, on
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(false);
 
+  const blocked = isAccessBlocked(file.quarantine_status);
+  const statusColors = getStatusColors(file.quarantine_status ?? "clean");
+
   useEffect(() => {
-    if (file.storage_path) {
+    if (file.storage_path && !blocked) {
       const url = getVaultFileUrl(file.storage_path);
       setFileUrl(url);
       if (file.file_type === "text") {
@@ -60,7 +87,7 @@ export default function FilePreviewModal({ file, projects, sessions, onClose, on
           .finally(() => setLoadingText(false));
       }
     }
-  }, [file.storage_path, file.file_type]);
+  }, [file.storage_path, file.file_type, blocked]);
 
   function addTag() {
     const t = tagInput.trim().toLowerCase();
@@ -120,7 +147,16 @@ export default function FilePreviewModal({ file, projects, sessions, onClose, on
             <TypeIcon fileType={file.file_type} mimeType={file.mime_type} size={18} />
             <span className="text-sm font-bold tracking-wide truncate flex-1" style={{ color: "#FFFFFF" }}>{file.name}</span>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {fileUrl && (
+              {file.quarantine_status && (
+                <span
+                  className="flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
+                  style={{ color: statusColors.color, backgroundColor: statusColors.bg, border: `1px solid ${statusColors.border}` }}
+                >
+                  <Shield size={8} />
+                  {getStatusLabel(file.quarantine_status)}
+                </span>
+              )}
+              {fileUrl && !blocked && (
                 <a
                   href={fileUrl}
                   target="_blank"
@@ -133,7 +169,7 @@ export default function FilePreviewModal({ file, projects, sessions, onClose, on
                   Download
                 </a>
               )}
-              {fileUrl && (
+              {fileUrl && !blocked && (
                 <a
                   href={fileUrl}
                   target="_blank"
@@ -152,73 +188,115 @@ export default function FilePreviewModal({ file, projects, sessions, onClose, on
           </div>
 
           <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center p-4" style={{ backgroundColor: "#080F1A" }}>
-            {!fileUrl && !file.storage_path && (
-              <div className="text-center flex flex-col items-center gap-4">
-                <TypeIcon fileType={file.file_type} mimeType={file.mime_type} size={64} />
+            {blocked ? (
+              <div className="text-center flex flex-col items-center gap-5 max-w-sm">
+                {file.quarantine_status === "blocked" ? (
+                  <ShieldX size={56} style={{ color: "#F87171", opacity: 0.7 }} />
+                ) : (
+                  <ShieldAlert size={56} style={{ color: "#F59E0B", opacity: 0.7 }} />
+                )}
                 <div>
-                  <p className="text-base font-semibold" style={{ color: TEXT }}>{file.name}</p>
-                  <p className="text-xs mt-1" style={{ color: MUTED }}>No file stored — text-only entry</p>
+                  <p className="text-base font-bold" style={{ color: file.quarantine_status === "blocked" ? "#F87171" : "#F59E0B" }}>
+                    {file.quarantine_status === "blocked" ? "File Blocked" : "File Quarantined"}
+                  </p>
+                  <p className="text-sm mt-2 leading-relaxed" style={{ color: MUTED }}>
+                    {file.quarantine_status === "blocked"
+                      ? "This file has been permanently blocked. It cannot be previewed, downloaded, or shared."
+                      : "This file has been quarantined and requires manual review before it can be accessed."}
+                  </p>
+                  {file.quarantine_reason && (
+                    <p className="text-xs mt-3 px-4 py-2.5 rounded-xl leading-relaxed text-left" style={{ backgroundColor: "rgba(255,255,255,0.03)", color: "#6A7D94", border: `1px solid ${BORDER}` }}>
+                      {file.quarantine_reason}
+                    </p>
+                  )}
                 </div>
-                {file.content && (
-                  <div className="text-left w-full max-w-xl rounded-xl p-4 text-sm leading-relaxed" style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}` }}>
-                    <pre className="whitespace-pre-wrap font-mono text-xs">{file.content.slice(0, 2000)}</pre>
+                {file.quarantine_scanned_at && (
+                  <p className="text-[10px]" style={{ color: DIM }}>
+                    Scanned {new Date(file.quarantine_scanned_at).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                {!fileUrl && !file.storage_path && (
+                  <div className="text-center flex flex-col items-center gap-4">
+                    <TypeIcon fileType={file.file_type} mimeType={file.mime_type} size={64} />
+                    <div>
+                      <p className="text-base font-semibold" style={{ color: TEXT }}>{file.name}</p>
+                      <p className="text-xs mt-1" style={{ color: MUTED }}>No file stored — text-only entry</p>
+                    </div>
+                    {file.content && (
+                      <div className="text-left w-full max-w-xl rounded-xl p-4 text-sm leading-relaxed" style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}` }}>
+                        <pre className="whitespace-pre-wrap font-mono text-xs">{file.content.slice(0, 2000)}</pre>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {fileUrl && isImage && (
-              <img
-                src={fileUrl}
-                alt={file.name}
-                className="max-w-full max-h-full object-contain rounded-lg"
-                style={{ boxShadow: "0 0 40px rgba(0,0,0,0.5)" }}
-              />
-            )}
-
-            {fileUrl && isPdf && (
-              <iframe
-                src={fileUrl}
-                title={file.name}
-                className="w-full h-full rounded-lg"
-                style={{ border: "none", backgroundColor: "#fff" }}
-              />
-            )}
-
-            {fileUrl && isText && (
-              <div className="w-full h-full overflow-auto rounded-xl p-5" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
-                {loadingText ? (
-                  <p className="text-sm" style={{ color: MUTED }}>Loading content...</p>
-                ) : textContent !== null ? (
-                  <pre className="whitespace-pre-wrap text-sm leading-relaxed font-mono" style={{ color: TEXT }}>{textContent}</pre>
-                ) : (
-                  <p className="text-sm" style={{ color: MUTED }}>Could not load text content.</p>
+                {fileUrl && isImage && (
+                  <img
+                    src={fileUrl}
+                    alt={file.name}
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                    style={{ boxShadow: "0 0 40px rgba(0,0,0,0.5)" }}
+                  />
                 )}
-              </div>
-            )}
 
-            {fileUrl && isDocument && (
-              <div className="text-center flex flex-col items-center gap-5">
-                <TypeIcon fileType={file.file_type} mimeType={file.mime_type} size={64} />
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: TEXT }}>{file.name}</p>
-                  <p className="text-xs mt-1" style={{ color: MUTED }}>DOCX preview not available in browser</p>
-                </div>
-                <a
-                  href={fileUrl}
-                  download={file.original_name ?? file.name}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold tracking-wider uppercase"
-                  style={{ backgroundColor: GOLD, color: NAVY }}
-                >
-                  <Download size={14} />
-                  Download to View
-                </a>
-              </div>
+                {fileUrl && isPdf && (
+                  <iframe
+                    src={fileUrl}
+                    title={file.name}
+                    className="w-full h-full rounded-lg"
+                    style={{ border: "none", backgroundColor: "#fff" }}
+                  />
+                )}
+
+                {fileUrl && isText && (
+                  <div className="w-full h-full overflow-auto rounded-xl p-5" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
+                    {loadingText ? (
+                      <p className="text-sm" style={{ color: MUTED }}>Loading content...</p>
+                    ) : textContent !== null ? (
+                      <pre className="whitespace-pre-wrap text-sm leading-relaxed font-mono" style={{ color: TEXT }}>{textContent}</pre>
+                    ) : (
+                      <p className="text-sm" style={{ color: MUTED }}>Could not load text content.</p>
+                    )}
+                  </div>
+                )}
+
+                {fileUrl && isDocument && (
+                  <div className="text-center flex flex-col items-center gap-5">
+                    <TypeIcon fileType={file.file_type} mimeType={file.mime_type} size={64} />
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: TEXT }}>{file.name}</p>
+                      <p className="text-xs mt-1" style={{ color: MUTED }}>DOCX preview not available in browser</p>
+                    </div>
+                    <a
+                      href={fileUrl}
+                      download={file.original_name ?? file.name}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold tracking-wider uppercase"
+                      style={{ backgroundColor: GOLD, color: NAVY }}
+                    >
+                      <Download size={14} />
+                      Download to View
+                    </a>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
 
         <div className="w-72 flex-shrink-0 flex flex-col border-l overflow-y-auto" style={{ borderColor: BORDER }}>
+          {(file.quarantine_status === "quarantined" || file.quarantine_status === "blocked") && (
+            <div className="p-4 border-b" style={{ borderColor: BORDER }}>
+              <QuarantinePanel
+                status={file.quarantine_status}
+                reason={file.quarantine_reason ?? ""}
+                scannedAt={file.quarantine_scanned_at ?? null}
+              />
+            </div>
+          )}
+
           <div className="p-5 border-b" style={{ borderColor: BORDER }}>
             <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: MUTED }}>File Info</p>
             <div className="flex flex-col gap-1.5">
@@ -236,6 +314,22 @@ export default function FilePreviewModal({ file, projects, sessions, onClose, on
                 <span style={{ color: DIM }}>Uploaded</span>
                 <span style={{ color: TEXT }}>{formatDate(file.created_at)}</span>
               </div>
+              <div className="flex justify-between text-xs items-center">
+                <span style={{ color: DIM }}>Security</span>
+                <span
+                  className="flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded"
+                  style={{ color: statusColors.color, backgroundColor: statusColors.bg }}
+                >
+                  <Shield size={8} />
+                  {getStatusLabel(file.quarantine_status ?? "pending")}
+                </span>
+              </div>
+              {file.quarantine_scanned_at && (
+                <div className="flex justify-between text-xs">
+                  <span style={{ color: DIM }}>Scanned</span>
+                  <span style={{ color: DIM }}>{new Date(file.quarantine_scanned_at).toLocaleDateString()}</span>
+                </div>
+              )}
             </div>
           </div>
 

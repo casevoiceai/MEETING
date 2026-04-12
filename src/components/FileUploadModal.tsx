@@ -1,6 +1,7 @@
 import { useState, useRef, DragEvent } from "react";
-import { Upload, X, File, Image, FileText, Plus } from "lucide-react";
+import { Upload, X, File, Image, FileText, Plus, Shield, ShieldAlert, ShieldX, ShieldCheck } from "lucide-react";
 import { uploadFileToVault, type VaultFile, type VaultFolder, type Project } from "../lib/db";
+import { getStatusColors, getStatusLabel, type QuarantineStatus } from "../lib/quarantine";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -32,6 +33,16 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function ScanStatusIcon({ status }: { status: QuarantineStatus | null }) {
+  if (!status) return <Shield size={14} style={{ color: MUTED }} />;
+  switch (status) {
+    case "clean":       return <ShieldCheck size={14} style={{ color: "#4ADE80" }} />;
+    case "quarantined": return <ShieldAlert size={14} style={{ color: "#F59E0B" }} />;
+    case "blocked":     return <ShieldX size={14} style={{ color: "#F87171" }} />;
+    default:            return <Shield size={14} style={{ color: MUTED }} />;
+  }
+}
+
 interface Props {
   onClose: () => void;
   onUploaded: (file: VaultFile) => void;
@@ -60,6 +71,8 @@ export default function FileUploadModal({
   const [folderId, setFolderId] = useState<string | null>(defaultFolderId);
   const [projectId, setProjectId] = useState<string | null>(defaultProjectId);
   const [uploading, setUploading] = useState(false);
+  const [scanPhase, setScanPhase] = useState<string | null>(null);
+  const [scanResult, setScanResult] = useState<{ status: QuarantineStatus; reason: string } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -77,6 +90,8 @@ export default function FileUploadModal({
     const err = validateFile(file);
     if (err) { setFileError(err); setSelectedFile(null); return; }
     setFileError(null);
+    setScanResult(null);
+    setUploadError(null);
     setSelectedFile(file);
   }
 
@@ -96,6 +111,8 @@ export default function FileUploadModal({
     if (!selectedFile) return;
     setUploading(true);
     setUploadError(null);
+    setScanResult(null);
+    setScanPhase("Scanning file for threats...");
     try {
       const record = await uploadFileToVault(selectedFile, {
         folderId,
@@ -103,15 +120,33 @@ export default function FileUploadModal({
         linkedProjectId: projectId,
         tags,
         summary,
+        onScanProgress: (phase) => setScanPhase(phase),
       });
+
+      setScanResult({ status: record.quarantine_status, reason: record.quarantine_reason });
+
+      if (record.quarantine_status === "blocked") {
+        setUploadError(`File blocked: ${record.quarantine_reason}`);
+        setUploading(false);
+        setScanPhase(null);
+        return;
+      }
+
       onUploaded(record);
       onClose();
     } catch (e) {
-      setUploadError(e instanceof Error ? e.message : "Upload failed");
+      const msg = e instanceof Error ? e.message : "Upload failed";
+      setUploadError(msg);
+      if (msg.toLowerCase().includes("blocked")) {
+        setScanResult({ status: "blocked", reason: msg });
+      }
     } finally {
       setUploading(false);
+      setScanPhase(null);
     }
   }
+
+  const scanColors = scanResult ? getStatusColors(scanResult.status) : null;
 
   return (
     <div
@@ -130,9 +165,15 @@ export default function FileUploadModal({
             </div>
             <h2 className="text-base font-bold tracking-wide" style={{ color: "#FFFFFF" }}>Upload File</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:opacity-70 transition-opacity">
-            <X size={16} style={{ color: MUTED }} />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-lg" style={{ backgroundColor: "rgba(201,168,76,0.06)", color: MUTED, border: `1px solid ${BORDER}` }}>
+              <Shield size={10} style={{ color: GOLD }} />
+              Malware Scan Active
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:opacity-70 transition-opacity">
+              <X size={16} style={{ color: MUTED }} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
@@ -159,7 +200,7 @@ export default function FileUploadModal({
                 <button
                   className="text-xs px-3 py-1 rounded-lg"
                   style={{ backgroundColor: BORDER, color: MUTED }}
-                  onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
+                  onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setScanResult(null); }}
                 >
                   Change file
                 </button>
@@ -188,6 +229,30 @@ export default function FileUploadModal({
             <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "#F87171" }}>
               {fileError}
             </p>
+          )}
+
+          {scanPhase && (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg" style={{ backgroundColor: "rgba(201,168,76,0.06)", border: `1px solid rgba(201,168,76,0.2)` }}>
+              <div className="w-3.5 h-3.5 border-2 rounded-full animate-spin flex-shrink-0" style={{ borderColor: `rgba(201,168,76,0.2)`, borderTopColor: GOLD }} />
+              <p className="text-xs font-semibold" style={{ color: GOLD }}>{scanPhase}</p>
+            </div>
+          )}
+
+          {scanResult && !scanPhase && (
+            <div
+              className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg"
+              style={{ backgroundColor: scanColors?.bg, border: `1px solid ${scanColors?.border}` }}
+            >
+              <ScanStatusIcon status={scanResult.status} />
+              <div className="min-w-0">
+                <p className="text-xs font-bold tracking-widest uppercase" style={{ color: scanColors?.color }}>
+                  {getStatusLabel(scanResult.status)}
+                </p>
+                {scanResult.reason && (
+                  <p className="text-[10px] mt-0.5 leading-relaxed" style={{ color: MUTED }}>{scanResult.reason}</p>
+                )}
+              </div>
+            </div>
           )}
 
           <div>
@@ -265,9 +330,10 @@ export default function FileUploadModal({
           )}
 
           {uploadError && (
-            <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "#F87171" }}>
-              {uploadError}
-            </p>
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}>
+              <ShieldX size={13} style={{ color: "#F87171", flexShrink: 0, marginTop: 1 }} />
+              <p className="text-xs" style={{ color: "#F87171" }}>{uploadError}</p>
+            </div>
           )}
         </div>
 
@@ -288,12 +354,12 @@ export default function FileUploadModal({
             {uploading ? (
               <>
                 <div className="w-3.5 h-3.5 border-2 rounded-full animate-spin" style={{ borderColor: `${NAVY}40`, borderTopColor: NAVY }} />
-                Uploading...
+                {scanPhase ? "Scanning..." : "Uploading..."}
               </>
             ) : (
               <>
-                <Upload size={14} />
-                Upload File
+                <Shield size={14} />
+                Scan & Upload
               </>
             )}
           </button>
