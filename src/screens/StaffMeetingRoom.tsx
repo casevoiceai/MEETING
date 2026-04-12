@@ -17,6 +17,18 @@ interface Mentor {
   hasTask: boolean;
 }
 
+interface MeetingState {
+  openQuestions: string[];
+  answeredQuestions: { question: string; answer: string }[];
+  assignedTasks: { task: string; owner: string }[];
+  unresolvedTopics: string[];
+  activeTopics: string[];
+  decisionsMade: string[];
+  pendingDecisions: string[];
+  mentorParticipation: Record<string, number>;
+  droppedIdeas: string[];
+}
+
 interface Message {
   id: number;
   text: string;
@@ -33,7 +45,20 @@ const INITIAL_MENTORS: Mentor[] = [
   { id: "tech9",   name: "TECHGUY", status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.5,  commentWeight: 0.7, riskSensitivity: 0.7,  lastRespondedTurn: null, hasTask: false },
   { id: "sam",     name: "SAM",     status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.4,  commentWeight: 0.6, riskSensitivity: 0.6,  lastRespondedTurn: null, hasTask: false },
   { id: "cipher",  name: "CIPHER",  status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.85, commentWeight: 0.6, riskSensitivity: 1.0,  lastRespondedTurn: null, hasTask: false },
+  { id: "julie",   name: "JULIE",   status: "idle", hasComment: false, hasInterrupt: false, interruptWeight: 0.0,  commentWeight: 0.0, riskSensitivity: 0.0,  lastRespondedTurn: null, hasTask: false },
 ];
+
+const INITIAL_MEETING_STATE: MeetingState = {
+  openQuestions: [],
+  answeredQuestions: [],
+  assignedTasks: [],
+  unresolvedTopics: [],
+  activeTopics: [],
+  decisionsMade: [],
+  pendingDecisions: [],
+  mentorParticipation: {},
+  droppedIdeas: [],
+};
 
 const STATUS_STYLES: Record<MentorStatus, React.CSSProperties> = {
   idle:     { backgroundColor: "#1B2A4A", color: "#FFFFFF" },
@@ -79,7 +104,7 @@ function selectOpenFloorMentors(lastSpeaker: string | null, messageText: string)
   const lower = messageText.toLowerCase();
 
   const scored = OPEN_FLOOR_MENTOR_DOMAINS
-    .filter((m) => m.name !== "PREZ" && m.name !== lastSpeaker)
+    .filter((m) => m.name !== "PREZ" && m.name !== "JULIE" && m.name !== lastSpeaker)
     .map((m) => ({
       name: m.name,
       score: m.keywords.filter((k) => lower.includes(k)).length,
@@ -156,12 +181,14 @@ export default function StaffMeetingRoom() {
   const [usedTags, setUsedTags] = useState<string[]>([]);
   const [showSideNoteModal, setShowSideNoteModal] = useState(false);
   const [selectedMentors, setSelectedMentors] = useState<string[]>([]);
+  const [meetingState, setMeetingState] = useState<MeetingState>(INITIAL_MEETING_STATE);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const msgCounter = useRef(0);
   const currentTurnId = useRef(0);
   const messagesRef = useRef<Message[]>([]);
   const mentorsRef = useRef<Mentor[]>(INITIAL_MENTORS);
+  const meetingStateRef = useRef<MeetingState>(INITIAL_MEETING_STATE);
   const recentTopics = useRef<string[]>([]);
   const highRiskTurnId = useRef<number | null>(null);
 
@@ -172,6 +199,66 @@ export default function StaffMeetingRoom() {
   useEffect(() => {
     mentorsRef.current = mentors;
   }, [mentors]);
+
+  useEffect(() => {
+    meetingStateRef.current = meetingState;
+  }, [meetingState]);
+
+  function trackMentorTurn(mentorName: string) {
+    setMeetingState((prev) => ({
+      ...prev,
+      mentorParticipation: {
+        ...prev.mentorParticipation,
+        [mentorName]: (prev.mentorParticipation[mentorName] ?? 0) + 1,
+      },
+    }));
+  }
+
+  function trackUserMessage(text: string) {
+    if (!text.trimEnd().endsWith("?")) return;
+    setMeetingState((prev) => ({
+      ...prev,
+      openQuestions: [...prev.openQuestions, text],
+    }));
+  }
+
+  function markQuestionAnswered(question: string, answer: string) {
+    setMeetingState((prev) => ({
+      ...prev,
+      openQuestions: prev.openQuestions.filter((q) => q !== question),
+      answeredQuestions: [...prev.answeredQuestions, { question, answer }],
+    }));
+  }
+
+  function trackActiveTopic(text: string) {
+    const topic = text.slice(0, 80);
+    setMeetingState((prev) => {
+      if (prev.activeTopics.includes(topic)) return prev;
+      return { ...prev, activeTopics: [...prev.activeTopics.slice(-4), topic] };
+    });
+  }
+
+  function trackDroppedIdea(text: string) {
+    const idea = text.slice(0, 80);
+    setMeetingState((prev) => ({
+      ...prev,
+      droppedIdeas: [...prev.droppedIdeas.slice(-9), idea],
+    }));
+  }
+
+  function trackAssignedTask(task: string, owner: string) {
+    setMeetingState((prev) => ({
+      ...prev,
+      assignedTasks: [...prev.assignedTasks, { task, owner }],
+    }));
+  }
+
+  function isSummaryRequest(text: string): boolean {
+    const lower = text.toLowerCase();
+    return ["summary", "where are we", "recap", "what have we decided", "what's open", "status check"].some(
+      (k) => lower.includes(k)
+    );
+  }
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -230,20 +317,26 @@ export default function StaffMeetingRoom() {
       .slice(-8)
       .map((m) => ({ speaker: m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR"), text: m.text }));
 
+    const body: Record<string, unknown> = {
+      mentor: mentorName,
+      message: userMessage,
+      mode: currentMode,
+      recentTranscript: recent,
+      isInterrupt,
+      isOpenFloor,
+    };
+
+    if (mentorName === "JULIE") {
+      body.meetingState = meetingStateRef.current;
+    }
+
     const res = await fetch(`${SUPABASE_URL}/functions/v1/mentor-response`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({
-        mentor: mentorName,
-        message: userMessage,
-        mode: currentMode,
-        recentTranscript: recent,
-        isInterrupt,
-        isOpenFloor,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -263,7 +356,7 @@ export default function StaffMeetingRoom() {
 
     const currentMentors = mentorsRef.current;
     const otherMentors = currentMentors.filter(
-      (m) => m.name !== originalMentorName && m.status === "idle"
+      (m) => m.name !== originalMentorName && m.name !== "JULIE" && m.status === "idle"
     );
     if (otherMentors.length === 0) return;
 
@@ -372,6 +465,15 @@ export default function StaffMeetingRoom() {
       }
 
       recentTopics.current = [...recentTopics.current, responseText.toLowerCase()].slice(-3);
+      trackMentorTurn(mentor.name);
+
+      const openQs = meetingStateRef.current.openQuestions;
+      if (openQs.length > 0) {
+        const matched = openQs.find((q) =>
+          responseText.toLowerCase().includes(q.toLowerCase().slice(0, 30))
+        );
+        if (matched) markQuestionAnswered(matched, responseText);
+      }
 
       removeMessageById(thinkingId);
       addMessage(`${mentor.name}: ${responseText}`, "mentor", mentor.name, ["YOU"]);
@@ -419,7 +521,7 @@ export default function StaffMeetingRoom() {
     type SignalResult = { id: string; hasInterrupt: boolean; hasComment: boolean };
 
     const eligibleMentors = targetMentors.filter(
-      (m) => m.lastRespondedTurn !== turnId
+      (m) => m.lastRespondedTurn !== turnId && m.name !== "JULIE"
     );
 
     if (eligibleMentors.length === 0) return;
@@ -546,6 +648,26 @@ export default function StaffMeetingRoom() {
     setSelectedMentors([]);
     setInput("");
 
+    trackUserMessage(trimmed);
+    trackActiveTopic(trimmed);
+
+    const state = meetingStateRef.current;
+    if (state.activeTopics.length > 2) {
+      const maybeDrop = state.activeTopics[0];
+      const recentText = messagesRef.current
+        .filter((m) => !m.isThinking)
+        .slice(-6)
+        .map((m) => m.text.toLowerCase())
+        .join(" ");
+      if (!recentText.includes(maybeDrop.toLowerCase().slice(0, 20))) {
+        trackDroppedIdea(maybeDrop);
+        setMeetingState((prev) => ({
+          ...prev,
+          activeTopics: prev.activeTopics.filter((t) => t !== maybeDrop),
+        }));
+      }
+    }
+
     if (isHighRisk(trimmed)) {
       highRiskTurnId.current = turnId;
       const doc = mentors.find((m) => m.name === "DOC");
@@ -569,6 +691,15 @@ export default function StaffMeetingRoom() {
 
     if (taskMentorName) {
       assignMentor(taskMentorName);
+      trackAssignedTask(trimmed, taskMentorName);
+    }
+
+    if (isSummaryRequest(trimmed)) {
+      const julie = mentors.find((m) => m.name === "JULIE");
+      if (julie) {
+        setTimeout(() => dispatchMentorResponse(julie, trimmed, currentMode, turnId), 400);
+        return;
+      }
     }
 
     const isOpenFloor = OPEN_FLOOR_TRIGGERS.some((trigger) =>
@@ -659,9 +790,44 @@ export default function StaffMeetingRoom() {
         <p className="text-xs tracking-widest uppercase mb-3" style={{ color: "#8A9BB5" }}>
           Mentors
         </p>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-7">
           {mentors.map((mentor) => {
             const isSelected = selectedMentors.includes(mentor.name);
+            const isJulie = mentor.name === "JULIE";
+
+            if (isJulie) {
+              return (
+                <button
+                  key={mentor.id}
+                  onClick={() => handleMentorClick(mentor)}
+                  className={[
+                    "aspect-square flex flex-col items-center justify-center rounded-lg transition-all duration-200 hover:opacity-90 active:scale-95 relative overflow-hidden",
+                    mentor.status === "working" ? "animate-pulse" : "",
+                  ].join(" ")}
+                  style={{
+                    backgroundColor: "#111D30",
+                    border: isSelected ? "1px solid #8A9BB5" : "1px solid #1B2A4A",
+                    boxShadow: isSelected ? "0 0 10px 2px rgba(138,155,181,0.2)" : "none",
+                  }}
+                  title="JULIE — Bridge Host. Ask for a summary or select to route."
+                >
+                  <span
+                    className="absolute top-2 right-2 w-2 h-2 rounded-full"
+                    style={{ backgroundColor: mentor.status === "working" ? "#60AEFF" : "#2A3D5E" }}
+                  />
+                  <span className="text-xs font-bold tracking-widest leading-none" style={{ color: "#8A9BB5" }}>
+                    JULIE
+                  </span>
+                  <span
+                    className="mt-1.5 text-[9px] tracking-widest uppercase font-medium"
+                    style={{ color: "#3A4F6A" }}
+                  >
+                    HOST
+                  </span>
+                </button>
+              );
+            }
+
             return (
               <button
                 key={mentor.id}
