@@ -10,6 +10,7 @@ import EmailView from "./screens/EmailView";
 import IntegrationsView from "./screens/IntegrationsView";
 import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
 import { getPendingCount } from "./lib/approval";
+import OfflineStatusBar from "./components/OfflineStatusBar";
 
 type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations";
 
@@ -169,6 +170,8 @@ export default function App() {
               </span>
             )}
           </div>
+
+          <OfflineStatusBar />
 
           <button
             onClick={() => setSearchOpen(true)}
