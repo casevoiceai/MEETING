@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect } from "react";
-import { X, Tag, ChevronDown } from "lucide-react";
-
-const MENTOR_OPTIONS = ["PREZ", "JAMISON", "DOC", "TECHGUY", "SAM", "CIPHER"];
+import { useState, useRef, useEffect, useMemo } from "react";
+import { X, Tag } from "lucide-react";
+import { ALL_MENTOR_NAMES, FALLBACK_MENTOR_NAMES } from "../lib/mentors";
 
 export interface SideNote {
   text: string;
@@ -16,15 +15,110 @@ interface SideNoteModalProps {
   onClose: () => void;
 }
 
+function MentorPickerModal({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const mentorList = useMemo(() => {
+    try {
+      return ALL_MENTOR_NAMES.length ? ALL_MENTOR_NAMES : FALLBACK_MENTOR_NAMES;
+    } catch {
+      return FALLBACK_MENTOR_NAMES;
+    }
+  }, []);
+
+  const filtered = useMemo(
+    () => mentorList.filter((m) => m.toLowerCase().includes(query.toLowerCase()) && !selected.includes(m)),
+    [mentorList, query, selected]
+  );
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function toggle(name: string) {
+    onChange(selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className="flex flex-wrap gap-1.5 px-3 py-2 rounded-xl cursor-text min-h-[42px]"
+        style={{
+          backgroundColor: "rgba(255,255,255,0.35)",
+          border: `1px solid ${open ? "#B8943C" : "#D6C47A"}`,
+        }}
+        onClick={() => setOpen(true)}
+      >
+        {selected.map((m) => (
+          <span
+            key={m}
+            className="inline-flex items-center gap-1 text-xs font-bold tracking-widest uppercase px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: "#C9A84C33", color: "#3A2D00", border: "1px solid #C9A84C66" }}
+          >
+            {m}
+            <button
+              onClick={(e) => { e.stopPropagation(); toggle(m); }}
+              className="opacity-60 hover:opacity-100 leading-none"
+            >×</button>
+          </span>
+        ))}
+        <input
+          className="bg-transparent outline-none text-sm flex-1 min-w-[80px]"
+          style={{ color: "#1B1B1B" }}
+          placeholder={selected.length === 0 ? "Tag mentors..." : ""}
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+        />
+      </div>
+
+      {open && (
+        <div
+          className="absolute z-50 left-0 right-0 mt-1 rounded-xl overflow-hidden shadow-2xl"
+          style={{ backgroundColor: "#EDD98A", border: "1px solid #D6C47A", maxHeight: "200px", overflowY: "auto" }}
+        >
+          {filtered.length === 0 && (
+            <p className="px-4 py-2.5 text-xs" style={{ color: "#5A4E00" }}>
+              {query ? "No match." : "All mentors selected."}
+            </p>
+          )}
+          {filtered.map((name) => (
+            <button
+              key={name}
+              onMouseDown={(e) => { e.preventDefault(); toggle(name); setQuery(""); }}
+              className="w-full text-left px-4 py-2.5 text-sm font-bold tracking-widest uppercase transition-colors hover:bg-yellow-200"
+              style={{ color: "#1B1B1B" }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SideNoteModal({ usedTags, onSave, onClose }: SideNoteModalProps) {
   const [text, setText] = useState("");
   const [selectedMentors, setSelectedMentors] = useState<string[]>([]);
-  const [mentorDropdownOpen, setMentorDropdownOpen] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagSuggestOpen, setTagSuggestOpen] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
-  const mentorRef = useRef<HTMLDivElement>(null);
   const tagSuggestRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,9 +127,6 @@ export default function SideNoteModal({ usedTags, onSave, onClose }: SideNoteMod
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (mentorRef.current && !mentorRef.current.contains(e.target as Node)) {
-        setMentorDropdownOpen(false);
-      }
       if (tagSuggestRef.current && !tagSuggestRef.current.contains(e.target as Node)) {
         setTagSuggestOpen(false);
       }
@@ -43,12 +134,6 @@ export default function SideNoteModal({ usedTags, onSave, onClose }: SideNoteMod
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  function toggleMentor(name: string) {
-    setSelectedMentors((prev) =>
-      prev.includes(name) ? prev.filter((m) => m !== name) : [...prev, name]
-    );
-  }
 
   function addTag(raw: string) {
     const cleaned = raw.trim().replace(/\s+/g, "_").toUpperCase();
@@ -101,7 +186,7 @@ export default function SideNoteModal({ usedTags, onSave, onClose }: SideNoteMod
           backgroundImage: "linear-gradient(to bottom, transparent 95%, rgba(0,0,0,0.05) 96%)",
           backgroundSize: "100% 28px",
           fontFamily: "'Inter', sans-serif",
-          minHeight: "420px",
+          minHeight: "440px",
         }}
       >
         <div className="flex items-center justify-between">
@@ -110,7 +195,7 @@ export default function SideNoteModal({ usedTags, onSave, onClose }: SideNoteMod
           </span>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-full transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:bg-black/10"
             style={{ color: "#1B1B1B" }}
           >
             <X size={16} />
@@ -132,46 +217,7 @@ export default function SideNoteModal({ usedTags, onSave, onClose }: SideNoteMod
           }}
         />
 
-        <div ref={mentorRef} className="relative">
-          <button
-            onClick={() => setMentorDropdownOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm transition-colors"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.35)",
-              color: "#1B1B1B",
-              border: "1px solid #D6C47A",
-            }}
-          >
-            <span>
-              {selectedMentors.length === 0 ? "Tag mentors..." : selectedMentors.join(", ")}
-            </span>
-            <ChevronDown size={14} style={{ color: "#5A4E00" }} />
-          </button>
-          {mentorDropdownOpen && (
-            <div
-              className="absolute left-0 right-0 top-full mt-1 rounded-xl overflow-hidden z-10"
-              style={{
-                backgroundColor: "#EDD98A",
-                border: "1px solid #D6C47A",
-                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-              }}
-            >
-              {MENTOR_OPTIONS.map((name) => (
-                <button
-                  key={name}
-                  onClick={() => toggleMentor(name)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-left transition-colors hover:bg-yellow-200"
-                  style={{ color: "#1B1B1B" }}
-                >
-                  <span>{name}</span>
-                  {selectedMentors.includes(name) && (
-                    <span className="text-xs font-bold" style={{ color: "#5A4E00" }}>✓</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <MentorPickerModal selected={selectedMentors} onChange={setSelectedMentors} />
 
         <div ref={tagSuggestRef} className="relative">
           <div

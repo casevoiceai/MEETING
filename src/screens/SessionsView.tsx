@@ -11,7 +11,7 @@ const DIM = "#3A4F6A";
 const TEXT = "#D0DFEE";
 
 interface Props {
-  onOpenSession: (key: string) => void;
+  onOpenSession: (key: string) => void | Promise<void>;
 }
 
 interface SessionData {

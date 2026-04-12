@@ -455,6 +455,19 @@ export default function ProjectsView() {
         )}
 
         {loading && <p className="text-xs px-4 py-3" style={{ color: DIM }}>Loading...</p>}
+        {!loading && projects.length === 0 && (
+          <div className="px-4 py-6 flex flex-col items-center gap-3">
+            <p className="text-xs text-center" style={{ color: DIM }}>No projects yet.</p>
+            <button
+              onClick={() => setCreating(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-90"
+              style={{ backgroundColor: GOLD, color: NAVY }}
+            >
+              <Plus size={12} />
+              Create First
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto py-2">
           {projects.map((p) => (

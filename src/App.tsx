@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Search } from "lucide-react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import SessionsView from "./screens/SessionsView";
 import VaultView from "./screens/VaultView";
 import TagsView from "./screens/TagsView";
 import ProjectsView from "./screens/ProjectsView";
-import { getOrCreateSession, type Session } from "./lib/db";
+import GlobalSearch from "./screens/GlobalSearch";
+import { getOrCreateSession, loadSession, type Session, type SearchResult } from "./lib/db";
 
 type View = "meeting" | "sessions" | "vault" | "tags" | "projects";
 
@@ -23,7 +25,7 @@ function NavButton({ active, onClick, children }: { active: boolean; onClick: ()
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="px-4 py-2 text-sm font-bold tracking-wider uppercase rounded-lg transition-all"
+      className="px-5 py-2.5 text-sm font-bold tracking-wider uppercase rounded-lg transition-all"
       style={
         active
           ? { backgroundColor: "#1B2A4A", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.3)" }
@@ -40,21 +42,57 @@ function NavButton({ active, onClick, children }: { active: boolean; onClick: ()
 export default function App() {
   const [view, setView] = useState<View>("meeting");
   const [session, setSession] = useState<Session | null>(null);
+  const [sessionKey, setSessionKey] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
-    getOrCreateSession().then(setSession).catch(() => {});
+    getOrCreateSession().then((s) => {
+      setSession(s);
+      setSessionKey(s.session_key);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, []);
+
+  const handleOpenSession = useCallback(async (key: string) => {
+    const result = await loadSession(key);
+    if (result) {
+      setSession(result.session);
+      setSessionKey(key);
+    }
+    setView("meeting");
+  }, []);
+
+  const handleSearchNavigate = useCallback((type: SearchResult["type"], id: string) => {
+    const viewMap: Record<SearchResult["type"], View> = {
+      file: "vault",
+      note: "vault",
+      tag: "tags",
+      session: "sessions",
+      project: "projects",
+    };
+    setView(viewMap[type]);
   }, []);
 
   return (
     <div
       className="min-h-screen flex flex-col"
-      style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif", fontSize: "15px" }}
+      style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif", fontSize: "16px" }}
     >
       <div
-        className="flex items-center gap-1.5 px-6 py-3 border-b flex-shrink-0"
+        className="flex items-center gap-1.5 px-6 py-3.5 border-b flex-shrink-0"
         style={{ borderColor: "#1B2A4A" }}
       >
-        <span className="text-sm font-bold tracking-widest uppercase mr-5" style={{ color: "#C9A84C" }}>
+        <span className="text-sm font-bold tracking-widest uppercase mr-6" style={{ color: "#C9A84C" }}>
           MyStatement_AI
         </span>
         {NAV_ITEMS.map((item) => (
@@ -66,7 +104,17 @@ export default function App() {
             {item.label}
           </NavButton>
         ))}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm transition-all hover:opacity-80"
+            style={{ backgroundColor: "#111D30", color: "#8A9BB5", border: "1px solid #1B2A4A" }}
+            title="Search (Ctrl+K)"
+          >
+            <Search size={13} />
+            <span className="text-xs tracking-wider">Search</span>
+            <kbd className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "#1B2A4A", color: "#3A4F6A" }}>⌘K</kbd>
+          </button>
           {session && (
             <span className="text-xs tracking-widest uppercase" style={{ color: "#3A4F6A" }}>
               {session.session_key}
@@ -76,12 +124,19 @@ export default function App() {
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">
-        {view === "meeting" && <StaffMeetingRoom sessionId={session?.id ?? null} />}
-        {view === "sessions" && <SessionsView onOpenSession={() => setView("meeting")} />}
+        {view === "meeting" && <StaffMeetingRoom sessionId={session?.id ?? null} sessionKey={sessionKey} />}
+        {view === "sessions" && <SessionsView onOpenSession={handleOpenSession} />}
         {view === "vault" && <VaultView />}
         {view === "tags" && <TagsView />}
         {view === "projects" && <ProjectsView />}
       </div>
+
+      {searchOpen && (
+        <GlobalSearch
+          onNavigate={handleSearchNavigate}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   );
 }

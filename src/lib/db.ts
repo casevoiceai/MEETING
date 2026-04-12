@@ -474,3 +474,64 @@ export async function updateVaultFile(
 export async function deleteVaultFile(id: string): Promise<void> {
   await supabase.from("vault_files").delete().eq("id", id);
 }
+
+export async function updateSession(
+  sessionId: string,
+  patch: Partial<Pick<Session, "session_summary" | "key_topics" | "mentors_involved">>
+): Promise<void> {
+  await supabase.from("sessions").update(patch).eq("id", sessionId);
+}
+
+export interface SearchResult {
+  type: "file" | "note" | "tag" | "session" | "project";
+  id: string;
+  title: string;
+  subtitle?: string;
+  tags?: string[];
+}
+
+export async function globalSearch(query: string): Promise<SearchResult[]> {
+  if (!query.trim()) return [];
+  const q = query.toLowerCase();
+  const results: SearchResult[] = [];
+
+  const [files, notes, tags, sessions, projects] = await Promise.all([
+    supabase.from("vault_files").select("id,name,summary,tags").eq("archived", false),
+    supabase.from("side_notes").select("id,text,tags,mentors").eq("archived", false),
+    supabase.from("tag_registry").select("id,tag,category,usage_count"),
+    supabase.from("sessions").select("id,session_key,session_date,session_summary").eq("archived", false),
+    supabase.from("projects").select("id,name,slug").eq("archived", false),
+  ]);
+
+  (files.data ?? []).forEach((f: { id: string; name: string; summary: string; tags: string[] }) => {
+    if (f.name?.toLowerCase().includes(q) || f.summary?.toLowerCase().includes(q) || (f.tags ?? []).some((t: string) => t.toLowerCase().includes(q))) {
+      results.push({ type: "file", id: f.id, title: f.name, subtitle: f.summary?.slice(0, 80) || undefined, tags: f.tags });
+    }
+  });
+
+  (notes.data ?? []).forEach((n: { id: string; text: string; tags: string[]; mentors: string[] }) => {
+    if (n.text?.toLowerCase().includes(q) || (n.tags ?? []).some((t: string) => t.toLowerCase().includes(q)) || (n.mentors ?? []).some((m: string) => m.toLowerCase().includes(q))) {
+      results.push({ type: "note", id: n.id, title: n.text.slice(0, 80), subtitle: (n.mentors ?? []).join(", ") || undefined, tags: n.tags });
+    }
+  });
+
+  (tags.data ?? []).forEach((t: { id: string; tag: string; category: string; usage_count: number }) => {
+    if (t.tag?.toLowerCase().includes(q)) {
+      results.push({ type: "tag", id: t.id, title: t.tag, subtitle: `${t.category} · ${t.usage_count} uses` });
+    }
+  });
+
+  (sessions.data ?? []).forEach((s: { id: string; session_key: string; session_date: string; session_summary: string }) => {
+    if (s.session_key?.toLowerCase().includes(q) || s.session_summary?.toLowerCase().includes(q)) {
+      results.push({ type: "session", id: s.id, title: s.session_key, subtitle: s.session_summary?.slice(0, 80) || undefined });
+    }
+  });
+
+  (projects.data ?? []).forEach((p: { id: string; name: string; slug: string }) => {
+    if (p.name?.toLowerCase().includes(q) || p.slug?.toLowerCase().includes(q)) {
+      results.push({ type: "project", id: p.id, title: p.name });
+    }
+  });
+
+  return results;
+}

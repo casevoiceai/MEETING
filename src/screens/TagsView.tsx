@@ -82,7 +82,7 @@ function TagDetail({ tag, onBack }: TagDetailProps) {
               <FileText size={13} />
               Files ({files.length})
             </p>
-            {files.length === 0 && <p className="text-sm" style={{ color: DIM }}>No files tagged with this.</p>}
+            {files.length === 0 && <p className="text-sm px-4 py-3 rounded-xl" style={{ color: DIM, backgroundColor: CARD, border: `1px solid ${BORDER}` }}>No files tagged with this. Tag a file in the Vault to see it here.</p>}
             <div className="flex flex-col gap-2">
               {files.map((f) => (
                 <div key={f.id} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
@@ -102,7 +102,7 @@ function TagDetail({ tag, onBack }: TagDetailProps) {
               <AlignLeft size={13} />
               Notes ({notes.length})
             </p>
-            {notes.length === 0 && <p className="text-sm" style={{ color: DIM }}>No notes tagged with this.</p>}
+            {notes.length === 0 && <p className="text-sm px-4 py-3 rounded-xl" style={{ color: DIM, backgroundColor: CARD, border: `1px solid ${BORDER}` }}>No notes tagged with this. Add a tag to a side note to see it here.</p>}
             <div className="flex flex-col gap-2">
               {notes.map((n) => (
                 <div key={n.id} className="px-4 py-3 rounded-xl" style={{ backgroundColor: CARD, border: `1px solid ${BORDER}` }}>

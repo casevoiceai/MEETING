@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
-import { upsertTranscript, upsertJulieReport, saveSideNote, upsertTags, type TranscriptMessage } from "../lib/db";
+import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, type TranscriptMessage } from "../lib/db";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
 
 type MentorStatus = "idle" | "assigned" | "working" | "ready" | "blocked";
@@ -206,9 +206,10 @@ function isAnyoneElse(text: string): boolean {
 
 interface Props {
   sessionId: string | null;
+  sessionKey?: string | null;
 }
 
-export default function StaffMeetingRoom({ sessionId }: Props) {
+export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
   const [mentors, setMentors] = useState<Mentor[]>(INITIAL_MENTORS);
   const [mode, setMode] = useState<Mode>("brainstorm");
   const [input, setInput] = useState("");
@@ -256,6 +257,12 @@ export default function StaffMeetingRoom({ sessionId }: Props) {
       pending_decisions: s.pendingDecisions,
       mentor_participation: s.mentorParticipation,
       dropped_ideas: s.droppedIdeas,
+    }).catch(() => {});
+    const mentorsInvolved = Object.keys(s.mentorParticipation).filter((k) => (s.mentorParticipation[k] ?? 0) > 0);
+    const topicsSummary = [...s.decisionsMade.slice(0, 2), ...s.activeTopics.slice(0, 3)];
+    updateSession(sessionId, {
+      mentors_involved: mentorsInvolved,
+      key_topics: topicsSummary,
     }).catch(() => {});
   }, [sessionId]);
 
@@ -942,10 +949,11 @@ Rules:
                         )}
                       </div>
                       <p
-                        className="text-sm leading-relaxed"
+                        className="leading-relaxed"
                         style={{
-                          color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : isJulieMsg ? "#8A9BB5" : "#D0DFEE",
+                          color: isYou ? "#FFFFFF" : msg.isThinking ? "#3A4F6A" : isJulieMsg ? "#A0B2C8" : "#D8E8F5",
                           fontStyle: msg.isThinking ? "italic" : "normal",
+                          fontSize: "14px",
                         }}
                       >
                         {msg.text}
@@ -990,23 +998,24 @@ Rules:
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Type your message... JULIE routes it to the right people."
-              className="flex-1 px-4 py-2.5 rounded-lg text-sm outline-none transition-all"
+              className="flex-1 px-4 py-3 rounded-lg outline-none transition-all"
               style={{
                 backgroundColor: "#1B2A4A",
                 color: "#FFFFFF",
+                fontSize: "15px",
                 border: selectedMentors.length > 0 ? "1px solid rgba(201,168,76,0.5)" : "1px solid #2A3D5E",
               }}
             />
             <button
               onClick={handleSend}
-              className="px-4 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
+              className="px-5 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
               style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
             >
               Send
             </button>
             <button
               onClick={() => setShowSideNoteModal(true)}
-              className="px-4 py-2.5 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
+              className="px-4 py-3 rounded-lg font-semibold text-sm tracking-wider uppercase transition-all duration-150 hover:opacity-90 active:scale-95"
               style={{ backgroundColor: "#1B2A4A", color: "#8A9BB5", border: "1px solid #2A3D5E" }}
             >
               Note{sideNotes.length > 0 ? ` (${sideNotes.length})` : ""}
