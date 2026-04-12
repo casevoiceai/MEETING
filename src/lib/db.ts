@@ -447,6 +447,41 @@ export async function listSideNotesByTag(tag: string): Promise<SideNote[]> {
   return (data ?? []) as SideNote[];
 }
 
+export async function listSessionsByTag(tag: string): Promise<Session[]> {
+  const { data } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("archived", false)
+    .contains("key_topics", [tag])
+    .order("session_date", { ascending: false });
+  return (data ?? []) as Session[];
+}
+
+export async function listProjectsByTag(tag: string): Promise<Project[]> {
+  const { data: notes } = await supabase
+    .from("project_notes")
+    .select("project_id")
+    .contains("tags", [tag]);
+  const projectIds = Array.from(new Set((notes ?? []).map((n: { project_id: string }) => n.project_id)));
+  if (projectIds.length === 0) return [];
+  const { data } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("archived", false)
+    .in("id", projectIds);
+  return (data ?? []) as Project[];
+}
+
+export async function listEmailsByTag(tag: string): Promise<Email[]> {
+  const { data } = await supabase
+    .from("emails")
+    .select("*")
+    .eq("archived", false)
+    .contains("tags", [tag])
+    .order("received_at", { ascending: false });
+  return (data ?? []) as Email[];
+}
+
 export async function createVaultFile(name: string, folderId?: string | null): Promise<VaultFile> {
   const { data, error } = await supabase
     .from("vault_files")
