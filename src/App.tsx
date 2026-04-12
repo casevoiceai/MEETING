@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Search } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Search, Shield } from "lucide-react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import SessionsView from "./screens/SessionsView";
 import VaultView from "./screens/VaultView";
@@ -9,6 +9,7 @@ import GlobalSearch from "./screens/GlobalSearch";
 import EmailView from "./screens/EmailView";
 import IntegrationsView from "./screens/IntegrationsView";
 import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
+import { getPendingCount } from "./lib/approval";
 
 type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations";
 
@@ -22,14 +23,21 @@ const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "integrations", label: "Integrations" },
 ];
 
-function NavButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function NavButton({
+  active, onClick, children, badge,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  badge?: number;
+}) {
   const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="px-5 py-2.5 text-sm font-bold tracking-wider uppercase rounded-lg transition-all"
+      className="relative px-5 py-2.5 text-sm font-bold tracking-wider uppercase rounded-lg transition-all"
       style={
         active
           ? { backgroundColor: "#1B2A4A", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.3)" }
@@ -39,6 +47,14 @@ function NavButton({ active, onClick, children }: { active: boolean; onClick: ()
       }
     >
       {children}
+      {badge != null && badge > 0 && (
+        <span
+          className="absolute -top-1 -right-1 text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: "#F59E0B", color: "#0D1B2E" }}
+        >
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -49,12 +65,22 @@ export default function App() {
   const [sessionKey, setSessionKey] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [linkedNavTarget, setLinkedNavTarget] = useState<{ type: LinkableType; id: string } | null>(null);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     getOrCreateSession().then((s) => {
       setSession(s);
       setSessionKey(s.session_key);
     }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    getPendingCount().then(setPendingApprovalCount).catch(() => {});
+    pollRef.current = setInterval(() => {
+      getPendingCount().then(setPendingApprovalCount).catch(() => {});
+    }, 15000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
   useEffect(() => {
@@ -77,7 +103,7 @@ export default function App() {
     setView("meeting");
   }, []);
 
-  const handleSearchNavigate = useCallback((type: SearchResult["type"], id: string) => {
+  const handleSearchNavigate = useCallback((type: SearchResult["type"], _id: string) => {
     const viewMap: Record<SearchResult["type"], View> = {
       file: "vault",
       note: "vault",
@@ -112,16 +138,38 @@ export default function App() {
         <span className="text-sm font-bold tracking-widest uppercase mr-6" style={{ color: "#C9A84C" }}>
           MyStatement_AI
         </span>
+
         {NAV_ITEMS.map((item) => (
           <NavButton
             key={item.id}
             active={view === item.id}
             onClick={() => setView(item.id)}
+            badge={item.id === "integrations" ? pendingApprovalCount : undefined}
           >
             {item.label}
           </NavButton>
         ))}
+
         <div className="ml-auto flex items-center gap-3">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+            style={{ backgroundColor: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}
+            title="User approval required for all final actions"
+          >
+            <Shield size={11} style={{ color: "#F59E0B" }} />
+            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#F59E0B" }}>
+              Approval Required
+            </span>
+            {pendingApprovalCount > 0 && (
+              <span
+                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ backgroundColor: "#F59E0B", color: "#0D1B2E" }}
+              >
+                {pendingApprovalCount}
+              </span>
+            )}
+          </div>
+
           <button
             onClick={() => setSearchOpen(true)}
             className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm transition-all hover:opacity-80"
@@ -132,6 +180,7 @@ export default function App() {
             <span className="text-xs tracking-wider">Search</span>
             <kbd className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "#1B2A4A", color: "#3A4F6A" }}>⌘K</kbd>
           </button>
+
           {session && (
             <span className="text-xs tracking-widest uppercase" style={{ color: "#3A4F6A" }}>
               {session.session_key}
@@ -143,11 +192,11 @@ export default function App() {
       <div className="flex-1 flex flex-col min-h-0">
         {view === "meeting" && <StaffMeetingRoom sessionId={session?.id ?? null} sessionKey={sessionKey} />}
         {view === "sessions" && <SessionsView onOpenSession={handleOpenSession} onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "session" ? linkedNavTarget.id : undefined} />}
-        {view === "email" && <EmailView />}
+        {view === "email" && <EmailView onPendingChange={setPendingApprovalCount} />}
         {view === "vault" && <VaultView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "file" || linkedNavTarget?.type === "note" ? linkedNavTarget : undefined} />}
         {view === "tags" && <TagsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "tag" ? linkedNavTarget.id : undefined} />}
         {view === "projects" && <ProjectsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "project" ? linkedNavTarget.id : undefined} />}
-        {view === "integrations" && <IntegrationsView />}
+        {view === "integrations" && <IntegrationsView onPendingChange={setPendingApprovalCount} />}
       </div>
 
       {searchOpen && (

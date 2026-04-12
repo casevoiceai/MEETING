@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Plus, ChevronRight, Archive, Trash2, CheckCircle, Circle, Clock,
   FileText, AlignLeft, Tag, Link, Pencil, Check, X, Layers, Upload,
-  Image as ImageIcon, File,
+  Image as ImageIcon, File, Shield,
 } from "lucide-react";
 import {
   listProjects, createProject, archiveProject, renameProject, deleteProject,
@@ -11,6 +11,7 @@ import {
   listVaultFilesByProject, listSideNotes, listTagsForProject, listVaultFolders, deleteVaultFile,
   type Project, type ProjectNote, type ProjectTask, type TaskStatus, type VaultFile, type SideNote, type TagEntry, type LinkableType, type VaultFolder,
 } from "../lib/db";
+import { proposeAction } from "../lib/approval";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
 import FileUploadModal from "../components/FileUploadModal";
 import FilePreviewModal from "../components/FilePreviewModal";
@@ -111,6 +112,8 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
   const renameRef = useRef<HTMLInputElement>(null);
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [previewFile, setPreviewFile] = useState<VaultFile | null>(null);
+  const [taskDeleteProposed, setTaskDeleteProposed] = useState<Set<string>>(new Set());
+  const [renameProposed, setRenameProposed] = useState(false);
 
   useEffect(() => {
     setLoaded(false);
@@ -140,8 +143,14 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
   async function commitRename() {
     const name = renameDraft.trim();
     if (!name || name === project.name) { setRenamingProject(false); return; }
-    await renameProject(project.id, name);
-    onProjectRenamed(project.id, name);
+    await proposeAction({
+      action_type: "project_rename",
+      title: `Rename project: "${project.name}" → "${name}"`,
+      description: `Rename the project from "${project.name}" to "${name}". Approve in Integrations → Approvals to apply.`,
+      proposed_by: "USER",
+      payload: { project_id: project.id, old_name: project.name, new_name: name },
+    });
+    setRenameProposed(true);
     setRenamingProject(false);
   }
 
@@ -172,8 +181,15 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
   }
 
   async function handleDeleteTask(id: string) {
-    await deleteProjectTask(id);
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    const task = tasks.find((t) => t.id === id);
+    await proposeAction({
+      action_type: "task_delete",
+      title: `Delete task: "${task?.text?.slice(0, 60) ?? id}"`,
+      description: `Permanently delete task from project "${project.name}". This cannot be undone.`,
+      proposed_by: "SYSTEM",
+      payload: { task_id: id, task_text: task?.text, project_id: project.id, project_name: project.name },
+    });
+    setTaskDeleteProposed((prev) => new Set(prev).add(id));
   }
 
   const openTasks = tasks.filter((t) => t.status !== "done");
@@ -385,9 +401,15 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
                           {task.owner}
                         </span>
                       )}
-                      <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity">
-                        <Trash2 size={13} style={{ color: "#F87171" }} />
-                      </button>
+                      {taskDeleteProposed.has(task.id) ? (
+                        <span title="Delete queued for approval">
+                          <Clock size={13} style={{ color: "#F59E0B", opacity: 0.8 }} />
+                        </span>
+                      ) : (
+                        <button onClick={() => handleDeleteTask(task.id)} className="opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity" title="Queue delete for approval">
+                          <Trash2 size={13} style={{ color: "#F87171" }} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -608,6 +630,7 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [projectDeleteProposed, setProjectDeleteProposed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     listProjects().then((p) => {
@@ -637,9 +660,15 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
   }
 
   async function handleDeleteProject(id: string) {
-    await deleteProject(id);
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-    if (selected?.id === id) setSelected(null);
+    const proj = projects.find((p) => p.id === id);
+    await proposeAction({
+      action_type: "project_delete",
+      title: `Delete project: "${proj?.name ?? id}"`,
+      description: `Permanently delete the project "${proj?.name ?? id}" and all its tasks, notes, and links. This cannot be undone.`,
+      proposed_by: "USER",
+      payload: { project_id: id, project_name: proj?.name },
+    });
+    setProjectDeleteProposed((prev) => new Set(prev).add(id));
     setConfirmDeleteId(null);
   }
 

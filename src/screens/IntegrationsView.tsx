@@ -2,18 +2,21 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Cloud, Database, CheckCircle, XCircle, RefreshCw,
   ChevronRight, Send, Link as LinkIcon, FolderOpen,
-  FileText, Layers, Check, X,
+  FileText, Layers, Check, X, Shield,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import {
   getAllIntegrationSettings, listDriveSyncLogs, listNotionSyncLogs,
-  listPendingNotionApprovals, approveNotionSync,
+  listPendingNotionApprovals, approveNotionSync, renameProject,
+  deleteEmail, deleteProjectTask,
   type IntegrationSettings, type DriveSyncLog, type NotionSyncLog,
 } from "../lib/db";
 import {
   testDriveConnection, testNotionConnection, listNotionDatabases,
   saveNotionDbConfig, pushJulieReportToNotion,
 } from "../lib/integrations";
+import ApprovalQueue from "../components/ApprovalQueue";
+import type { ApprovalEntry } from "../lib/approval";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -164,7 +167,7 @@ function NotionDbSelector({ databases, config, onChange }: NotionDbSelectorProps
   );
 }
 
-export default function IntegrationsView() {
+export default function IntegrationsView({ onPendingChange }: { onPendingChange?: (count: number) => void }) {
   const [integrations, setIntegrations] = useState<IntegrationSettings[]>([]);
   const [driveLogs, setDriveLogs] = useState<DriveSyncLog[]>([]);
   const [notionLogs, setNotionLogs] = useState<NotionSyncLog[]>([]);
@@ -179,7 +182,8 @@ export default function IntegrationsView() {
   const [loadingDbs, setLoadingDbs] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [pushingId, setPushingId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"setup" | "drive" | "notion" | "approvals">("setup");
+  const [tab, setTab] = useState<"approvals" | "setup" | "drive" | "notion" | "notion_approvals">("approvals");
+  const [approvalPendingCount, setApprovalPendingCount] = useState(0);
 
   const load = useCallback(async () => {
     const [settings, drive, notion, pending] = await Promise.all([
@@ -270,22 +274,31 @@ export default function IntegrationsView() {
   }
 
   const TABS = [
-    { id: "setup" as const,     label: "Setup" },
-    { id: "approvals" as const, label: `Approvals${pendingApprovals.length > 0 ? ` (${pendingApprovals.length})` : ""}` },
-    { id: "drive" as const,     label: "Drive Log" },
-    { id: "notion" as const,    label: "Notion Log" },
+    { id: "approvals" as const,         label: "Approvals", count: approvalPendingCount },
+    { id: "notion_approvals" as const,  label: "Notion Queue", count: pendingApprovals.length },
+    { id: "setup" as const,             label: "Setup" },
+    { id: "drive" as const,             label: "Drive Log" },
+    { id: "notion" as const,            label: "Notion Log" },
   ];
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ backgroundColor: NAVY, color: "#FFFFFF" }}>
       <div className="flex items-center justify-between px-6 py-3.5 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
-        <div>
-          <h1 className="text-sm font-bold tracking-widest uppercase" style={{ color: GOLD }}>Integrations</h1>
-          <p className="text-[11px] mt-0.5" style={{ color: MUTED }}>Google Drive + Notion sync</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-sm font-bold tracking-widest uppercase" style={{ color: GOLD }}>Integrations & Approvals</h1>
+            <p className="text-[11px] mt-0.5" style={{ color: MUTED }}>All team proposals require your approval before execution</p>
+          </div>
         </div>
-        <button onClick={load} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ backgroundColor: "#1B2A4A", color: MUTED }}>
-          <RefreshCw size={11} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
+            <Shield size={11} style={{ color: "#F59E0B" }} />
+            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#F59E0B" }}>User approval required for all final actions</span>
+          </div>
+          <button onClick={load} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ backgroundColor: "#1B2A4A", color: MUTED }}>
+            <RefreshCw size={11} /> Refresh
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-1 px-6 pt-4 pb-0 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
@@ -293,7 +306,7 @@ export default function IntegrationsView() {
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className="px-4 py-2 text-xs font-semibold tracking-wider uppercase rounded-t transition-all"
+            className="relative px-4 py-2 text-xs font-semibold tracking-wider uppercase rounded-t transition-all"
             style={{
               color: tab === t.id ? GOLD : DIM,
               borderBottom: tab === t.id ? `2px solid ${GOLD}` : "2px solid transparent",
@@ -301,9 +314,9 @@ export default function IntegrationsView() {
             }}
           >
             {t.label}
-            {t.id === "approvals" && pendingApprovals.length > 0 && (
-              <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ backgroundColor: "rgba(249,115,22,0.2)", color: "#F97316" }}>
-                {pendingApprovals.length}
+            {t.count != null && t.count > 0 && (
+              <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ backgroundColor: "rgba(245,158,11,0.2)", color: "#F59E0B" }}>
+                {t.count}
               </span>
             )}
           </button>
@@ -311,6 +324,29 @@ export default function IntegrationsView() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
+
+        {tab === "approvals" && (
+          <div className="flex flex-col min-h-0 -mx-6 -my-5">
+            <ApprovalQueue
+              onPendingCountChange={(count) => {
+                setApprovalPendingCount(count);
+                onPendingChange?.(count);
+              }}
+              onExecute={(entry: ApprovalEntry) => {
+                if (entry.action_type === "project_rename" && entry.payload?.project_id) {
+                  const { project_id, new_name } = entry.payload as { project_id: string; new_name: string };
+                  renameProject(project_id, new_name).catch(() => {});
+                }
+                if (entry.action_type === "email_delete" && entry.payload?.email_id) {
+                  deleteEmail(entry.payload.email_id as string).catch(() => {});
+                }
+                if (entry.action_type === "task_delete" && entry.payload?.task_id) {
+                  deleteProjectTask(entry.payload.task_id as string).catch(() => {});
+                }
+              }}
+            />
+          </div>
+        )}
 
         {tab === "setup" && (
           <div className="grid grid-cols-1 gap-5 max-w-2xl">
@@ -445,7 +481,7 @@ export default function IntegrationsView() {
           </div>
         )}
 
-        {tab === "approvals" && (
+        {tab === "notion_approvals" && (
           <div className="flex flex-col gap-3 max-w-2xl">
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold" style={{ color: TEXT }}>Pending Notion Approvals</p>

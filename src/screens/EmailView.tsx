@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  Inbox, Mail, Paperclip, ChevronRight, Archive, Trash2, RefreshCw,
+  Inbox, Mail, Paperclip, Archive, Trash2, RefreshCw,
   Plus, Copy, Check, AlertTriangle, Lightbulb, MessageSquare, Shield,
-  Loader, ChevronDown, Send, FileText, X, Eye
+  Loader, ChevronDown, FileText, X, Eye, Clock,
 } from "lucide-react";
 import {
   listEmails, createEmail, markEmailRead, archiveEmail, deleteEmail,
@@ -10,6 +10,7 @@ import {
   listEmailDrafts, createEmailDraft, updateEmailDraft, deleteEmailDraft,
   type Email, type EmailAttachment, type EmailAnalysis, type EmailDraft,
 } from "../lib/db";
+import { proposeAction, getPendingCount } from "../lib/approval";
 
 const NAVY = "#0D1B2E";
 const CARD = "#111D30";
@@ -211,15 +212,17 @@ interface DraftPanelProps {
   onDraftCreated: (draft: EmailDraft) => void;
   onDraftUpdated: (draftId: string, body: string) => void;
   onDraftDeleted: (draftId: string) => void;
+  onApprovalCreated?: () => void;
 }
 
-function DraftPanel({ email, drafts, onDraftCreated, onDraftUpdated, onDraftDeleted }: DraftPanelProps) {
+function DraftPanel({ email, drafts, onDraftCreated, onDraftUpdated, onDraftDeleted, onApprovalCreated }: DraftPanelProps) {
   const [selectedTone, setSelectedTone] = useState("direct");
   const [generating, setGenerating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [proposedSendIds, setProposedSendIds] = useState<Set<string>>(new Set());
 
   async function handleGenerate() {
     setGenerating(true);
@@ -258,6 +261,25 @@ function DraftPanel({ email, drafts, onDraftCreated, onDraftUpdated, onDraftDele
   async function handleApprove(draft: EmailDraft) {
     await updateEmailDraft(draft.id, { approved_by_user: true });
     onDraftUpdated(draft.id, draft.body);
+  }
+
+  async function handleProposeSend(draft: EmailDraft) {
+    await proposeAction({
+      action_type: "email_draft_send",
+      title: `Send reply to "${email.subject}"`,
+      description: `Propose sending the ${draft.tone} draft (by ${draft.drafted_by}) as a reply to ${email.sender_name} <${email.sender_email}>. You must copy this draft and send it yourself — the system cannot send emails.`,
+      proposed_by: draft.drafted_by,
+      payload: {
+        email_id: email.id,
+        draft_id: draft.id,
+        subject: email.subject,
+        recipient: email.sender_email,
+        tone: draft.tone,
+        body_preview: draft.body.slice(0, 200),
+      },
+    });
+    setProposedSendIds((prev) => new Set(prev).add(draft.id));
+    onApprovalCreated?.();
   }
 
   return (
@@ -366,7 +388,22 @@ function DraftPanel({ email, drafts, onDraftCreated, onDraftUpdated, onDraftDele
                               style={{ backgroundColor: "rgba(74,222,128,0.1)", color: "#4ADE80", border: "1px solid rgba(74,222,128,0.3)", minHeight: "36px" }}
                             >
                               <Check size={12} />
-                              Approve
+                              Approve Draft
+                            </button>
+                          )}
+                          {proposedSendIds.has(draft.id) ? (
+                            <span className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold tracking-widest uppercase" style={{ color: "#F59E0B", backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                              <Clock size={11} /> Send Queued
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleProposeSend(draft)}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all hover:opacity-90"
+                              style={{ backgroundColor: "rgba(245,158,11,0.08)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.2)", minHeight: "36px" }}
+                              title="Log this as a send proposal in the Approval Queue"
+                            >
+                              <Shield size={11} />
+                              Propose Send
                             </button>
                           )}
                           <button
@@ -575,7 +612,7 @@ function AnalysisPanel({ email, analysis, onAnalysisDone }: AnalysisPanelProps) 
 
 type RightPanelTab = "analysis" | "draft";
 
-export default function EmailView() {
+export default function EmailView({ onPendingChange }: { onPendingChange?: (count: number) => void }) {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
@@ -585,7 +622,13 @@ export default function EmailView() {
   const [showIngest, setShowIngest] = useState(false);
   const [rightTab, setRightTab] = useState<RightPanelTab>("analysis");
   const [showArchived, setShowArchived] = useState(false);
+  const [deleteProposedIds, setDeleteProposedIds] = useState<Set<string>>(new Set());
   const loadedEmailId = useRef<string | null>(null);
+
+  async function handleApprovalCreated() {
+    const count = await getPendingCount();
+    onPendingChange?.(count);
+  }
 
   useEffect(() => {
     listEmails().then((data) => {
@@ -629,12 +672,16 @@ export default function EmailView() {
 
   async function handleDelete(email: Email, e: React.MouseEvent) {
     e.stopPropagation();
-    await deleteEmail(email.id);
-    setEmails((prev) => prev.filter((em) => em.id !== email.id));
-    if (selectedEmail?.id === email.id) {
-      setSelectedEmail(null);
-      loadedEmailId.current = null;
-    }
+    await proposeAction({
+      action_type: "email_delete",
+      title: `Delete email: "${email.subject}"`,
+      description: `Permanently delete the email from ${email.sender_name} <${email.sender_email}> received ${new Date(email.received_at).toLocaleDateString()}. This action cannot be undone.`,
+      proposed_by: "SYSTEM",
+      payload: { email_id: email.id, subject: email.subject, sender: email.sender_email },
+    });
+    const newCount = await getPendingCount();
+    onPendingChange?.(newCount);
+    setDeleteProposedIds((prev) => new Set(prev).add(email.id));
   }
 
   function handleIngestSaved(email: Email) {
@@ -731,9 +778,15 @@ export default function EmailView() {
                     <button onClick={(e) => handleArchive(email, e)} className="p-1.5 rounded transition-opacity hover:opacity-70" title="Archive">
                       <Archive size={13} style={{ color: DIM }} />
                     </button>
-                    <button onClick={(e) => handleDelete(email, e)} className="p-1.5 rounded transition-opacity hover:opacity-70" title="Delete">
-                      <Trash2 size={13} style={{ color: "#F87171" }} />
-                    </button>
+                    {deleteProposedIds.has(email.id) ? (
+                      <span className="p-1.5 rounded" title="Delete queued for approval">
+                        <Clock size={13} style={{ color: "#F59E0B" }} />
+                      </span>
+                    ) : (
+                      <button onClick={(e) => handleDelete(email, e)} className="p-1.5 rounded transition-opacity hover:opacity-70" title="Queue delete for approval">
+                        <Trash2 size={13} style={{ color: "#F87171" }} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </button>
@@ -858,8 +911,9 @@ export default function EmailView() {
                   email={selectedEmail}
                   drafts={drafts}
                   onDraftCreated={(d) => setDrafts((prev) => [d, ...prev])}
-                  onDraftUpdated={(id, body) => setDrafts((prev) => prev.map((d) => d.id === id ? { ...d, body } : d))}
+                  onDraftUpdated={(id, body) => setDrafts((prev) => prev.map((d) => d.id === id ? { ...d, body, approved_by_user: d.id === id && d.approved_by_user } : d))}
                   onDraftDeleted={(id) => setDrafts((prev) => prev.filter((d) => d.id !== id))}
+                  onApprovalCreated={handleApprovalCreated}
                 />
               )}
             </div>
