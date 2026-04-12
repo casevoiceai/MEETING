@@ -6,13 +6,15 @@ import VaultView from "./screens/VaultView";
 import TagsView from "./screens/TagsView";
 import ProjectsView from "./screens/ProjectsView";
 import GlobalSearch from "./screens/GlobalSearch";
+import EmailView from "./screens/EmailView";
 import { getOrCreateSession, loadSession, type Session, type SearchResult } from "./lib/db";
 
-type View = "meeting" | "sessions" | "vault" | "tags" | "projects";
+type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email";
 
 const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "meeting", label: "Meeting" },
   { id: "sessions", label: "Sessions" },
+  { id: "email", label: "Email" },
   { id: "vault", label: "Vault" },
   { id: "tags", label: "Tags" },
   { id: "projects", label: "Projects" },
@@ -126,6 +128,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-h-0">
         {view === "meeting" && <StaffMeetingRoom sessionId={session?.id ?? null} sessionKey={sessionKey} />}
         {view === "sessions" && <SessionsView onOpenSession={handleOpenSession} />}
+        {view === "email" && <EmailView />}
         {view === "vault" && <VaultView />}
         {view === "tags" && <TagsView />}
         {view === "projects" && <ProjectsView />}

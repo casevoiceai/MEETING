@@ -478,6 +478,175 @@ export async function updateSession(
   await supabase.from("sessions").update(patch).eq("id", sessionId);
 }
 
+export interface Email {
+  id: string;
+  subject: string;
+  sender_name: string;
+  sender_email: string;
+  body: string;
+  received_at: string;
+  is_read: boolean;
+  archived: boolean;
+  tags: string[];
+  linked_session_id: string | null;
+  linked_project_id: string | null;
+  created_at: string;
+}
+
+export interface EmailAttachment {
+  id: string;
+  email_id: string;
+  filename: string;
+  content_type: string;
+  content: string;
+  routed_to: string | null;
+  created_at: string;
+}
+
+export interface EmailAnalysis {
+  id: string;
+  email_id: string;
+  summary: string;
+  intent: string;
+  risks: string[];
+  opportunities: string[];
+  suggested_tone: string;
+  key_points: string[];
+  tags: string[];
+  mentor_insights: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailDraft {
+  id: string;
+  email_id: string;
+  tone: string;
+  body: string;
+  drafted_by: string;
+  approved_by_user: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listEmails(includeArchived = false): Promise<Email[]> {
+  let q = supabase.from("emails").select("*");
+  if (!includeArchived) q = q.eq("archived", false);
+  const { data } = await q.order("received_at", { ascending: false });
+  return (data ?? []) as Email[];
+}
+
+export async function createEmail(
+  email: Pick<Email, "subject" | "sender_name" | "sender_email" | "body"> & { received_at?: string }
+): Promise<Email> {
+  const { data, error } = await supabase
+    .from("emails")
+    .insert({ ...email, received_at: email.received_at ?? new Date().toISOString() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Email;
+}
+
+export async function markEmailRead(emailId: string): Promise<void> {
+  await supabase.from("emails").update({ is_read: true }).eq("id", emailId);
+}
+
+export async function archiveEmail(emailId: string): Promise<void> {
+  await supabase.from("emails").update({ archived: true }).eq("id", emailId);
+}
+
+export async function deleteEmail(emailId: string): Promise<void> {
+  await supabase.from("emails").delete().eq("id", emailId);
+}
+
+export async function addEmailAttachment(
+  attachment: Pick<EmailAttachment, "email_id" | "filename" | "content_type" | "content">
+): Promise<EmailAttachment> {
+  const { data, error } = await supabase
+    .from("email_attachments")
+    .insert(attachment)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as EmailAttachment;
+}
+
+export async function listEmailAttachments(emailId: string): Promise<EmailAttachment[]> {
+  const { data } = await supabase
+    .from("email_attachments")
+    .select("*")
+    .eq("email_id", emailId)
+    .order("created_at", { ascending: true });
+  return (data ?? []) as EmailAttachment[];
+}
+
+export async function getEmailAnalysis(emailId: string): Promise<EmailAnalysis | null> {
+  const { data } = await supabase
+    .from("email_analyses")
+    .select("*")
+    .eq("email_id", emailId)
+    .maybeSingle();
+  return data as EmailAnalysis | null;
+}
+
+export async function upsertEmailAnalysis(
+  emailId: string,
+  analysis: Partial<Omit<EmailAnalysis, "id" | "email_id" | "created_at" | "updated_at">>
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from("email_analyses")
+    .select("id")
+    .eq("email_id", emailId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from("email_analyses")
+      .update({ ...analysis, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+  } else {
+    await supabase
+      .from("email_analyses")
+      .insert({ email_id: emailId, ...analysis });
+  }
+}
+
+export async function listEmailDrafts(emailId: string): Promise<EmailDraft[]> {
+  const { data } = await supabase
+    .from("email_drafts")
+    .select("*")
+    .eq("email_id", emailId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as EmailDraft[];
+}
+
+export async function createEmailDraft(
+  draft: Pick<EmailDraft, "email_id" | "tone" | "body" | "drafted_by">
+): Promise<EmailDraft> {
+  const { data, error } = await supabase
+    .from("email_drafts")
+    .insert(draft)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as EmailDraft;
+}
+
+export async function updateEmailDraft(
+  draftId: string,
+  patch: Partial<Pick<EmailDraft, "body" | "approved_by_user">>
+): Promise<void> {
+  await supabase
+    .from("email_drafts")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", draftId);
+}
+
+export async function deleteEmailDraft(draftId: string): Promise<void> {
+  await supabase.from("email_drafts").delete().eq("id", draftId);
+}
+
 export interface SearchResult {
   type: "file" | "note" | "tag" | "session" | "project";
   id: string;
