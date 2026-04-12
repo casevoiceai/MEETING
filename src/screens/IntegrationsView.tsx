@@ -14,6 +14,7 @@ import {
 import {
   testDriveConnection, testNotionConnection, listNotionDatabases,
   saveNotionDbConfig, pushJulieReportToNotion,
+  getNotionFallbackStatus, retryNotionPendingItems,
 } from "../lib/integrations";
 import ApprovalQueue from "../components/ApprovalQueue";
 import type { ApprovalEntry } from "../lib/approval";
@@ -31,9 +32,10 @@ function StatusBadge({ status }: { status: string }) {
     synced:           { color: "#4ADE80", bg: "rgba(74,222,128,0.1)",   label: "Synced" },
     syncing:          { color: GOLD,      bg: "rgba(201,168,76,0.1)",  label: "Syncing" },
     pending:          { color: MUTED,     bg: "rgba(138,155,181,0.1)", label: "Pending" },
-    pending_approval: { color: "#F97316", bg: "rgba(249,115,22,0.1)",  label: "Needs Approval" },
-    approved:         { color: "#60A5FA", bg: "rgba(96,165,250,0.1)",  label: "Approved" },
-    failed:           { color: "#F87171", bg: "rgba(248,113,113,0.1)", label: "Failed" },
+    pending_approval:    { color: "#F97316", bg: "rgba(249,115,22,0.1)",  label: "Needs Approval" },
+    approved:            { color: "#60A5FA", bg: "rgba(96,165,250,0.1)",  label: "Approved" },
+    failed:              { color: "#F87171", bg: "rgba(248,113,113,0.1)", label: "Failed" },
+    notion_sync_pending: { color: "#F59E0B", bg: "rgba(245,158,11,0.1)",  label: "Sync Pending" },
   };
   const s = map[status] ?? { color: MUTED, bg: "rgba(138,155,181,0.1)", label: status };
   return (
@@ -184,18 +186,23 @@ export default function IntegrationsView({ onPendingChange }: { onPendingChange?
   const [pushingId, setPushingId] = useState<string | null>(null);
   const [tab, setTab] = useState<"approvals" | "setup" | "drive" | "notion" | "notion_approvals">("approvals");
   const [approvalPendingCount, setApprovalPendingCount] = useState(0);
+  const [notionFallback, setNotionFallback] = useState<{ inFallback: boolean; lastError: string; lastErrorAt: string | null; pendingCount: number } | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryResult, setRetryResult] = useState<{ retried: number; succeeded: number; stillFailing: number } | null>(null);
 
   const load = useCallback(async () => {
-    const [settings, drive, notion, pending] = await Promise.all([
+    const [settings, drive, notion, pending, fallback] = await Promise.all([
       getAllIntegrationSettings(),
       listDriveSyncLogs(),
       listNotionSyncLogs(),
       listPendingNotionApprovals(),
+      getNotionFallbackStatus(),
     ]);
     setIntegrations(settings);
     setDriveLogs(drive);
     setNotionLogs(notion);
     setPendingApprovals(pending);
+    setNotionFallback(fallback);
 
     const notionSettings = settings.find((s) => s.integration_type === "notion");
     if (notionSettings?.config?.databases) {
@@ -265,11 +272,20 @@ export default function IntegrationsView({ onPendingChange }: { onPendingChange?
     });
     setPushingId(null);
     setApprovingId(null);
-    if (result.success) load();
+    load();
   }
 
   async function handleReject(logId: string) {
     await supabase.from("notion_sync_log").update({ status: "failed", error_message: "Rejected by user" }).eq("id", logId);
+    load();
+  }
+
+  async function handleRetryPending() {
+    setRetrying(true);
+    setRetryResult(null);
+    const result = await retryNotionPendingItems();
+    setRetryResult(result);
+    setRetrying(false);
     load();
   }
 
@@ -290,10 +306,43 @@ export default function IntegrationsView({ onPendingChange }: { onPendingChange?
             <p className="text-[11px] mt-0.5" style={{ color: MUTED }}>All team proposals require your approval before execution</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {notionFallback && (notionFallback.inFallback || notionFallback.pendingCount > 0) ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}>
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#F59E0B" }} />
+              <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#F59E0B" }}>
+                Notion: {notionFallback.inFallback ? "Disconnected" : "Sync Pending"}
+              </span>
+              {notionFallback.pendingCount > 0 && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "#F59E0B", color: "#0D1B2E" }}>
+                  {notionFallback.pendingCount}
+                </span>
+              )}
+              <button
+                onClick={handleRetryPending}
+                disabled={retrying}
+                className="ml-1 text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded transition-all hover:opacity-80 disabled:opacity-40"
+                style={{ backgroundColor: "rgba(245,158,11,0.15)", color: "#F59E0B" }}
+              >
+                {retrying ? "Retrying…" : "Retry Now"}
+              </button>
+            </div>
+          ) : notionFallback ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: "rgba(74,222,128,0.06)", border: "1px solid rgba(74,222,128,0.2)" }}>
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#4ADE80" }} />
+              <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#4ADE80" }}>Notion: Connected</span>
+            </div>
+          ) : null}
+
+          {retryResult && (
+            <span className="text-[10px]" style={{ color: retryResult.succeeded > 0 ? "#4ADE80" : "#F87171" }}>
+              {retryResult.succeeded}/{retryResult.retried} synced
+            </span>
+          )}
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
             <Shield size={11} style={{ color: "#F59E0B" }} />
-            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#F59E0B" }}>User approval required for all final actions</span>
+            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#F59E0B" }}>Approval Required</span>
           </div>
           <button onClick={load} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all hover:opacity-80" style={{ backgroundColor: "#1B2A4A", color: MUTED }}>
             <RefreshCw size={11} /> Refresh
@@ -483,6 +532,38 @@ export default function IntegrationsView({ onPendingChange }: { onPendingChange?
 
         {tab === "notion_approvals" && (
           <div className="flex flex-col gap-3 max-w-2xl">
+            {notionFallback && notionFallback.inFallback && (
+              <div className="px-4 py-3 rounded-xl flex items-start gap-3" style={{ backgroundColor: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)" }}>
+                <XCircle size={15} style={{ color: "#F59E0B", flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <p className="text-sm font-bold" style={{ color: "#F59E0B" }}>Notion: Disconnected — Fallback Mode Active</p>
+                  <p className="text-[11px] mt-1 leading-relaxed" style={{ color: MUTED }}>
+                    Notion is currently unavailable. All session data is safely saved locally.
+                    {notionFallback.pendingCount > 0 && ` ${notionFallback.pendingCount} item${notionFallback.pendingCount !== 1 ? "s" : ""} will sync automatically when Notion reconnects.`}
+                  </p>
+                  {notionFallback.lastError && (
+                    <p className="text-[10px] mt-1.5 font-mono" style={{ color: "#A07B3A" }}>{notionFallback.lastError.slice(0, 120)}</p>
+                  )}
+                  <button
+                    onClick={handleRetryPending}
+                    disabled={retrying}
+                    className="mt-2 flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase px-3 py-1.5 rounded-lg transition-all hover:opacity-80 disabled:opacity-40"
+                    style={{ backgroundColor: "rgba(245,158,11,0.12)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.3)" }}
+                  >
+                    <RefreshCw size={11} className={retrying ? "animate-spin" : ""} />
+                    {retrying ? "Retrying…" : "Retry Sync Now"}
+                  </button>
+                  {retryResult && (
+                    <p className="text-[10px] mt-1.5" style={{ color: retryResult.succeeded > 0 ? "#4ADE80" : "#F87171" }}>
+                      {retryResult.succeeded > 0
+                        ? `${retryResult.succeeded} of ${retryResult.retried} item${retryResult.retried !== 1 ? "s" : ""} synced successfully.`
+                        : `Still unable to reach Notion. ${retryResult.stillFailing} item${retryResult.stillFailing !== 1 ? "s" : ""} pending.`}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold" style={{ color: TEXT }}>Pending Notion Approvals</p>
               <p className="text-[11px]" style={{ color: DIM }}>{pendingApprovals.length} item{pendingApprovals.length !== 1 ? "s" : ""} waiting</p>

@@ -1049,6 +1049,9 @@ export interface IntegrationSettings {
   connected: boolean;
   connected_at: string | null;
   last_sync_at: string | null;
+  last_error: string;
+  last_error_at: string | null;
+  fallback_mode: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1079,10 +1082,12 @@ export interface NotionSyncLog {
   session_id: string | null;
   drive_links: string[];
   payload: Record<string, unknown>;
-  status: "pending" | "pending_approval" | "approved" | "syncing" | "synced" | "failed";
+  status: "pending" | "pending_approval" | "approved" | "syncing" | "synced" | "failed" | "notion_sync_pending";
   approved_by_user: boolean;
   error_message: string;
   retry_count: number;
+  last_error_at: string | null;
+  next_retry_at: string | null;
   created_at: string;
   synced_at: string | null;
 }

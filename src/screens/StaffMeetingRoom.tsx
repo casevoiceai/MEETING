@@ -986,40 +986,42 @@ Rules:
       }
     }
 
-    if (notionConnected) {
-      setSyncStatus("Queuing Notion report for approval...");
-      const today = new Date().toISOString().slice(0, 10);
-      try {
-        await queueJulieReportForNotion({
-          sessionId,
-          sessionKey,
-          sessionDate: today,
-          summary,
-          decisions: s.decisionsMade,
-          openQuestions: s.openQuestions,
-          assignedTasks: s.assignedTasks,
-          activeTopics: s.activeTopics,
-          mentorsInvolved,
-          driveLinks: { transcript: driveTranscriptUrl, report: driveReportUrl },
-        });
-        setSyncStatus("Session synced. Notion report queued for approval in Integrations.");
+    setSyncStatus("Queuing Notion report for approval...");
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      await queueJulieReportForNotion({
+        sessionId,
+        sessionKey,
+        sessionDate: today,
+        summary,
+        decisions: s.decisionsMade,
+        openQuestions: s.openQuestions,
+        assignedTasks: s.assignedTasks,
+        activeTopics: s.activeTopics,
+        mentorsInvolved,
+        driveLinks: { transcript: driveTranscriptUrl, report: driveReportUrl },
+      });
+      if (driveConnected) {
+        setSyncStatus("Session synced to Drive. Notion report queued for approval in Integrations.");
         addMessage(
-          "JULIE: Session wrapped up. Transcript and report saved to Drive. The Notion report is waiting for your approval in Integrations.",
+          "JULIE: Session wrapped up. Transcript saved to Drive. Notion report is queued for your approval in Integrations — approve it when ready.",
           "mentor", "JULIE", ["ALL"], false, true
         );
-      } catch {
-        setSyncStatus("Notion queue failed.");
+      } else {
+        setSyncStatus("Session saved. Notion report queued for approval — connect Notion to push it.");
+        addMessage(
+          "JULIE: Session saved locally. Notion report queued for approval. Connect Notion in Integrations when ready to push.",
+          "mentor", "JULIE", ["ALL"], false, true
+        );
       }
-    } else if (driveConnected) {
-      setSyncStatus("Session synced to Drive.");
+    } catch {
+      if (driveConnected) {
+        setSyncStatus("Session synced to Drive. Notion queue unavailable — data saved locally.");
+      } else {
+        setSyncStatus("Session saved locally. Notion unavailable — will retry when reconnected.");
+      }
       addMessage(
-        "JULIE: Session wrapped up. Transcript and report saved to Google Drive.",
-        "mentor", "JULIE", ["ALL"], false, true
-      );
-    } else {
-      setSyncStatus("Session saved locally. Connect Drive + Notion in Integrations to sync.");
-      addMessage(
-        "JULIE: Session saved locally. Connect Google Drive and Notion in Integrations to enable cloud sync.",
+        "JULIE: Session data saved locally. Notion is currently unavailable — all data is preserved and will sync automatically when Notion is restored.",
         "mentor", "JULIE", ["ALL"], false, true
       );
     }
@@ -1374,8 +1376,25 @@ Rules:
           </div>
         </div>
         {syncStatus && (
-          <div className="flex-shrink-0 px-5 py-1.5 border-b" style={{ borderColor: "#1B2A4A", backgroundColor: "rgba(74,222,128,0.04)" }}>
-            <p className="text-[10px] tracking-wide" style={{ color: "#4ADE80" }}>{syncStatus}</p>
+          <div
+            className="flex-shrink-0 px-5 py-1.5 border-b"
+            style={{
+              borderColor: "#1B2A4A",
+              backgroundColor: syncStatus.toLowerCase().includes("unavailable") || syncStatus.toLowerCase().includes("failed")
+                ? "rgba(245,158,11,0.04)"
+                : "rgba(74,222,128,0.04)",
+            }}
+          >
+            <p
+              className="text-[10px] tracking-wide"
+              style={{
+                color: syncStatus.toLowerCase().includes("unavailable") || syncStatus.toLowerCase().includes("failed")
+                  ? "#F59E0B"
+                  : "#4ADE80",
+              }}
+            >
+              {syncStatus}
+            </p>
           </div>
         )}
 
