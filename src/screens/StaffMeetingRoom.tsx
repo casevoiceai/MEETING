@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
 import { upsertTranscript, upsertJulieReport, saveSideNote, upsertTags, type TranscriptMessage } from "../lib/db";
+import { ALL_MENTOR_NAMES } from "../lib/mentors";
 
 type MentorStatus = "idle" | "assigned" | "working" | "ready" | "blocked";
 type Mode = "brainstorm" | "command";
@@ -160,7 +161,6 @@ const STATUS_DOT: Record<MentorStatus, string> = {
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-const ALL_MENTOR_NAMES = ["MARK", "SCOUT", "JAMISON", "DOC", "TECHGUY", "SAM", "CIPHER", "RICK", "ALEX", "PAUL", "PAT", "ULYSES", "SIGMA", "JAMES", "MAILMAN", "JERRY", "RAY", "ATK", "DEF", "WATCHER", "KAREN", "THATGUY"];
 
 function isHighRisk(message: string): boolean {
   const lower = message.toLowerCase();

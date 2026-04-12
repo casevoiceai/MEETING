@@ -1,0 +1,8 @@
+export const ALL_MENTOR_NAMES = [
+  "MARK", "JAMES", "DOC", "TECHGUY", "SIGMA", "CIPHER", "RICK", "ALEX",
+  "PAUL", "PAT", "ULYSES", "JULIE", "ATK", "DEF", "SCOUT", "RAY", "KAREN",
+  "WATCHER", "MAILMAN", "JERRY", "THAT GUY",
+  "JAMISON",
+];
+
+export const FALLBACK_MENTOR_NAMES = ALL_MENTOR_NAMES;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, DragEvent } from "react";
+import { useState, useEffect, useRef, useCallback, DragEvent, useMemo } from "react";
 import {
   Trash2, Search, Plus, Folder, FolderOpen, FileText, Check, X,
   Table, LayoutGrid, Tag, Printer, Upload, Eye, EyeOff, Link, ChevronRight,
@@ -10,6 +10,7 @@ import {
   listProjects, addProjectTask,
   type SideNote, type TagEntry, type VaultFolder, type VaultFile, type Project,
 } from "../lib/db";
+import { ALL_MENTOR_NAMES, FALLBACK_MENTOR_NAMES } from "../lib/mentors";
 
 type MainTab = "files" | "notes";
 type ViewMode = "grid" | "table";
@@ -609,6 +610,98 @@ function FilesTab() {
   );
 }
 
+function MentorPicker({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const mentorList = useMemo(() => {
+    try {
+      return ALL_MENTOR_NAMES.length ? ALL_MENTOR_NAMES : FALLBACK_MENTOR_NAMES;
+    } catch {
+      return FALLBACK_MENTOR_NAMES;
+    }
+  }, []);
+
+  const filtered = useMemo(
+    () => mentorList.filter((m) => m.toLowerCase().includes(query.toLowerCase()) && !selected.includes(m)),
+    [mentorList, query, selected]
+  );
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function toggle(name: string) {
+    onChange(selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]);
+  }
+
+  return (
+    <div ref={containerRef} className="relative flex-1 min-w-0">
+      <div
+        className="flex flex-wrap gap-1.5 px-3 py-2 rounded-lg cursor-text min-h-[36px]"
+        style={{ backgroundColor: NAVY, border: `1px solid ${open ? GOLD : BORDER}` }}
+        onClick={() => setOpen(true)}
+      >
+        {selected.map((m) => (
+          <span
+            key={m}
+            className="inline-flex items-center gap-1 text-xs font-bold tracking-widest uppercase px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: "rgba(201,168,76,0.15)", color: GOLD }}
+          >
+            {m}
+            <button
+              onClick={(e) => { e.stopPropagation(); toggle(m); }}
+              className="opacity-60 hover:opacity-100 leading-none"
+            >×</button>
+          </span>
+        ))}
+        <input
+          className="bg-transparent outline-none text-sm flex-1 min-w-[80px]"
+          style={{ color: "#FFFFFF" }}
+          placeholder={selected.length === 0 ? "Tag mentors..." : ""}
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+        />
+      </div>
+
+      {open && (
+        <div
+          className="absolute z-50 left-0 right-0 mt-1 rounded-xl overflow-hidden shadow-2xl"
+          style={{ backgroundColor: "#0A1628", border: `1px solid ${BORDER}`, maxHeight: "220px", overflowY: "auto" }}
+        >
+          {filtered.length === 0 && (
+            <p className="px-3 py-2.5 text-xs" style={{ color: DIM }}>No mentors match.</p>
+          )}
+          {filtered.map((name) => (
+            <button
+              key={name}
+              onMouseDown={(e) => { e.preventDefault(); toggle(name); setQuery(""); }}
+              className="w-full text-left px-3 py-2.5 text-sm font-bold tracking-widest uppercase transition-colors hover:bg-white/5"
+              style={{ color: MUTED }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NotesTab() {
   const [notes, setNotes] = useState<SideNote[]>([]);
   const [tags, setTags] = useState<TagEntry[]>([]);
@@ -621,6 +714,7 @@ function NotesTab() {
   const [newTags, setNewTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
   const [newProjectId, setNewProjectId] = useState<string | null>(null);
+  const [newMentors, setNewMentors] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
@@ -642,7 +736,7 @@ function NotesTab() {
     if (!newText.trim()) return;
     const note = await saveSideNote({
       text: newText.trim(),
-      mentors: [],
+      mentors: newMentors,
       tags: newTags,
       session_id: null,
       project_id: newProjectId,
@@ -654,6 +748,7 @@ function NotesTab() {
     setNewTags([]);
     setNewTagInput("");
     setNewProjectId(null);
+    setNewMentors([]);
     setCreating(false);
   }
 
@@ -721,6 +816,18 @@ function NotesTab() {
             onChange={(e) => setNewText(e.target.value)}
             placeholder="Write your note..."
           />
+          <div className="flex items-center gap-2 flex-wrap">
+            <MentorPicker selected={newMentors} onChange={setNewMentors} />
+            <select
+              className="text-sm px-2 py-1.5 rounded-lg outline-none flex-shrink-0"
+              style={{ backgroundColor: NAVY, color: newProjectId ? "#FFFFFF" : MUTED, border: `1px solid ${BORDER}` }}
+              value={newProjectId ?? ""}
+              onChange={(e) => setNewProjectId(e.target.value || null)}
+            >
+              <option value="">Link project...</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
           <div className="flex items-center gap-2">
             <div className="flex flex-wrap gap-1.5 flex-1">
               {newTags.map((t) => <TagBadge key={t} tag={t} onRemove={() => setNewTags((prev) => prev.filter((x) => x !== t))} />)}
@@ -733,15 +840,6 @@ function NotesTab() {
                 placeholder="Tag..."
               />
             </div>
-            <select
-              className="text-sm px-2 py-1.5 rounded-lg outline-none"
-              style={{ backgroundColor: NAVY, color: newProjectId ? "#FFFFFF" : MUTED, border: `1px solid ${BORDER}` }}
-              value={newProjectId ?? ""}
-              onChange={(e) => setNewProjectId(e.target.value || null)}
-            >
-              <option value="">Link project...</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
           </div>
           <div className="flex justify-end gap-2">
             <button onClick={() => setCreating(false)} className="px-3 py-1.5 rounded-lg text-sm" style={{ color: MUTED }}>Cancel</button>
