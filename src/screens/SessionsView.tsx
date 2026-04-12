@@ -1,16 +1,33 @@
 import { useState, useEffect } from "react";
-import { Archive, ChevronRight, FileText } from "lucide-react";
+import { Archive, ChevronRight, FileText, Tag, Users, AlertCircle, CheckSquare } from "lucide-react";
 import { listSessions, archiveSession, loadSession, type Session } from "../lib/db";
+
+const GOLD = "#C9A84C";
+const NAVY = "#0D1B2E";
+const CARD = "#111D30";
+const BORDER = "#1B2A4A";
+const MUTED = "#8A9BB5";
+const DIM = "#3A4F6A";
+const TEXT = "#D0DFEE";
 
 interface Props {
   onOpenSession: (key: string) => void;
+}
+
+interface SessionData {
+  transcript: string[];
+  tasks: string[];
+  questions: string[];
+  decisions: string[];
+  mentors: string[];
+  unresolved: string[];
 }
 
 export default function SessionsView({ onOpenSession }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [expandedData, setExpandedData] = useState<Record<string, { transcript: string[]; tasks: string[]; questions: string[] }>>({});
+  const [expandedData, setExpandedData] = useState<Record<string, SessionData>>({});
 
   useEffect(() => {
     listSessions().then((s) => {
@@ -31,10 +48,14 @@ export default function SessionsView({ onOpenSession }: Props) {
         const msgs = result.transcript?.messages ?? [];
         const preview = msgs
           .slice(-4)
-          .map((m) => `${m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR")}: ${m.text.slice(0, 80)}${m.text.length > 80 ? "…" : ""}`);
-        const tasks = (result.julieReport?.assigned_tasks ?? []).map((t) => `${t.owner}: ${t.task.slice(0, 60)}`);
+          .map((m) => `${m.sender ?? (m.speaker === "you" ? "YOU" : "MENTOR")}: ${m.text.slice(0, 100)}${m.text.length > 100 ? "…" : ""}`);
+        const tasks = (result.julieReport?.assigned_tasks ?? []).map((t) => `${t.owner ? t.owner + ": " : ""}${t.task.slice(0, 80)}`);
         const questions = result.julieReport?.open_questions ?? [];
-        setExpandedData((prev) => ({ ...prev, [session.id]: { transcript: preview, tasks, questions } }));
+        const decisions = result.julieReport?.decisions_made ?? [];
+        const unresolved = result.julieReport?.unresolved_topics ?? [];
+        const mentorParticipation = result.julieReport?.mentor_participation ?? {};
+        const mentors = Object.keys(mentorParticipation).filter((k) => (mentorParticipation[k] ?? 0) > 0);
+        setExpandedData((prev) => ({ ...prev, [session.id]: { transcript: preview, tasks, questions, decisions, mentors, unresolved } }));
       }
     }
   }
@@ -49,118 +70,189 @@ export default function SessionsView({ onOpenSession }: Props) {
   const archived = sessions.filter((s) => s.archived);
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-5">
-      <p className="text-xs tracking-widest uppercase mb-4" style={{ color: "#8A9BB5" }}>Sessions</p>
-
-      {loading && (
-        <p className="text-sm" style={{ color: "#3A4F6A" }}>Loading sessions...</p>
-      )}
-
-      {!loading && active.length === 0 && (
-        <p className="text-sm" style={{ color: "#3A4F6A" }}>No sessions yet. Start a meeting to create one.</p>
-      )}
-
-      <div className="flex flex-col gap-2 mb-6">
-        {active.map((session) => {
-          const isOpen = expandedId === session.id;
-          const data = expandedData[session.id];
-          return (
-            <div
-              key={session.id}
-              className="rounded-xl overflow-hidden"
-              style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}
-            >
-              <button
-                onClick={() => handleExpand(session)}
-                className="w-full flex items-center justify-between px-4 py-3 transition-colors hover:opacity-90"
-              >
-                <div className="flex items-center gap-3">
-                  <FileText size={14} style={{ color: "#C9A84C" }} />
-                  <span className="text-sm font-semibold" style={{ color: "#FFFFFF" }}>{session.session_key}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => handleArchive(session, e)}
-                    className="p-1.5 rounded transition-opacity hover:opacity-70"
-                    title="Archive session"
-                  >
-                    <Archive size={13} style={{ color: "#3A4F6A" }} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenSession(session.session_key); }}
-                    className="px-3 py-1 rounded-lg text-xs font-semibold tracking-wider uppercase transition-opacity hover:opacity-80"
-                    style={{ backgroundColor: "#C9A84C", color: "#0D1B2E" }}
-                  >
-                    Open
-                  </button>
-                  <ChevronRight
-                    size={14}
-                    style={{ color: "#3A4F6A", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
-                  />
-                </div>
-              </button>
-
-              {isOpen && (
-                <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: "#1B2A4A" }}>
-                  {!data && <p className="text-xs" style={{ color: "#3A4F6A" }}>Loading preview...</p>}
-                  {data && (
-                    <div className="flex flex-col gap-3">
-                      {data.transcript.length > 0 && (
-                        <div>
-                          <p className="text-[10px] tracking-widest uppercase mb-1.5" style={{ color: "#3A4F6A" }}>Last messages</p>
-                          {data.transcript.map((line, i) => (
-                            <p key={i} className="text-xs leading-relaxed" style={{ color: "#8A9BB5" }}>{line}</p>
-                          ))}
-                        </div>
-                      )}
-                      {data.tasks.length > 0 && (
-                        <div>
-                          <p className="text-[10px] tracking-widest uppercase mb-1.5" style={{ color: "#3A4F6A" }}>Tasks</p>
-                          {data.tasks.map((t, i) => (
-                            <p key={i} className="text-xs leading-relaxed" style={{ color: "#8A9BB5" }}>{t}</p>
-                          ))}
-                        </div>
-                      )}
-                      {data.questions.length > 0 && (
-                        <div>
-                          <p className="text-[10px] tracking-widest uppercase mb-1.5" style={{ color: "#3A4F6A" }}>Open questions</p>
-                          {data.questions.map((q, i) => (
-                            <p key={i} className="text-xs leading-relaxed" style={{ color: "#8A9BB5" }}>{q}</p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+    <div className="flex-1 flex flex-col min-h-0" style={{ backgroundColor: NAVY, color: "#FFFFFF" }}>
+      <div className="px-5 py-4 border-b flex items-center" style={{ borderColor: BORDER }}>
+        <span className="text-sm font-bold tracking-widest uppercase" style={{ color: MUTED }}>Sessions</span>
+        <span className="text-sm ml-3" style={{ color: DIM }}>— {active.length} active</span>
       </div>
 
-      {archived.length > 0 && (
-        <div>
-          <p className="text-[10px] tracking-widest uppercase mb-3" style={{ color: "#3A4F6A" }}>Archived</p>
-          <div className="flex flex-col gap-2">
-            {archived.map((session) => (
+      <div className="flex-1 overflow-y-auto px-5 py-5">
+        {loading && <p className="text-sm" style={{ color: DIM }}>Loading sessions...</p>}
+
+        {!loading && active.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-40 gap-3">
+            <FileText size={32} style={{ color: DIM }} />
+            <p className="text-sm" style={{ color: DIM }}>No sessions yet. Start a meeting to create one.</p>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 mb-8">
+          {active.map((session) => {
+            const isOpen = expandedId === session.id;
+            const data = expandedData[session.id];
+            return (
               <div
                 key={session.id}
-                className="flex items-center justify-between px-4 py-2.5 rounded-xl"
-                style={{ backgroundColor: "#0D1422", border: "1px solid #141F32" }}
+                className="rounded-xl overflow-hidden transition-all"
+                style={{ backgroundColor: CARD, border: `1px solid ${isOpen ? "rgba(201,168,76,0.3)" : BORDER}` }}
               >
-                <span className="text-sm" style={{ color: "#3A4F6A" }}>{session.session_key}</span>
                 <button
-                  onClick={() => onOpenSession(session.session_key)}
-                  className="text-xs tracking-widest uppercase font-semibold transition-opacity hover:opacity-70"
-                  style={{ color: "#3A4F6A" }}
+                  onClick={() => handleExpand(session)}
+                  className="w-full flex items-center justify-between px-5 py-4 transition-all hover:opacity-90"
                 >
-                  View
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "rgba(201,168,76,0.12)" }}>
+                      <FileText size={15} style={{ color: GOLD }} />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-bold" style={{ color: "#FFFFFF" }}>{session.session_key}</p>
+                      <p className="text-xs" style={{ color: DIM }}>{new Date(session.session_date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onOpenSession(session.session_key); }}
+                      className="px-4 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all hover:opacity-90"
+                      style={{ backgroundColor: GOLD, color: NAVY }}
+                    >
+                      Open
+                    </button>
+                    <button
+                      onClick={(e) => handleArchive(session, e)}
+                      className="p-2 rounded-lg transition-opacity hover:opacity-70"
+                      title="Archive session"
+                    >
+                      <Archive size={14} style={{ color: DIM }} />
+                    </button>
+                    <ChevronRight
+                      size={15}
+                      style={{ color: DIM, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}
+                    />
+                  </div>
                 </button>
+
+                {isOpen && (
+                  <div className="px-5 pb-5 border-t" style={{ borderColor: BORDER }}>
+                    {!data && <p className="text-sm pt-4" style={{ color: DIM }}>Loading preview...</p>}
+                    {data && (
+                      <div className="pt-4 grid grid-cols-2 gap-4">
+                        {data.mentors.length > 0 && (
+                          <div className="col-span-2 flex items-center gap-2 flex-wrap">
+                            <Users size={13} style={{ color: MUTED }} />
+                            <p className="text-xs font-bold tracking-widest uppercase mr-1" style={{ color: MUTED }}>Mentors</p>
+                            {data.mentors.map((m) => (
+                              <span key={m} className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.12)", color: GOLD }}>
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {data.transcript.length > 0 && (
+                          <div className="col-span-2">
+                            <p className="text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: MUTED }}>
+                              <FileText size={11} />
+                              Last Messages
+                            </p>
+                            <div className="px-3 py-2.5 rounded-xl" style={{ backgroundColor: NAVY, border: `1px solid ${BORDER}` }}>
+                              {data.transcript.map((line, i) => (
+                                <p key={i} className="text-xs leading-relaxed py-0.5" style={{ color: MUTED }}>{line}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {data.tasks.length > 0 && (
+                          <div>
+                            <p className="text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: MUTED }}>
+                              <CheckSquare size={11} />
+                              Tasks ({data.tasks.length})
+                            </p>
+                            <div className="flex flex-col gap-1">
+                              {data.tasks.map((t, i) => (
+                                <p key={i} className="text-xs leading-relaxed px-3 py-2 rounded-lg" style={{ color: TEXT, backgroundColor: NAVY, border: `1px solid ${BORDER}` }}>{t}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {data.decisions.length > 0 && (
+                          <div>
+                            <p className="text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: MUTED }}>
+                              <Tag size={11} />
+                              Decisions ({data.decisions.length})
+                            </p>
+                            <div className="flex flex-col gap-1">
+                              {data.decisions.map((d, i) => (
+                                <p key={i} className="text-xs leading-relaxed px-3 py-2 rounded-lg" style={{ color: TEXT, backgroundColor: NAVY, border: `1px solid ${BORDER}` }}>{d}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {data.questions.length > 0 && (
+                          <div>
+                            <p className="text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: MUTED }}>
+                              <AlertCircle size={11} />
+                              Open Questions ({data.questions.length})
+                            </p>
+                            <div className="flex flex-col gap-1">
+                              {data.questions.map((q, i) => (
+                                <p key={i} className="text-xs leading-relaxed px-3 py-2 rounded-lg" style={{ color: "#FCD34D", backgroundColor: "rgba(252,211,77,0.06)", border: `1px solid rgba(252,211,77,0.15)` }}>{q}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {data.unresolved.length > 0 && (
+                          <div>
+                            <p className="text-xs font-bold tracking-widest uppercase mb-2 flex items-center gap-1.5" style={{ color: "#F97316" }}>
+                              <AlertCircle size={11} />
+                              Unresolved ({data.unresolved.length})
+                            </p>
+                            <div className="flex flex-col gap-1">
+                              {data.unresolved.map((u, i) => (
+                                <p key={i} className="text-xs leading-relaxed px-3 py-2 rounded-lg" style={{ color: "#FB923C", backgroundColor: "rgba(249,115,22,0.06)", border: `1px solid rgba(249,115,22,0.2)` }}>{u}</p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      )}
+
+        {archived.length > 0 && (
+          <div>
+            <p className="text-xs font-bold tracking-widest uppercase mb-3" style={{ color: DIM }}>Archived Sessions</p>
+            <div className="flex flex-col gap-2">
+              {archived.map((session) => (
+                <div
+                  key={session.id}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl"
+                  style={{ backgroundColor: "#0D1422", border: `1px solid #141F32` }}
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText size={13} style={{ color: DIM }} />
+                    <span className="text-sm" style={{ color: DIM }}>{session.session_key}</span>
+                  </div>
+                  <button
+                    onClick={() => onOpenSession(session.session_key)}
+                    className="text-xs tracking-widest uppercase font-bold transition-opacity hover:opacity-70 px-3 py-1.5 rounded-lg"
+                    style={{ backgroundColor: "#1B2A4A", color: MUTED }}
+                  >
+                    View
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

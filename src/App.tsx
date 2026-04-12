@@ -16,31 +16,21 @@ const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "projects", label: "Projects" },
 ];
 
-const navBaseStyle: React.CSSProperties = {
-  color: "#8A9BB5",
-  border: "1px solid transparent",
-  transition: "all 0.15s ease",
-};
-const navActiveStyle: React.CSSProperties = {
-  backgroundColor: "#1B2A4A",
-  color: "#C9A84C",
-  border: "1px solid rgba(201,168,76,0.3)",
-};
-
 function NavButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   const [hovered, setHovered] = useState(false);
-  const style: React.CSSProperties = active
-    ? navActiveStyle
-    : hovered
-    ? { ...navBaseStyle, color: "#C9A84C", border: "1px solid rgba(201,168,76,0.15)" }
-    : navBaseStyle;
   return (
     <button
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="px-3 py-1.5 text-xs font-bold tracking-wider uppercase rounded"
-      style={style}
+      className="px-4 py-2 text-sm font-bold tracking-wider uppercase rounded-lg transition-all"
+      style={
+        active
+          ? { backgroundColor: "#1B2A4A", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.3)" }
+          : hovered
+          ? { color: "#C9A84C", border: "1px solid rgba(201,168,76,0.15)", backgroundColor: "rgba(201,168,76,0.04)" }
+          : { color: "#8A9BB5", border: "1px solid transparent" }
+      }
     >
       {children}
     </button>
@@ -58,13 +48,13 @@ export default function App() {
   return (
     <div
       className="min-h-screen flex flex-col"
-      style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif" }}
+      style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif", fontSize: "15px" }}
     >
       <div
-        className="flex items-center gap-1 px-6 py-2 border-b flex-shrink-0"
+        className="flex items-center gap-1.5 px-6 py-3 border-b flex-shrink-0"
         style={{ borderColor: "#1B2A4A" }}
       >
-        <span className="text-[10px] font-bold tracking-widest uppercase mr-4" style={{ color: "#C9A84C" }}>
+        <span className="text-sm font-bold tracking-widest uppercase mr-5" style={{ color: "#C9A84C" }}>
           MyStatement_AI
         </span>
         {NAV_ITEMS.map((item) => (
@@ -78,7 +68,7 @@ export default function App() {
         ))}
         <div className="ml-auto">
           {session && (
-            <span className="text-[9px] tracking-widest uppercase" style={{ color: "#2A3D5E" }}>
+            <span className="text-xs tracking-widest uppercase" style={{ color: "#3A4F6A" }}>
               {session.session_key}
             </span>
           )}

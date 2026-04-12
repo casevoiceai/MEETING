@@ -8,6 +8,9 @@ export interface Session {
   session_key: string;
   created_at: string;
   archived: boolean;
+  session_summary?: string;
+  key_topics?: string[];
+  mentors_involved?: string[];
 }
 
 export interface SessionTranscript {
@@ -55,6 +58,8 @@ export interface TagEntry {
   id: string;
   tag: string;
   usage_count: number;
+  category: string;
+  color: string;
   created_at: string;
 }
 
@@ -83,6 +88,28 @@ export interface ProjectTask {
   status: TaskStatus;
   archived: boolean;
   created_at: string;
+}
+
+export interface VaultFolder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  created_at: string;
+}
+
+export interface VaultFile {
+  id: string;
+  folder_id: string | null;
+  name: string;
+  content: string;
+  summary: string;
+  tags: string[];
+  file_type: string;
+  linked_project_id: string | null;
+  linked_session_id: string | null;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 function todayKey(): string {
@@ -204,6 +231,10 @@ export async function saveSideNote(note: Omit<SideNote, "id" | "created_at">): P
   return data as SideNote;
 }
 
+export async function updateSideNote(id: string, patch: Partial<Pick<SideNote, "text" | "tags" | "mentors" | "project_id" | "session_id">>): Promise<void> {
+  await supabase.from("side_notes").update(patch).eq("id", id);
+}
+
 export async function listSideNotes(filters?: {
   sessionId?: string;
   projectId?: string;
@@ -229,6 +260,30 @@ export async function listAllTags(): Promise<TagEntry[]> {
   return (data ?? []) as TagEntry[];
 }
 
+export async function createTag(tag: string, category = "General", color = "#C9A84C"): Promise<TagEntry> {
+  const { data: existing } = await supabase
+    .from("tag_registry")
+    .select("*")
+    .eq("tag", tag)
+    .maybeSingle();
+  if (existing) return existing as TagEntry;
+  const { data, error } = await supabase
+    .from("tag_registry")
+    .insert({ tag, usage_count: 0, category, color })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as TagEntry;
+}
+
+export async function updateTag(id: string, patch: Partial<Pick<TagEntry, "tag" | "category" | "color">>): Promise<void> {
+  await supabase.from("tag_registry").update(patch).eq("id", id);
+}
+
+export async function deleteTag(id: string): Promise<void> {
+  await supabase.from("tag_registry").delete().eq("id", id);
+}
+
 export async function upsertTags(tags: string[]): Promise<void> {
   for (const tag of tags) {
     const { data: existing } = await supabase
@@ -243,7 +298,7 @@ export async function upsertTags(tags: string[]): Promise<void> {
         .update({ usage_count: existing.usage_count + 1 })
         .eq("id", existing.id);
     } else {
-      await supabase.from("tag_registry").insert({ tag, usage_count: 1 });
+      await supabase.from("tag_registry").insert({ tag, usage_count: 1, category: "General", color: "#C9A84C" });
     }
   }
 }
@@ -333,25 +388,6 @@ export async function deleteProjectTask(id: string): Promise<void> {
   await supabase.from("project_tasks").delete().eq("id", id);
 }
 
-export interface VaultFolder {
-  id: string;
-  name: string;
-  parent_id: string | null;
-  created_at: string;
-}
-
-export interface VaultFile {
-  id: string;
-  folder_id: string | null;
-  name: string;
-  content: string;
-  summary: string;
-  tags: string[];
-  archived: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
 export async function listVaultFolders(): Promise<VaultFolder[]> {
   const { data } = await supabase.from("vault_folders").select("*").order("name");
   return (data ?? []) as VaultFolder[];
@@ -385,10 +421,40 @@ export async function listVaultFiles(folderId?: string | null): Promise<VaultFil
   return (data ?? []) as VaultFile[];
 }
 
+export async function listVaultFilesByProject(projectId: string): Promise<VaultFile[]> {
+  const { data } = await supabase
+    .from("vault_files")
+    .select("*")
+    .eq("archived", false)
+    .eq("linked_project_id", projectId)
+    .order("updated_at", { ascending: false });
+  return (data ?? []) as VaultFile[];
+}
+
+export async function listVaultFilesByTag(tag: string): Promise<VaultFile[]> {
+  const { data } = await supabase
+    .from("vault_files")
+    .select("*")
+    .eq("archived", false)
+    .contains("tags", [tag])
+    .order("updated_at", { ascending: false });
+  return (data ?? []) as VaultFile[];
+}
+
+export async function listSideNotesByTag(tag: string): Promise<SideNote[]> {
+  const { data } = await supabase
+    .from("side_notes")
+    .select("*")
+    .eq("archived", false)
+    .contains("tags", [tag])
+    .order("created_at", { ascending: false });
+  return (data ?? []) as SideNote[];
+}
+
 export async function createVaultFile(name: string, folderId?: string | null): Promise<VaultFile> {
   const { data, error } = await supabase
     .from("vault_files")
-    .insert({ name, folder_id: folderId ?? null, content: "", summary: "", tags: [] })
+    .insert({ name, folder_id: folderId ?? null, content: "", summary: "", tags: [], file_type: "note", linked_project_id: null, linked_session_id: null })
     .select()
     .single();
   if (error) throw error;
@@ -397,7 +463,7 @@ export async function createVaultFile(name: string, folderId?: string | null): P
 
 export async function updateVaultFile(
   id: string,
-  patch: Partial<Pick<VaultFile, "name" | "content" | "summary" | "tags" | "folder_id">>
+  patch: Partial<Pick<VaultFile, "name" | "content" | "summary" | "tags" | "folder_id" | "linked_project_id" | "linked_session_id" | "file_type">>
 ): Promise<void> {
   await supabase
     .from("vault_files")
