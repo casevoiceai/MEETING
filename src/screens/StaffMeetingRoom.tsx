@@ -924,9 +924,9 @@ Rules:
 
   async function handleSaveNote(note: SideNote, newTags: string[]) {
     setSideNotes((prev) => [...prev, note]);
-    if (newTags.length > 0) {
-      setUsedTags((prev) => [...prev, ...newTags]);
-      await upsertTags(newTags);
+    const allNoteTags = [...new Set([...note.tags, ...newTags])].map((t) => t.trim()).filter(Boolean);
+    if (allNoteTags.length > 0) {
+      setUsedTags((prev) => [...new Set([...prev, ...allNoteTags])]);
     }
     if (sessionId) {
       const saved = await saveSideNote({
@@ -934,10 +934,17 @@ Rules:
         project_id: null,
         text: note.text,
         mentors: note.mentors,
-        tags: note.tags,
+        tags: allNoteTags,
         archived: false,
       });
-      if (saved?.id) trackNoteCreated(saved.id);
+      if (saved?.id) {
+        trackNoteCreated(saved.id);
+        if (allNoteTags.length > 0) {
+          const currentTopics = meetingStateRef.current.activeTopics;
+          const merged = Array.from(new Set([...currentTopics, ...allNoteTags]));
+          updateSession(sessionId, { key_topics: merged, notes_created: [...meetingStateRef.current.notesCreated, saved.id] }).catch(() => {});
+        }
+      }
     }
     setShowSideNoteModal(false);
   }

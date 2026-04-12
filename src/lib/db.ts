@@ -188,6 +188,8 @@ export async function loadSession(sessionKey: string): Promise<{
   transcript: SessionTranscript | null;
   julieReport: JulieReport | null;
   sideNotes: SideNote[];
+  vaultFiles: VaultFile[];
+  tagNames: string[];
 } | null> {
   const { data: session } = await supabase
     .from("sessions")
@@ -197,17 +199,24 @@ export async function loadSession(sessionKey: string): Promise<{
 
   if (!session) return null;
 
-  const [transcriptRes, julieReportRes, sideNotesRes] = await Promise.all([
+  const [transcriptRes, julieReportRes, sideNotesRes, vaultFilesRes] = await Promise.all([
     supabase.from("session_transcripts").select("*").eq("session_id", session.id).maybeSingle(),
     supabase.from("julie_reports").select("*").eq("session_id", session.id).maybeSingle(),
     supabase.from("side_notes").select("*").eq("session_id", session.id).eq("archived", false).order("created_at", { ascending: true }),
+    supabase.from("vault_files").select("*").eq("linked_session_id", session.id).eq("archived", false).order("updated_at", { ascending: false }),
   ]);
+
+  const keyTopics: string[] = (session as Session).key_topics ?? [];
+  const sideNoteTags: string[] = ((sideNotesRes.data ?? []) as SideNote[]).flatMap((n) => n.tags ?? []);
+  const allTagNames = Array.from(new Set([...keyTopics, ...sideNoteTags])).filter(Boolean);
 
   return {
     session: session as Session,
     transcript: transcriptRes.data as SessionTranscript | null,
     julieReport: julieReportRes.data as JulieReport | null,
     sideNotes: (sideNotesRes.data ?? []) as SideNote[],
+    vaultFiles: (vaultFilesRes.data ?? []) as VaultFile[],
+    tagNames: allTagNames,
   };
 }
 
@@ -224,12 +233,20 @@ export async function archiveSession(sessionId: string): Promise<void> {
 }
 
 export async function saveSideNote(note: Omit<SideNote, "id" | "created_at">): Promise<SideNote> {
+  const normalizedTags = (note.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const record = { ...note, tags: normalizedTags };
+
   const { data, error } = await supabase
     .from("side_notes")
-    .insert(note)
+    .insert(record)
     .select()
     .single();
   if (error) throw error;
+
+  if (normalizedTags.length > 0) {
+    upsertTags(normalizedTags).catch(() => {});
+  }
+
   return data as SideNote;
 }
 
@@ -287,7 +304,8 @@ export async function deleteTag(id: string): Promise<void> {
 }
 
 export async function upsertTags(tags: string[]): Promise<void> {
-  for (const tag of tags) {
+  const normalized = tags.map((t) => t.trim()).filter(Boolean);
+  for (const tag of normalized) {
     const { data: existing } = await supabase
       .from("tag_registry")
       .select("id, usage_count")
@@ -306,13 +324,23 @@ export async function upsertTags(tags: string[]): Promise<void> {
 }
 
 export async function createProject(name: string): Promise<Project> {
-  const slug = name
+  const trimmed = name.trim();
+  const slug = trimmed
     .toLowerCase()
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
+
+  const { data: existing } = await supabase
+    .from("projects")
+    .select("*")
+    .ilike("name", trimmed)
+    .eq("archived", false)
+    .maybeSingle();
+  if (existing) return existing as Project;
+
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name, slug })
+    .insert({ name: trimmed, slug })
     .select()
     .single();
   if (error) throw error;
