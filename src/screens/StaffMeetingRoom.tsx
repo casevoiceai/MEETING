@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
-import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, uploadFileToVault, type TranscriptMessage, type JulieReport, type VaultFile } from "../lib/db";
+import { upsertTranscript, upsertJulieReport, updateSession, saveSideNote, upsertTags, loadSession, listAllTags, uploadFileToVault, type TranscriptMessage, type JulieReport, type VaultFile, type SideNote as DBSideNote } from "../lib/db";
 import { ALL_MENTOR_NAMES } from "../lib/mentors";
 import FileUploadModal from "../components/FileUploadModal";
 import FilePreviewModal from "../components/FilePreviewModal";
@@ -30,10 +30,28 @@ interface CarryoverItem {
   fromSession: string;
 }
 
+interface MemoryFile {
+  id: string;
+  name: string;
+  type: string;
+  linkedSessionId?: string | null;
+  linkedProjectId?: string | null;
+  tags: string[];
+}
+
+interface MemoryNote {
+  id: string;
+  text: string;
+  tags: string[];
+  mentors: string[];
+  sessionId?: string | null;
+}
+
 interface MeetingState {
   openQuestions: string[];
   answeredQuestions: { question: string; answer: string }[];
   assignedTasks: { task: string; owner: string }[];
+  resolvedTasks: { task: string; owner: string }[];
   unresolvedTopics: string[];
   activeTopics: string[];
   decisionsMade: string[];
@@ -43,6 +61,8 @@ interface MeetingState {
   filesDiscussed: string[];
   notesCreated: string[];
   carryoverItems: CarryoverItem[];
+  memoryFiles: MemoryFile[];
+  memoryNotes: MemoryNote[];
 }
 
 interface Message {
@@ -139,6 +159,7 @@ const INITIAL_MEETING_STATE: MeetingState = {
   openQuestions: [],
   answeredQuestions: [],
   assignedTasks: [],
+  resolvedTasks: [],
   unresolvedTopics: [],
   activeTopics: [],
   decisionsMade: [],
@@ -148,6 +169,8 @@ const INITIAL_MEETING_STATE: MeetingState = {
   filesDiscussed: [],
   notesCreated: [],
   carryoverItems: [],
+  memoryFiles: [],
+  memoryNotes: [],
 };
 
 const STATUS_STYLES: Record<MentorStatus, React.CSSProperties> = {
@@ -328,17 +351,38 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
 
       if (result.julieReport) {
         const r = result.julieReport;
+        const memFiles: MemoryFile[] = (r.files_referenced ?? []).map((f) => ({
+          id: f.id, name: f.name, type: f.type, tags: [],
+        }));
+        const memNotes: MemoryNote[] = (r.notes_referenced ?? []).map((n) => ({
+          id: n.id, text: n.text, tags: n.tags ?? [], mentors: [],
+        }));
         setMeetingState((prev) => ({
           ...prev,
           openQuestions: r.open_questions ?? [],
           answeredQuestions: r.answered_questions ?? [],
           assignedTasks: r.assigned_tasks ?? [],
+          resolvedTasks: r.resolved_tasks ?? [],
           unresolvedTopics: r.unresolved_topics ?? [],
           activeTopics: r.active_topics ?? [],
           decisionsMade: r.decisions_made ?? [],
           pendingDecisions: r.pending_decisions ?? [],
           mentorParticipation: r.mentor_participation ?? {},
           droppedIdeas: r.dropped_ideas ?? [],
+          memoryFiles: memFiles,
+          memoryNotes: memNotes,
+        }));
+      }
+
+      if (result.vaultFiles && result.vaultFiles.length > 0) {
+        setSessionFiles(result.vaultFiles);
+        setMeetingState((prev) => ({
+          ...prev,
+          filesDiscussed: result.vaultFiles.map((f) => f.id),
+          memoryFiles: result.vaultFiles.map((f) => ({
+            id: f.id, name: f.name, type: f.file_type, tags: f.tags ?? [],
+            linkedSessionId: f.linked_session_id, linkedProjectId: f.linked_project_id,
+          })),
         }));
       }
 
@@ -350,6 +394,14 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
           timestamp: new Date(n.created_at).getTime(),
         }));
         setSideNotes(restored);
+        setMeetingState((prev) => ({
+          ...prev,
+          notesCreated: result.sideNotes.map((n) => n.id),
+          memoryNotes: result.sideNotes.map((n) => ({
+            id: n.id, text: n.text, tags: n.tags ?? [], mentors: n.mentors ?? [],
+            sessionId: n.session_id,
+          })),
+        }));
       }
     }).catch(() => {});
 
@@ -364,17 +416,22 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
     yesterday.setDate(yesterday.getDate() - 1);
     const prevKey = yesterday.toISOString().slice(0, 10);
     loadSession(prevKey).then((result) => {
-      if (!result?.julieReport) return;
-      const report = result.julieReport as JulieReport;
-      const unresolvedTopics = (report.unresolved_topics ?? []).filter(Boolean);
-      const openQs = (report.open_questions ?? []).filter(Boolean);
-      const assignedTasks = (report.assigned_tasks ?? []).filter((t) => t.task);
-      const prevSessionKey = prevKey;
+      if (!result) return;
+      const session = result.session;
+      const report = result.julieReport as JulieReport | null;
+
+      const storedTasks = (session.carryover_tasks ?? []).filter((t) => t.task);
+      const storedQs = (session.carryover_questions ?? []).filter(Boolean);
+      const storedTopics = (session.carryover_topics ?? []).filter(Boolean);
+
+      const unresolvedTopics = storedTopics.length > 0 ? storedTopics : (report?.unresolved_topics ?? []).filter(Boolean);
+      const openQs = storedQs.length > 0 ? storedQs : (report?.open_questions ?? []).filter(Boolean);
+      const assignedTasks = storedTasks.length > 0 ? storedTasks : (report?.assigned_tasks ?? []).filter((t) => t.task);
 
       const carryoverItems: CarryoverItem[] = [
-        ...unresolvedTopics.map((t) => ({ text: t, type: "topic" as const, resolved: false, fromSession: prevSessionKey })),
-        ...openQs.map((q) => ({ text: q, type: "question" as const, resolved: false, fromSession: prevSessionKey })),
-        ...assignedTasks.map((t) => ({ text: t.task, type: "task" as const, owner: t.owner, resolved: false, fromSession: prevSessionKey })),
+        ...unresolvedTopics.map((t) => ({ text: t, type: "topic" as const, resolved: false, fromSession: prevKey })),
+        ...openQs.map((q) => ({ text: q, type: "question" as const, resolved: false, fromSession: prevKey })),
+        ...assignedTasks.map((t) => ({ text: t.task, type: "task" as const, owner: t.owner, resolved: false, fromSession: prevKey })),
       ];
 
       if (carryoverItems.length === 0) return;
@@ -382,8 +439,8 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
       setMeetingState((prev) => ({
         ...prev,
         carryoverItems,
-        unresolvedTopics: [...unresolvedTopics, ...prev.unresolvedTopics],
-        openQuestions: [...openQs, ...prev.openQuestions],
+        unresolvedTopics: [...unresolvedTopics, ...prev.unresolvedTopics.filter((t) => !unresolvedTopics.includes(t))],
+        openQuestions: [...openQs, ...prev.openQuestions.filter((q) => !openQs.includes(q))],
       }));
 
       const taskCount = assignedTasks.length;
@@ -394,8 +451,11 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
       if (qCount > 0) parts.push(`${qCount} open question${qCount > 1 ? "s" : ""}`);
       if (topicCount > 0) parts.push(`${topicCount} unresolved topic${topicCount > 1 ? "s" : ""}`);
 
-      const carryMsg = `We still have ${parts.join(", ")} from last session (${prevSessionKey}). I've loaded them into session memory. Let's pick up where we left off.`;
-      setMessages((prev) => [...prev, { id: -1, text: `JULIE: ${carryMsg}`, speaker: "mentor", sender: "JULIE", targets: ["ALL"], isJulie: true }]);
+      const carryMsg = `We still have ${parts.join(", ")} carried over from last session (${prevKey}). I've loaded them into memory — let's pick up where we left off.`;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === -99)) return prev;
+        return [...prev, { id: -99, text: `JULIE: ${carryMsg}`, speaker: "mentor", sender: "JULIE", targets: ["ALL"], isJulie: true }];
+      });
     }).catch(() => {});
   }, [sessionKey]);
 
@@ -412,6 +472,11 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
       .map((m) => ({ id: m.id, text: m.text, speaker: m.speaker, sender: m.sender, targets: m.targets }));
     upsertTranscript(sessionId, persistable).catch(() => {});
     const s = meetingStateRef.current;
+
+    const filesRef = s.memoryFiles.map((f) => ({ id: f.id, name: f.name, type: f.type }));
+    const notesRef = s.memoryNotes.map((n) => ({ id: n.id, text: n.text.slice(0, 100), tags: n.tags }));
+    const resolvedTasks = s.resolvedTasks ?? [];
+
     upsertJulieReport(sessionId, {
       open_questions: s.openQuestions,
       answered_questions: s.answeredQuestions,
@@ -422,27 +487,32 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
       pending_decisions: s.pendingDecisions,
       mentor_participation: s.mentorParticipation,
       dropped_ideas: s.droppedIdeas,
+      files_referenced: filesRef,
+      notes_referenced: notesRef,
+      resolved_tasks: resolvedTasks,
+      resolved_questions: s.answeredQuestions,
     }).catch(() => {});
+
     const mentorsInvolved = Object.keys(s.mentorParticipation).filter((k) => (s.mentorParticipation[k] ?? 0) > 0);
-    const topicsSummary = [...s.decisionsMade.slice(0, 2), ...s.activeTopics.slice(0, 3)];
+    const keyTopics = [...new Set([...s.activeTopics, ...s.decisionsMade.slice(0, 2)])].slice(0, 8);
     const summary = buildSessionSummary(s);
 
     const unresolvedTasks = s.assignedTasks.filter((t) =>
-      !s.answeredQuestions.some((aq) => aq.question.includes(t.task.slice(0, 20)))
+      !resolvedTasks.some((rt) => rt.task === t.task)
     );
-    const unresolvedQs = s.openQuestions;
-    const unresolvedTopics = s.unresolvedTopics;
 
     updateSession(sessionId, {
       mentors_involved: mentorsInvolved,
-      key_topics: topicsSummary,
+      key_topics: keyTopics,
       session_summary: summary || undefined,
       carryover_tasks: unresolvedTasks,
-      carryover_questions: unresolvedQs,
-      carryover_topics: unresolvedTopics,
+      carryover_questions: s.openQuestions,
+      carryover_topics: s.unresolvedTopics,
       files_discussed: s.filesDiscussed,
       notes_created: s.notesCreated,
       participants: mentorsInvolved,
+      decisions_made: s.decisionsMade,
+      unresolved_topics: s.unresolvedTopics,
     }).catch(() => {});
   }, [sessionId]);
 
@@ -525,17 +595,45 @@ export default function StaffMeetingRoom({ sessionId, sessionKey }: Props) {
     }));
   }
 
-  function trackFileDiscussed(fileId: string) {
+  function trackFileDiscussed(file: VaultFile) {
     setMeetingState((prev) => {
-      if (prev.filesDiscussed.includes(fileId)) return prev;
-      return { ...prev, filesDiscussed: [...prev.filesDiscussed, fileId] };
+      if (prev.filesDiscussed.includes(file.id)) return prev;
+      const memFile: MemoryFile = {
+        id: file.id, name: file.name, type: file.file_type, tags: file.tags ?? [],
+        linkedSessionId: file.linked_session_id, linkedProjectId: file.linked_project_id,
+      };
+      return {
+        ...prev,
+        filesDiscussed: [...prev.filesDiscussed, file.id],
+        memoryFiles: [...prev.memoryFiles, memFile],
+      };
     });
   }
 
-  function trackNoteCreated(noteId: string) {
+  function trackNoteCreated(note: DBSideNote) {
     setMeetingState((prev) => {
-      if (prev.notesCreated.includes(noteId)) return prev;
-      return { ...prev, notesCreated: [...prev.notesCreated, noteId] };
+      if (prev.notesCreated.includes(note.id)) return prev;
+      const memNote: MemoryNote = {
+        id: note.id, text: note.text, tags: note.tags ?? [], mentors: note.mentors ?? [],
+        sessionId: note.session_id,
+      };
+      return {
+        ...prev,
+        notesCreated: [...prev.notesCreated, note.id],
+        memoryNotes: [...prev.memoryNotes, memNote],
+      };
+    });
+  }
+
+  function resolveTask(task: string, owner: string) {
+    setMeetingState((prev) => {
+      const exists = prev.resolvedTasks?.some((t) => t.task === task);
+      if (exists) return prev;
+      return {
+        ...prev,
+        resolvedTasks: [...(prev.resolvedTasks ?? []), { task, owner }],
+        assignedTasks: prev.assignedTasks.filter((t) => t.task !== task),
+      };
     });
   }
 
@@ -758,8 +856,50 @@ Rules:
         if (resolvedCarryItem) resolveCarryoverItem(resolvedCarryItem.text);
       }
 
+      const detectedTask2 = detectTask(responseText);
+      if (detectedTask2 && mentor.name !== "JULIE") {
+        const allTasks = meetingStateRef.current.assignedTasks;
+        const maybeResolved = allTasks.find((t) =>
+          responseText.toLowerCase().includes(t.task.toLowerCase().slice(0, 20)) &&
+          (responseText.toLowerCase().includes("done") || responseText.toLowerCase().includes("complete") || responseText.toLowerCase().includes("finished"))
+        );
+        if (maybeResolved) {
+          resolveTask(maybeResolved.task, maybeResolved.owner);
+        }
+      }
+
+      const state2 = meetingStateRef.current;
+      const relatedFile = state2.memoryFiles.find((f) =>
+        responseText.toLowerCase().includes(f.name.toLowerCase().split(".")[0]?.slice(0, 10) ?? "")
+      );
+      const openCount = state2.openQuestions.length;
+      const taskCount = state2.assignedTasks.length;
+      const shouldJulieComment =
+        !isInterrupt &&
+        turnId === currentTurnId.current &&
+        lastJulieSpeakTurn.current < turnId - 2 &&
+        (relatedFile || openCount > 2 || (taskCount > 1 && Math.random() < 0.3));
+
       removeMessageById(thinkingId);
       addMessage(`${mentor.name}: ${responseText}`, "mentor", mentor.name, ["YOU"]);
+
+      if (shouldJulieComment && !isInterrupt) {
+        setTimeout(() => {
+          if (currentTurnId.current !== turnId) return;
+          let julieNote = "";
+          if (relatedFile) {
+            julieNote = `We reviewed "${relatedFile.name}" earlier in this session — that may be relevant here.`;
+          } else if (openCount > 2) {
+            julieNote = `We still have ${openCount} open questions in memory. Want to address any of them?`;
+          } else if (taskCount > 1) {
+            julieNote = `${taskCount} tasks are tracked in session memory. I'll flag if we should revisit any of them.`;
+          }
+          if (julieNote) {
+            addMessage(`JULIE: ${julieNote}`, "mentor", "JULIE", ["ALL"], false, true);
+            lastJulieSpeakTurn.current = turnId;
+          }
+        }, 2500);
+      }
     } catch {
       removeMessageById(thinkingId);
       addMessage(`${mentor.name}: I hit a problem generating a response.`, "mentor", mentor.name, ["YOU"]);
@@ -944,11 +1084,21 @@ Rules:
         archived: false,
       });
       if (saved?.id) {
-        trackNoteCreated(saved.id);
+        trackNoteCreated(saved);
         if (allNoteTags.length > 0) {
           const currentTopics = meetingStateRef.current.activeTopics;
           const merged = Array.from(new Set([...currentTopics, ...allNoteTags]));
-          updateSession(sessionId, { key_topics: merged, notes_created: [...meetingStateRef.current.notesCreated, saved.id] }).catch(() => {});
+          updateSession(sessionId, {
+            key_topics: merged,
+            notes_created: [...meetingStateRef.current.notesCreated, saved.id],
+          }).catch(() => {});
+        }
+        const openItems = meetingStateRef.current.openQuestions.length + meetingStateRef.current.assignedTasks.length;
+        if (openItems > 0 && meetingStateRef.current.memoryNotes.length === 1) {
+          addMessage(
+            `JULIE: Note saved. We still have ${openItems} open item${openItems > 1 ? "s" : ""} in memory from this session.`,
+            "mentor", "JULIE", ["ALL"], false, true
+          );
         }
       }
     }
@@ -1309,11 +1459,9 @@ Rules:
               try {
                 const record = await uploadFileToVault(file, { linkedSessionId: sessionId });
                 setSessionFiles((prev) => [...prev, record]);
-                setMeetingState((prev) => ({ ...prev, filesDiscussed: [...prev.filesDiscussed, record.id] }));
-                if (sessionId) {
-                  updateSession(sessionId, { files_discussed: [...meetingStateRef.current.filesDiscussed, record.id] }).catch(() => {});
-                }
-                addMessage(`[File uploaded to session: ${record.name}]`, "mentor", "JULIE", ["ALL"], false, true);
+                trackFileDiscussed(record);
+                updateSession(sessionId, { files_discussed: [...meetingStateRef.current.filesDiscussed, record.id] }).catch(() => {});
+                addMessage(`JULIE: File "${record.name}" saved to Vault and linked to this session.`, "mentor", "JULIE", ["ALL"], false, true);
               } catch {
                 addMessage(`[File upload failed]`, "mentor", "JULIE", ["ALL"], false, true);
               }
@@ -1374,98 +1522,214 @@ Rules:
       {showMemoryPanel && (
         <div
           className="flex-shrink-0 flex flex-col border-l overflow-y-auto"
-          style={{ width: "220px", minWidth: "220px", borderColor: "#1B2A4A", backgroundColor: "#0A1628" }}
+          style={{ width: "240px", minWidth: "240px", borderColor: "#1B2A4A", backgroundColor: "#080F1C" }}
         >
-          <div className="flex items-center justify-between px-3 py-2.5 border-b flex-shrink-0" style={{ borderColor: "#1B2A4A" }}>
-            <span className="text-[9px] tracking-widest uppercase font-bold" style={{ color: "#8A9BB5" }}>Session Memory</span>
-            <button onClick={() => setShowMemoryPanel(false)} className="text-xs opacity-40 hover:opacity-80 leading-none" style={{ color: "#8A9BB5" }}>×</button>
+          <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0" style={{ borderColor: "#1B2A4A" }}>
+            <div>
+              <p className="text-[9px] tracking-widest uppercase font-bold" style={{ color: "#8A9BB5" }}>Session Memory</p>
+              <p className="text-[8px] mt-0.5" style={{ color: "#3A4F6A" }}>Persisted · Auto-synced</p>
+            </div>
+            <button onClick={() => setShowMemoryPanel(false)} className="text-sm opacity-40 hover:opacity-80 leading-none" style={{ color: "#8A9BB5" }}>×</button>
           </div>
 
-          {meetingState.carryoverItems.length > 0 && (
-            <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A", backgroundColor: "rgba(249,115,22,0.04)" }}>
-              <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5 flex items-center gap-1" style={{ color: "#F97316" }}>
-                <span>⟳</span> Carryover ({meetingState.carryoverItems.filter((c) => !c.resolved).length} open)
+          {meetingState.carryoverItems.filter((c) => !c.resolved).length > 0 && (
+            <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A", backgroundColor: "rgba(249,115,22,0.05)" }}>
+              <p className="text-[9px] tracking-widest uppercase font-bold mb-2 flex items-center gap-1.5" style={{ color: "#F97316" }}>
+                ⟳ Carryover ({meetingState.carryoverItems.filter((c) => !c.resolved).length} open)
               </p>
               <div className="flex flex-col gap-1.5">
                 {meetingState.carryoverItems.slice(0, 6).map((item, i) => (
-                  <div key={i} className="flex items-start gap-1">
-                    <span className="text-[8px] mt-0.5 flex-shrink-0" style={{ color: item.resolved ? "#2A3D5E" : item.type === "task" ? "#5A9BD3" : item.type === "question" ? "#F87171" : "#F97316" }}>
+                  <div
+                    key={i}
+                    className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-all hover:opacity-80"
+                    style={{
+                      backgroundColor: item.resolved ? "transparent" : "rgba(249,115,22,0.06)",
+                      border: `1px solid ${item.resolved ? "transparent" : "rgba(249,115,22,0.15)"}`,
+                    }}
+                    onClick={() => {
+                      if (!item.resolved) {
+                        setInput(item.text.slice(0, 80));
+                        inputRef.current?.focus();
+                      }
+                    }}
+                    title={item.resolved ? "Resolved" : "Click to address"}
+                  >
+                    <span className="text-[9px] mt-0.5 flex-shrink-0 font-bold" style={{
+                      color: item.resolved ? "#2A3D5E" : item.type === "task" ? "#5A9BD3" : item.type === "question" ? "#F87171" : "#F97316"
+                    }}>
                       {item.type === "task" ? "T" : item.type === "question" ? "?" : "~"}
                     </span>
-                    <p className="text-[10px] leading-snug" style={{ color: item.resolved ? "#2A3D5E" : "#8A9BB5", textDecoration: item.resolved ? "line-through" : "none" }}>
-                      {item.text.slice(0, 50)}{item.text.length > 50 ? "…" : ""}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-[10px] leading-snug" style={{ color: item.resolved ? "#2A3D5E" : "#8A9BB5", textDecoration: item.resolved ? "line-through" : "none" }}>
+                        {item.text.slice(0, 50)}{item.text.length > 50 ? "…" : ""}
+                      </p>
+                      {item.owner && !item.resolved && (
+                        <p className="text-[9px] mt-0.5" style={{ color: "#4A6080" }}>→ {item.owner}</p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#F87171" }}>
-              Open Questions ({meetingState.openQuestions.length})
+          <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-bold mb-2" style={{ color: "#F87171" }}>
+              Open Questions {meetingState.openQuestions.length > 0 && `(${meetingState.openQuestions.length})`}
             </p>
             {meetingState.openQuestions.length === 0 ? (
-              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None</p>
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None raised yet</p>
             ) : (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1.5">
                 {meetingState.openQuestions.slice(-5).map((q, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {q.slice(0, 55)}{q.length > 55 ? "…" : ""}</p>
+                  <button
+                    key={i}
+                    className="text-left px-2 py-1.5 rounded-lg text-[10px] leading-snug transition-all hover:opacity-80"
+                    style={{ backgroundColor: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.15)", color: "#C08080" }}
+                    onClick={() => {
+                      setInput(`About: ${q.slice(0, 60)}`);
+                      inputRef.current?.focus();
+                    }}
+                    title="Click to address this question"
+                  >
+                    ? {q.slice(0, 55)}{q.length > 55 ? "…" : ""}
+                  </button>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#4ADE80" }}>
-              Decisions ({meetingState.decisionsMade.length})
-            </p>
-            {meetingState.decisionsMade.length === 0 ? (
-              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None recorded</p>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {meetingState.decisionsMade.slice(-5).map((d, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {d.slice(0, 55)}{d.length > 55 ? "…" : ""}</p>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#5A9BD3" }}>
-              Active Tasks ({meetingState.assignedTasks.length})
+          <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-bold mb-2" style={{ color: "#5A9BD3" }}>
+              Active Tasks {meetingState.assignedTasks.length > 0 && `(${meetingState.assignedTasks.length})`}
             </p>
             {meetingState.assignedTasks.length === 0 ? (
               <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None assigned</p>
             ) : (
               <div className="flex flex-col gap-1.5">
                 {meetingState.assignedTasks.slice(-6).map((t, i) => (
-                  <div key={i}>
-                    <p className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>{t.task.slice(0, 45)}{t.task.length > 45 ? "…" : ""}</p>
-                    <p className="text-[9px]" style={{ color: "#3A4F6A" }}>→ {t.owner}</p>
+                  <div
+                    key={i}
+                    className="px-2 py-1.5 rounded-lg cursor-pointer transition-all hover:opacity-80"
+                    style={{ backgroundColor: "rgba(90,155,211,0.06)", border: "1px solid rgba(90,155,211,0.15)" }}
+                    onClick={() => {
+                      setInput(`Status update: ${t.task.slice(0, 60)}`);
+                      inputRef.current?.focus();
+                    }}
+                    title="Click to follow up"
+                  >
+                    <p className="text-[10px] leading-snug" style={{ color: "#8AB5D5" }}>{t.task.slice(0, 50)}{t.task.length > 50 ? "…" : ""}</p>
+                    <p className="text-[9px] mt-0.5" style={{ color: "#3A6080" }}>→ {t.owner}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {meetingState.resolvedTasks && meetingState.resolvedTasks.length > 0 && (
+              <div className="mt-2 flex flex-col gap-1">
+                {meetingState.resolvedTasks.slice(-3).map((t, i) => (
+                  <p key={i} className="text-[9px] leading-snug" style={{ color: "#2A4D3A", textDecoration: "line-through" }}>✓ {t.task.slice(0, 40)}</p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-bold mb-2" style={{ color: "#4ADE80" }}>
+              Decisions {meetingState.decisionsMade.length > 0 && `(${meetingState.decisionsMade.length})`}
+            </p>
+            {meetingState.decisionsMade.length === 0 ? (
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None recorded yet</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {meetingState.decisionsMade.slice(-4).map((d, i) => (
+                  <div
+                    key={i}
+                    className="px-2 py-1.5 rounded-lg"
+                    style={{ backgroundColor: "rgba(74,222,128,0.04)", border: "1px solid rgba(74,222,128,0.12)" }}
+                  >
+                    <p className="text-[10px] leading-snug" style={{ color: "#6AB87A" }}>✓ {d.slice(0, 60)}{d.length > 60 ? "…" : ""}</p>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#C9A84C" }}>
-              Active Topics ({meetingState.activeTopics.length})
+          <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-bold mb-2" style={{ color: "#C9A84C" }}>
+              Active Topics {meetingState.activeTopics.length > 0 && `(${meetingState.activeTopics.length})`}
             </p>
             {meetingState.activeTopics.length === 0 ? (
-              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>None</p>
+              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>No topics tracked yet</p>
             ) : (
-              <div className="flex flex-col gap-1">
-                {meetingState.activeTopics.slice(-4).map((t, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#8A9BB5" }}>· {t.slice(0, 50)}{t.length > 50 ? "…" : ""}</p>
+              <div className="flex flex-wrap gap-1">
+                {meetingState.activeTopics.slice(-5).map((t, i) => (
+                  <span
+                    key={i}
+                    className="inline-block text-[9px] px-1.5 py-0.5 rounded font-semibold cursor-pointer hover:opacity-80"
+                    style={{ backgroundColor: "rgba(201,168,76,0.1)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.2)" }}
+                    onClick={() => { setInput(t.slice(0, 60)); inputRef.current?.focus(); }}
+                    title="Click to revisit topic"
+                  >
+                    {t.slice(0, 28)}{t.length > 28 ? "…" : ""}
+                  </span>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
-            <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#A07BC9" }}>
+          {meetingState.memoryFiles.length > 0 && (
+            <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+              <p className="text-[9px] tracking-widest uppercase font-bold mb-2" style={{ color: "#60A5FA" }}>
+                Files ({meetingState.memoryFiles.length})
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {meetingState.memoryFiles.slice(-5).map((f) => {
+                  const vf = sessionFiles.find((sf) => sf.id === f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      className="text-left px-2 py-1.5 rounded-lg text-[10px] leading-snug transition-all hover:opacity-80"
+                      style={{ backgroundColor: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.15)", color: "#93C5FD" }}
+                      onClick={() => { if (vf) setPreviewFile(vf); }}
+                      title={vf ? "Click to preview" : f.name}
+                    >
+                      <span className="font-semibold">{f.name.slice(0, 28)}{f.name.length > 28 ? "…" : ""}</span>
+                      <span className="ml-1.5 text-[9px] uppercase opacity-60">{f.type}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {meetingState.memoryNotes.length > 0 && (
+            <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+              <p className="text-[9px] tracking-widest uppercase font-bold mb-2" style={{ color: "#10B981" }}>
+                Notes ({meetingState.memoryNotes.length})
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {meetingState.memoryNotes.slice(-4).map((n, i) => (
+                  <div
+                    key={i}
+                    className="px-2 py-1.5 rounded-lg"
+                    style={{ backgroundColor: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)" }}
+                  >
+                    <p className="text-[10px] leading-snug" style={{ color: "#6EBA9C" }}>{n.text.slice(0, 55)}{n.text.length > 55 ? "…" : ""}</p>
+                    {n.tags.length > 0 && (
+                      <div className="flex gap-1 mt-0.5 flex-wrap">
+                        {n.tags.slice(0, 3).map((t) => (
+                          <span key={t} className="text-[8px] px-1 rounded" style={{ backgroundColor: "rgba(201,168,76,0.12)", color: "#C9A84C" }}>{t}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="px-4 py-3 border-b" style={{ borderColor: "#1B2A4A" }}>
+            <p className="text-[9px] tracking-widest uppercase font-bold mb-2" style={{ color: "#A07BC9" }}>
               Team Involved
             </p>
             {Object.keys(meetingState.mentorParticipation).length === 0 ? (
@@ -1474,33 +1738,25 @@ Rules:
               <div className="flex flex-col gap-1">
                 {Object.entries(meetingState.mentorParticipation)
                   .sort((a, b) => b[1] - a[1])
+                  .slice(0, 8)
                   .map(([name, count]) => (
                     <div key={name} className="flex items-center justify-between">
-                      <span className="text-[9px] tracking-widest uppercase font-semibold" style={{ color: "#3A4F6A" }}>{name}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: "#C9A84C", backgroundColor: "rgba(201,168,76,0.1)" }}>{count}</span>
+                      <span className="text-[9px] tracking-widest uppercase font-semibold" style={{ color: "#4A5E78" }}>{name}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded font-bold" style={{ color: "#C9A84C", backgroundColor: "rgba(201,168,76,0.1)" }}>{count}</span>
                     </div>
                   ))}
               </div>
             )}
           </div>
 
-          {meetingState.notesCreated.length > 0 && (
-            <div className="px-3 py-2.5 border-b" style={{ borderColor: "#1B2A4A" }}>
-              <p className="text-[9px] tracking-widest uppercase font-semibold mb-1" style={{ color: "#10B981" }}>
-                Notes Created ({meetingState.notesCreated.length})
-              </p>
-              <p className="text-[10px]" style={{ color: "#2A3D5E" }}>{meetingState.notesCreated.length} side note{meetingState.notesCreated.length > 1 ? "s" : ""} saved this session</p>
-            </div>
-          )}
-
           {meetingState.answeredQuestions.length > 0 && (
-            <div className="px-3 py-2.5">
-              <p className="text-[9px] tracking-widest uppercase font-semibold mb-1.5" style={{ color: "#2A6A3A" }}>
+            <div className="px-4 py-3">
+              <p className="text-[9px] tracking-widest uppercase font-bold mb-1.5" style={{ color: "#2A6A3A" }}>
                 Resolved ({meetingState.answeredQuestions.length})
               </p>
               <div className="flex flex-col gap-1">
-                {meetingState.answeredQuestions.slice(-3).map((aq, i) => (
-                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#2A4D3A" }}>✓ {aq.question.slice(0, 45)}{aq.question.length > 45 ? "…" : ""}</p>
+                {meetingState.answeredQuestions.slice(-4).map((aq, i) => (
+                  <p key={i} className="text-[10px] leading-snug" style={{ color: "#2A5A3A" }}>✓ {aq.question.slice(0, 50)}{aq.question.length > 50 ? "…" : ""}</p>
                 ))}
               </div>
             </div>
@@ -1516,11 +1772,11 @@ Rules:
           onClose={() => setShowFileUpload(false)}
           onUploaded={(record) => {
             setSessionFiles((prev) => [...prev, record]);
-            setMeetingState((prev) => ({ ...prev, filesDiscussed: [...prev.filesDiscussed, record.id] }));
+            trackFileDiscussed(record);
             if (sessionId) {
               updateSession(sessionId, { files_discussed: [...meetingStateRef.current.filesDiscussed, record.id] }).catch(() => {});
             }
-            addMessage(`[File saved to Vault: ${record.name}]`, "mentor", "JULIE", ["ALL"], false, true);
+            addMessage(`JULIE: File "${record.name}" saved to Vault and linked to this session.`, "mentor", "JULIE", ["ALL"], false, true);
           }}
         />
       )}

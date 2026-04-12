@@ -17,6 +17,8 @@ export interface Session {
   files_discussed?: string[];
   notes_created?: string[];
   participants?: string[];
+  decisions_made?: string[];
+  unresolved_topics?: string[];
 }
 
 export interface SessionTranscript {
@@ -46,6 +48,10 @@ export interface JulieReport {
   pending_decisions: string[];
   mentor_participation: Record<string, number>;
   dropped_ideas: string[];
+  files_referenced: { id: string; name: string; type: string }[];
+  notes_referenced: { id: string; text: string; tags: string[] }[];
+  resolved_tasks: { task: string; owner: string }[];
+  resolved_questions: { question: string; answer: string }[];
   updated_at: string;
 }
 
@@ -167,7 +173,7 @@ export async function upsertTranscript(sessionId: string, messages: TranscriptMe
 
 export async function upsertJulieReport(
   sessionId: string,
-  report: Omit<JulieReport, "id" | "session_id" | "updated_at">
+  report: Omit<JulieReport, "id" | "session_id" | "updated_at"> & Partial<Pick<JulieReport, "files_referenced" | "notes_referenced" | "resolved_tasks" | "resolved_questions">>
 ): Promise<void> {
   const { data: existing } = await supabase
     .from("julie_reports")
@@ -482,6 +488,16 @@ export async function listVaultFiles(folderId?: string | null): Promise<VaultFil
   return (data ?? []) as VaultFile[];
 }
 
+export async function listVaultFilesBySession(sessionId: string): Promise<VaultFile[]> {
+  const { data } = await supabase
+    .from("vault_files")
+    .select("*")
+    .eq("archived", false)
+    .eq("linked_session_id", sessionId)
+    .order("updated_at", { ascending: false });
+  return (data ?? []) as VaultFile[];
+}
+
 export async function listVaultFilesByProject(projectId: string): Promise<VaultFile[]> {
   const { data } = await supabase
     .from("vault_files")
@@ -645,7 +661,7 @@ export function getVaultFileUrl(storagePath: string): string {
 
 export async function updateSession(
   sessionId: string,
-  patch: Partial<Pick<Session, "session_summary" | "key_topics" | "mentors_involved" | "carryover_tasks" | "carryover_questions" | "carryover_topics" | "files_discussed" | "notes_created" | "participants">>
+  patch: Partial<Pick<Session, "session_summary" | "key_topics" | "mentors_involved" | "carryover_tasks" | "carryover_questions" | "carryover_topics" | "files_discussed" | "notes_created" | "participants" | "decisions_made" | "unresolved_topics">>
 ): Promise<void> {
   await supabase.from("sessions").update(patch).eq("id", sessionId);
 }
