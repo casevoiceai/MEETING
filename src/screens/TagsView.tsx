@@ -5,6 +5,8 @@ import {
   listVaultFilesByTag, listSideNotesByTag, listSessionsByTag, listProjectsByTag, listEmailsByTag,
   type TagEntry, type VaultFile, type SideNote, type Session, type Project, type Email, type LinkableType,
 } from "../lib/db";
+import { useGuardrail } from "../lib/useGuardrail";
+import DestructiveConfirmModal from "../components/DestructiveConfirmModal";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
 
 const GOLD = "#C9A84C";
@@ -258,6 +260,7 @@ export default function TagsView({ onNavigateLinked, linkedTarget }: TagsViewPro
   const [categoryError, setCategoryError] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{ tag: string; category: string }>({ tag: "", category: "" });
+  const guardrail = useGuardrail();
 
   useEffect(() => {
     load();
@@ -298,11 +301,27 @@ export default function TagsView({ onNavigateLinked, linkedTarget }: TagsViewPro
     setCreating(false);
   }
 
-  async function handleDelete(id: string, e: React.MouseEvent) {
+  function handleDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    await deleteTag(id);
-    setTags((prev) => prev.filter((t) => t.id !== id));
-    if (selectedTag?.id === id) setSelectedTag(null);
+    const tag = tags.find((t) => t.id === id);
+    guardrail.request(
+      {
+        actionType: "delete_tag",
+        risk: "medium",
+        title: `Delete tag: "${tag?.tag ?? id}"`,
+        consequence: `This will permanently delete the tag "${tag?.tag ?? id}" from the tag registry. All files, notes, and sessions that use this tag will retain the tag text in their data, but it will no longer appear as a managed tag. This cannot be undone.`,
+        requireTypedConfirmation: false,
+        requireBackupConfirmation: false,
+        targetId: id,
+        targetLabel: tag?.tag ?? id,
+        snapshotData: tag ? { id: tag.id, tag: tag.tag, category: tag.category, usage_count: tag.usage_count } : {},
+      },
+      async () => {
+        await deleteTag(id);
+        setTags((prev) => prev.filter((t) => t.id !== id));
+        if (selectedTag?.id === id) setSelectedTag(null);
+      }
+    );
   }
 
   function startEdit(tag: TagEntry, e: React.MouseEvent) {
@@ -544,6 +563,14 @@ export default function TagsView({ onNavigateLinked, linkedTarget }: TagsViewPro
           </div>
         </div>
       </div>
+
+      {guardrail.pending && (
+        <DestructiveConfirmModal
+          config={guardrail.pending.config}
+          onConfirm={guardrail.handleConfirm}
+          onCancel={guardrail.handleCancel}
+        />
+      )}
     </div>
   );
 }

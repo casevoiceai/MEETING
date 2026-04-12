@@ -12,6 +12,8 @@ import {
   type Project, type ProjectNote, type ProjectTask, type TaskStatus, type VaultFile, type SideNote, type TagEntry, type LinkableType, type VaultFolder,
 } from "../lib/db";
 import { proposeAction } from "../lib/approval";
+import { useGuardrail } from "../lib/useGuardrail";
+import DestructiveConfirmModal from "../components/DestructiveConfirmModal";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
 import FileUploadModal from "../components/FileUploadModal";
 import FilePreviewModal from "../components/FilePreviewModal";
@@ -114,6 +116,7 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
   const [previewFile, setPreviewFile] = useState<VaultFile | null>(null);
   const [taskDeleteProposed, setTaskDeleteProposed] = useState<Set<string>>(new Set());
   const [renameProposed, setRenameProposed] = useState(false);
+  const guardrail = useGuardrail();
 
   useEffect(() => {
     setLoaded(false);
@@ -161,9 +164,25 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
     setNewNoteText("");
   }
 
-  async function handleDeleteNote(id: string) {
-    await deleteProjectNote(id);
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+  function handleDeleteNote(id: string) {
+    const note = notes.find((n) => n.id === id);
+    guardrail.request(
+      {
+        actionType: "delete_project_note",
+        risk: "medium",
+        title: `Delete note from "${project.name}"`,
+        consequence: `This will permanently delete the note "${(note?.text ?? "").slice(0, 60)}". This cannot be undone.`,
+        requireTypedConfirmation: false,
+        requireBackupConfirmation: false,
+        targetId: id,
+        targetLabel: (note?.text ?? "").slice(0, 60),
+        snapshotData: note ? { id: note.id, text: note.text, project_id: note.project_id } : {},
+      },
+      async () => {
+        await deleteProjectNote(id);
+        setNotes((prev) => prev.filter((n) => n.id !== id));
+      }
+    );
   }
 
   async function handleAddTask() {
@@ -180,16 +199,31 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: next } : t));
   }
 
-  async function handleDeleteTask(id: string) {
+  function handleDeleteTask(id: string) {
     const task = tasks.find((t) => t.id === id);
-    await proposeAction({
-      action_type: "task_delete",
-      title: `Delete task: "${task?.text?.slice(0, 60) ?? id}"`,
-      description: `Permanently delete task from project "${project.name}". This cannot be undone.`,
-      proposed_by: "SYSTEM",
-      payload: { task_id: id, task_text: task?.text, project_id: project.id, project_name: project.name },
-    });
-    setTaskDeleteProposed((prev) => new Set(prev).add(id));
+    guardrail.request(
+      {
+        actionType: "task_delete",
+        risk: "medium",
+        title: `Delete task: "${task?.text?.slice(0, 60) ?? id}"`,
+        consequence: `This will permanently delete the task "${task?.text?.slice(0, 80) ?? id}" from project "${project.name}". This cannot be undone.`,
+        requireTypedConfirmation: false,
+        requireBackupConfirmation: false,
+        targetId: id,
+        targetLabel: task?.text?.slice(0, 60) ?? id,
+        snapshotData: task ? { id: task.id, text: task.text, owner: task.owner, status: task.status } : {},
+      },
+      async () => {
+        await proposeAction({
+          action_type: "task_delete",
+          title: `Delete task: "${task?.text?.slice(0, 60) ?? id}"`,
+          description: `Permanently delete task from project "${project.name}". This cannot be undone.`,
+          proposed_by: "USER",
+          payload: { task_id: id, task_text: task?.text, project_id: project.id, project_name: project.name },
+        });
+        setTaskDeleteProposed((prev) => new Set(prev).add(id));
+      }
+    );
   }
 
   const openTasks = tasks.filter((t) => t.status !== "done");
@@ -614,6 +648,14 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
           </>
         )}
       </div>
+
+      {guardrail.pending && (
+        <DestructiveConfirmModal
+          config={guardrail.pending.config}
+          onConfirm={guardrail.handleConfirm}
+          onCancel={guardrail.handleCancel}
+        />
+      )}
     </div>
   );
 }
@@ -631,6 +673,7 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
   const [creating, setCreating] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [projectDeleteProposed, setProjectDeleteProposed] = useState<Set<string>>(new Set());
+  const guardrail = useGuardrail();
 
   useEffect(() => {
     listProjects().then((p) => {
@@ -652,24 +695,55 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
     setSelected(p);
   }
 
-  async function handleArchiveProject(p: Project, e: React.MouseEvent) {
+  function handleArchiveProject(p: Project, e: React.MouseEvent) {
     e.stopPropagation();
-    await archiveProject(p.id);
-    setProjects((prev) => prev.filter((proj) => proj.id !== p.id));
-    if (selected?.id === p.id) setSelected(null);
+    guardrail.request(
+      {
+        actionType: "archive_project",
+        risk: "medium",
+        title: `Archive project: "${p.name}"`,
+        consequence: `This will archive the project "${p.name}". It will no longer appear in the active list. All tasks, notes, and files linked to it will be preserved and remain accessible through search. You can restore it from the archive later.`,
+        requireTypedConfirmation: false,
+        requireBackupConfirmation: false,
+        targetId: p.id,
+        targetLabel: p.name,
+        snapshotData: { id: p.id, name: p.name },
+      },
+      async () => {
+        await archiveProject(p.id);
+        setProjects((prev) => prev.filter((proj) => proj.id !== p.id));
+        if (selected?.id === p.id) setSelected(null);
+      }
+    );
   }
 
-  async function handleDeleteProject(id: string) {
+  function handleDeleteProject(id: string) {
     const proj = projects.find((p) => p.id === id);
-    await proposeAction({
-      action_type: "project_delete",
-      title: `Delete project: "${proj?.name ?? id}"`,
-      description: `Permanently delete the project "${proj?.name ?? id}" and all its tasks, notes, and links. This cannot be undone.`,
-      proposed_by: "USER",
-      payload: { project_id: id, project_name: proj?.name },
-    });
-    setProjectDeleteProposed((prev) => new Set(prev).add(id));
-    setConfirmDeleteId(null);
+    guardrail.request(
+      {
+        actionType: "project_delete",
+        risk: "high",
+        title: `Delete project: "${proj?.name ?? id}"`,
+        consequence: `This will permanently delete the project "${proj?.name ?? id}" and all its tasks and notes. Linked vault files and side notes will remain but lose their project association. This action goes to the approval queue and cannot be undone once approved.`,
+        requireTypedConfirmation: true,
+        typedConfirmationWord: "DELETE",
+        requireBackupConfirmation: true,
+        targetId: id,
+        targetLabel: proj?.name ?? id,
+        snapshotData: { project_id: id, project_name: proj?.name },
+      },
+      async () => {
+        await proposeAction({
+          action_type: "project_delete",
+          title: `Delete project: "${proj?.name ?? id}"`,
+          description: `Permanently delete the project "${proj?.name ?? id}" and all its tasks, notes, and links. This cannot be undone.`,
+          proposed_by: "USER",
+          payload: { project_id: id, project_name: proj?.name },
+        });
+        setProjectDeleteProposed((prev) => new Set(prev).add(id));
+        setConfirmDeleteId(null);
+      }
+    );
   }
 
   function handleProjectRenamed(id: string, name: string) {
@@ -793,31 +867,12 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
         )}
       </div>
 
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <div className="rounded-2xl p-6 max-w-sm w-full mx-4 flex flex-col gap-4" style={{ backgroundColor: "#0A1628", border: `1px solid ${BORDER}` }}>
-            <p className="text-base font-bold" style={{ color: "#FFFFFF" }}>Delete Project?</p>
-            <p className="text-sm" style={{ color: MUTED }}>
-              This will permanently delete the project and all its tasks and notes. Linked files and side notes will remain in the Vault.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setConfirmDeleteId(null)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold"
-                style={{ backgroundColor: "#1B2A4A", color: MUTED }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteProject(confirmDeleteId)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold"
-                style={{ backgroundColor: "#EF4444", color: "#FFFFFF" }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+      {guardrail.pending && (
+        <DestructiveConfirmModal
+          config={guardrail.pending.config}
+          onConfirm={guardrail.handleConfirm}
+          onCancel={guardrail.handleCancel}
+        />
       )}
     </div>
   );

@@ -5,6 +5,8 @@ import {
   Image as ImageIcon, File, Shield, ShieldAlert, ShieldX,
 } from "lucide-react";
 import { getStatusColors, getStatusLabel, isAccessBlocked } from "../lib/quarantine";
+import { useGuardrail } from "../lib/useGuardrail";
+import DestructiveConfirmModal from "../components/DestructiveConfirmModal";
 import {
   listSideNotes, deleteSideNote, saveSideNote, updateSideNote, listAllTags, upsertTags,
   listVaultFolders, createVaultFolder, renameVaultFolder, deleteVaultFolder,
@@ -317,6 +319,7 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
+  const guardrail = useGuardrail();
 
   const load = useCallback(async () => {
     const [f, files, p] = await Promise.all([listVaultFolders(), listVaultFiles(selectedFolder), listProjects()]);
@@ -351,18 +354,52 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
     setShowNewFolder(false);
   }
 
-  async function handleDeleteFile(id: string, e: React.MouseEvent) {
+  function handleDeleteFile(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    await deleteVaultFile(id);
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-    if (openFile?.id === id) setOpenFile(null);
+    const file = files.find((f) => f.id === id);
+    guardrail.request(
+      {
+        actionType: "delete_file",
+        risk: "high",
+        title: `Delete file: "${file?.name ?? id}"`,
+        consequence: `This will permanently delete the file "${file?.name ?? id}" and remove it from storage. Any linked sessions, projects, or tags will lose this reference. This cannot be undone.`,
+        requireTypedConfirmation: true,
+        typedConfirmationWord: "DELETE",
+        requireBackupConfirmation: true,
+        targetId: id,
+        targetLabel: file?.name ?? id,
+        snapshotData: file ? { id: file.id, name: file.name, file_type: file.file_type, folder_id: file.folder_id, tags: file.tags } : {},
+      },
+      async () => {
+        await deleteVaultFile(id);
+        setFiles((prev) => prev.filter((f) => f.id !== id));
+        if (openFile?.id === id) setOpenFile(null);
+      }
+    );
   }
 
-  async function handleDeleteFolder(id: string, e: React.MouseEvent) {
+  function handleDeleteFolder(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    await deleteVaultFolder(id);
-    setFolders((prev) => prev.filter((f) => f.id !== id));
-    if (selectedFolder === id) setSelectedFolder(undefined);
+    const folder = folders.find((f) => f.id === id);
+    guardrail.request(
+      {
+        actionType: "delete_folder",
+        risk: "high",
+        title: `Delete folder: "${folder?.name ?? id}"`,
+        consequence: `This will permanently delete the folder "${folder?.name ?? id}". Files inside this folder will be moved to the root level, not deleted. This cannot be undone.`,
+        requireTypedConfirmation: true,
+        typedConfirmationWord: "DELETE",
+        requireBackupConfirmation: false,
+        targetId: id,
+        targetLabel: folder?.name ?? id,
+        snapshotData: folder ? { id: folder.id, name: folder.name } : {},
+      },
+      async () => {
+        await deleteVaultFolder(id);
+        setFolders((prev) => prev.filter((f) => f.id !== id));
+        if (selectedFolder === id) setSelectedFolder(undefined);
+      }
+    );
   }
 
   async function handleRenameFile(id: string, name: string) {
@@ -717,6 +754,14 @@ function FilesTab({ onNavigate, initialFileId }: { onNavigate?: (type: LinkableT
           onUpdated={(patch) => handleUpdateFile(previewFile.id, patch)}
         />
       )}
+
+      {guardrail.pending && (
+        <DestructiveConfirmModal
+          config={guardrail.pending.config}
+          onConfirm={guardrail.handleConfirm}
+          onCancel={guardrail.handleCancel}
+        />
+      )}
     </div>
   );
 }
@@ -839,6 +884,7 @@ function NotesTab({ onNavigate, initialNoteId }: { onNavigate?: (type: LinkableT
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(initialNoteId ?? null);
+  const guardrail = useGuardrail();
 
   useEffect(() => {
     Promise.all([listSideNotes({ archived: false }), listAllTags(), listProjects()]).then(([n, t, p]) => {
@@ -849,9 +895,26 @@ function NotesTab({ onNavigate, initialNoteId }: { onNavigate?: (type: LinkableT
     });
   }, []);
 
-  async function handleDelete(id: string) {
-    await deleteSideNote(id);
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+  function handleDelete(id: string) {
+    const note = notes.find((n) => n.id === id);
+    const preview = note?.text.slice(0, 60) ?? id;
+    guardrail.request(
+      {
+        actionType: "delete_note",
+        risk: "medium",
+        title: `Delete note: "${preview}${(note?.text?.length ?? 0) > 60 ? "..." : ""}"`,
+        consequence: `This will permanently delete this side note. All tag associations will be removed. This cannot be undone.`,
+        requireTypedConfirmation: false,
+        requireBackupConfirmation: false,
+        targetId: id,
+        targetLabel: preview,
+        snapshotData: note ? { id: note.id, text: note.text, tags: note.tags } : {},
+      },
+      async () => {
+        await deleteSideNote(id);
+        setNotes((prev) => prev.filter((n) => n.id !== id));
+      }
+    );
   }
 
   async function handleCreate() {
@@ -1089,6 +1152,14 @@ function NotesTab({ onNavigate, initialNoteId }: { onNavigate?: (type: LinkableT
           })}
         </div>
       </div>
+
+      {guardrail.pending && (
+        <DestructiveConfirmModal
+          config={guardrail.pending.config}
+          onConfirm={guardrail.handleConfirm}
+          onCancel={guardrail.handleCancel}
+        />
+      )}
     </div>
   );
 }

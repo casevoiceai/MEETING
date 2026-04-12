@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Archive, ChevronRight, FileText, Tag, Users, AlertCircle, CheckSquare, StickyNote, File, Image as ImageIcon } from "lucide-react";
 import { listSessions, archiveSession, loadSession, type Session, type VaultFile, type LinkableType } from "../lib/db";
+import { useGuardrail } from "../lib/useGuardrail";
+import DestructiveConfirmModal from "../components/DestructiveConfirmModal";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
 import FilePreviewModal from "../components/FilePreviewModal";
 
@@ -36,6 +38,7 @@ export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTa
   const [expandedId, setExpandedId] = useState<string | null>(linkedTarget ?? null);
   const [expandedData, setExpandedData] = useState<Record<string, SessionData>>({});
   const [previewFile, setPreviewFile] = useState<VaultFile | null>(null);
+  const guardrail = useGuardrail();
 
   useEffect(() => {
     listSessions().then((s) => {
@@ -79,10 +82,25 @@ export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTa
     }
   }
 
-  async function handleArchive(session: Session, e: React.MouseEvent) {
+  function handleArchive(session: Session, e: React.MouseEvent) {
     e.stopPropagation();
-    await archiveSession(session.id);
-    setSessions((prev) => prev.map((s) => s.id === session.id ? { ...s, archived: true } : s));
+    guardrail.request(
+      {
+        actionType: "archive_session",
+        risk: "medium",
+        title: `Archive session: "${session.session_key}"`,
+        consequence: `This will archive the session "${session.session_key}" (${new Date(session.session_date).toLocaleDateString()}). It will no longer appear in the active sessions list. All transcripts, notes, and linked files will be preserved. You can view archived sessions in the archive section.`,
+        requireTypedConfirmation: false,
+        requireBackupConfirmation: false,
+        targetId: session.id,
+        targetLabel: session.session_key,
+        snapshotData: { id: session.id, session_key: session.session_key, session_date: session.session_date },
+      },
+      async () => {
+        await archiveSession(session.id);
+        setSessions((prev) => prev.map((s) => s.id === session.id ? { ...s, archived: true } : s));
+      }
+    );
   }
 
   const active = sessions.filter((s) => !s.archived);
@@ -344,6 +362,14 @@ export default function SessionsView({ onOpenSession, onNavigateLinked, linkedTa
           sessions={sessions}
           onClose={() => setPreviewFile(null)}
           onUpdated={() => {}}
+        />
+      )}
+
+      {guardrail.pending && (
+        <DestructiveConfirmModal
+          config={guardrail.pending.config}
+          onConfirm={guardrail.handleConfirm}
+          onCancel={guardrail.handleCancel}
         />
       )}
     </div>
