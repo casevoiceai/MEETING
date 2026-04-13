@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 type Message = {
   role: 'user' | 'mentor';
+  speaker?: string;
   text: string;
 };
 
@@ -10,22 +11,32 @@ export default function StaffMeetingRoom() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
 
-  const generateMentorReply = (text: string) => {
+  const getMentorReplies = (text: string) => {
     const lower = text.toLowerCase();
 
-    if (lower.includes('hello') || lower.includes('hi')) {
-      return 'Hey. I’m here. What are we working on?';
-    }
-
-    if (lower.includes('stuck')) {
-      return 'Good. That means you found the edge. What exactly is blocking you?';
-    }
-
+    // MAX (strategic)
+    let max = 'Be specific. What are you actually trying to do?';
     if (lower.includes('idea')) {
-      return 'Say it out loud. Even if it’s messy.';
+      max = 'Ideas are cheap. What makes this one worth building?';
     }
 
-    return 'Talk to me. Give me more detail.';
+    // JERRY (blind spot detector)
+    let jerry = 'Wait. What are we missing here?';
+    if (lower.includes('nothing')) {
+      jerry = 'Nothing? Then why are you here?';
+    }
+
+    // DOC (calm, structured)
+    let doc = 'Let’s slow this down. What’s step one?';
+    if (lower.includes('stuck')) {
+      doc = 'Good. That means you’ve hit a real constraint. Let’s define it.';
+    }
+
+    return [
+      { speaker: 'MAX', text: max },
+      { speaker: 'JERRY', text: jerry },
+      { speaker: 'DOC', text: doc },
+    ];
   };
 
   const sendMessage = () => {
@@ -37,13 +48,15 @@ export default function StaffMeetingRoom() {
       { role: 'user', text: trimmed },
     ];
 
-    const reply = generateMentorReply(trimmed);
+    const replies = getMentorReplies(trimmed);
 
-    setMessages([
-      ...newMessages,
-      { role: 'mentor', text: reply },
-    ]);
+    const mentorMessages = replies.map((r) => ({
+      role: 'mentor' as const,
+      speaker: r.speaker,
+      text: r.text,
+    }));
 
+    setMessages([...newMessages, ...mentorMessages]);
     setInput('');
   };
 
@@ -60,14 +73,7 @@ export default function StaffMeetingRoom() {
           fontFamily: 'Arial, sans-serif',
         }}
       >
-        <div
-          style={{
-            fontSize: '56px',
-            fontWeight: 900,
-            marginBottom: '24px',
-            textAlign: 'center',
-          }}
-        >
+        <div style={{ fontSize: '56px', fontWeight: 900, textAlign: 'center', marginBottom: '24px' }}>
           STAFF MEETING ROOM
         </div>
 
@@ -128,8 +134,9 @@ export default function StaffMeetingRoom() {
               color: msg.role === 'user' ? '#00FF00' : '#FFFFFF',
             }}
           >
-            {msg.role === 'user' ? 'YOU: ' : 'MENTOR: '}
-            {msg.text}
+            {msg.role === 'user'
+              ? `YOU: ${msg.text}`
+              : `${msg.speaker}: ${msg.text}`}
           </div>
         ))}
       </div>
