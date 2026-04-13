@@ -2,8 +2,6 @@ import { useState, useRef, DragEvent } from "react";
 import { Upload, X, File, Image, FileText, Plus, Shield, ShieldAlert, ShieldX, ShieldCheck } from "lucide-react";
 import { uploadFileToVault, type VaultFile, type VaultFolder, type Project } from "../lib/db";
 import { getStatusColors, getStatusLabel, type QuarantineStatus } from "../lib/quarantine";
-import { scanContent, type InjectionScanResult } from "../lib/injectionGuard";
-import { InjectionWarning, SandboxBanner } from "./TrustBadge";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -75,7 +73,6 @@ export default function FileUploadModal({
   const [uploading, setUploading] = useState(false);
   const [scanPhase, setScanPhase] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<{ status: QuarantineStatus; reason: string } | null>(null);
-  const [injectionScan, setInjectionScan] = useState<InjectionScanResult | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -94,22 +91,8 @@ export default function FileUploadModal({
     if (err) { setFileError(err); setSelectedFile(null); return; }
     setFileError(null);
     setScanResult(null);
-    setInjectionScan(null);
     setUploadError(null);
     setSelectedFile(file);
-
-    if (file.type === "text/plain") {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        if (text) {
-          scanContent(text, `upload:${file.name}:${file.size}`, "document")
-            .then((result) => setInjectionScan(result))
-            .catch(() => {});
-        }
-      };
-      reader.readAsText(file);
-    }
   }
 
   function handleDrop(e: DragEvent<HTMLDivElement>) {
@@ -126,10 +109,6 @@ export default function FileUploadModal({
 
   async function handleUpload() {
     if (!selectedFile) return;
-    if (injectionScan?.injectionDetected) {
-      setUploadError("Upload blocked: prompt injection instructions detected in this document. Remove the suspicious content before uploading.");
-      return;
-    }
     setUploading(true);
     setUploadError(null);
     setScanResult(null);
@@ -250,14 +229,6 @@ export default function FileUploadModal({
             <p className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "#F87171" }}>
               {fileError}
             </p>
-          )}
-
-          {selectedFile && (
-            <SandboxBanner contentType="document" />
-          )}
-
-          {injectionScan && (
-            <InjectionWarning result={injectionScan} />
           )}
 
           {scanPhase && (
