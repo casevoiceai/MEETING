@@ -28,14 +28,11 @@ export default function SystemReportsModal({
     const stored = localStorage.getItem("system_health_reports");
     if (stored) {
       try {
-        const parsed = JSON.parse(stored);
+        const parsed: Report[] = JSON.parse(stored);
 
         const unique = parsed.filter(
           (r: Report, i: number, arr: Report[]) =>
-            i ===
-            arr.findIndex(
-              (x) => x.message === r.message && x.time === r.time
-            )
+            i === arr.findIndex((x) => x.message === r.message && x.time === r.time)
         );
 
         setReports(unique);
@@ -52,19 +49,18 @@ export default function SystemReportsModal({
   };
 
   const updateStatus = (id: number, fixStatus: string) => {
-    save(
-      reports.map((r) =>
-        r.id === id ? { ...r, fixStatus } : r
-      )
-    );
+    const next = reports.map((r) => (r.id === id ? { ...r, fixStatus } : r));
+    save(next);
   };
 
   const updateNotes = (id: number, notes: string) => {
-    save(
-      reports.map((r) =>
-        r.id === id ? { ...r, notes } : r
-      )
-    );
+    const next = reports.map((r) => (r.id === id ? { ...r, notes } : r));
+    save(next);
+  };
+
+  const deleteReport = (id: number) => {
+    const next = reports.filter((r) => r.id !== id);
+    save(next);
   };
 
   const archiveReport = (id: number, outcome: "Fixed" | "Abandoned" | "Failed") => {
@@ -72,9 +68,7 @@ export default function SystemReportsModal({
     if (!target) return;
 
     const existingHistory = localStorage.getItem("system_health_reports_history");
-    const parsedHistory: HistoryReport[] = existingHistory
-      ? JSON.parse(existingHistory)
-      : [];
+    const parsedHistory: HistoryReport[] = existingHistory ? JSON.parse(existingHistory) : [];
 
     const archivedReport: HistoryReport = {
       ...target,
@@ -106,17 +100,15 @@ export default function SystemReportsModal({
       style={{ background: "rgba(0,0,0,0.75)", zIndex: 3000 }}
     >
       <div
-        className="w-[760px] max-h-[82vh] overflow-y-auto p-5 rounded-xl"
+        className="w-[820px] max-h-[82vh] overflow-y-auto p-5 rounded-xl"
         style={{
           backgroundColor: "#0D1B2E",
           border: "1px solid #1B2A4A",
         }}
       >
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-5">
           <div>
-            <div className="text-lg text-white font-bold">
-              System Reports
-            </div>
+            <div className="text-lg text-white font-bold">System Reports</div>
             <div className="text-xs text-gray-400">
               Active fires, team messages, status tracking, and fix notes.
             </div>
@@ -125,7 +117,7 @@ export default function SystemReportsModal({
           <div className="flex gap-2">
             <button
               onClick={clearAll}
-              className="px-3 py-1 text-xs rounded"
+              className="px-3 py-1.5 text-xs rounded"
               style={{
                 backgroundColor: "#EF4444",
                 color: "#FFFFFF",
@@ -136,7 +128,7 @@ export default function SystemReportsModal({
 
             <button
               onClick={onClose}
-              className="px-3 py-1 text-xs rounded"
+              className="px-3 py-1.5 text-xs rounded"
               style={{
                 backgroundColor: "#1B2A4A",
                 color: "#C9A84C",
@@ -147,29 +139,23 @@ export default function SystemReportsModal({
           </div>
         </div>
 
-        {reports.length === 0 && (
-          <div className="text-gray-400">
-            No active issues.
-          </div>
-        )}
+        {reports.length === 0 && <div className="text-gray-400">No active issues.</div>}
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {reports.map((r) => (
             <div
               key={r.id}
-              className="p-4 rounded border"
+              className="p-5 rounded border"
               style={{
                 backgroundColor: "#111D30",
                 borderColor: "#1B2A4A",
               }}
             >
-              <div className="flex flex-wrap items-center gap-2 mb-3">
-                <div className="text-sm font-bold text-white">
-                  {r.service}
-                </div>
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                <div className="text-base font-bold text-white">{r.service}</div>
 
                 <div
-                  className="px-2 py-1 rounded text-[10px] font-bold uppercase"
+                  className="px-2.5 py-1 rounded text-[10px] font-bold uppercase"
                   style={{
                     border: "1px solid #C084FC",
                     color: "#C084FC",
@@ -179,41 +165,41 @@ export default function SystemReportsModal({
                 </div>
 
                 <div
-                  className="px-2 py-1 rounded text-[10px] font-bold uppercase"
+                  className="px-2.5 py-1 rounded text-[10px] font-bold uppercase"
                   style={{
                     border:
                       r.fixStatus === "Fixed"
                         ? "1px solid #10B981"
                         : r.fixStatus === "In Progress"
-                        ? "1px solid #F59E0B"
-                        : "1px solid #94A3B8",
+                          ? "1px solid #F59E0B"
+                          : "1px solid #94A3B8",
                     color:
                       r.fixStatus === "Fixed"
                         ? "#10B981"
                         : r.fixStatus === "In Progress"
-                        ? "#F59E0B"
-                        : "#94A3B8",
+                          ? "#F59E0B"
+                          : "#94A3B8",
                   }}
                 >
                   {r.fixStatus}
                 </div>
 
-                <div className="text-xs text-gray-400">
-                  {r.time}
-                </div>
+                <div className="text-xs text-gray-400">{r.time}</div>
               </div>
 
-              <div className="text-sm mb-4 whitespace-pre-wrap text-white">
-                {r.message}
-              </div>
+              <div className="text-sm mb-5 whitespace-pre-wrap text-white">{r.message}</div>
 
-              <div className="flex gap-2 mb-3 flex-wrap">
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                Status
+              </div>
+              <div className="flex flex-wrap gap-3 mb-5">
                 <button
                   onClick={() => updateStatus(r.id, "Pending")}
-                  className="px-2 py-1 text-xs rounded"
+                  className="px-3 py-2 text-xs rounded"
                   style={{
                     border: "1px solid #94A3B8",
                     color: "#94A3B8",
+                    backgroundColor: "#0D1B2E",
                   }}
                 >
                   Pending
@@ -221,10 +207,11 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => updateStatus(r.id, "In Progress")}
-                  className="px-2 py-1 text-xs rounded"
+                  className="px-3 py-2 text-xs rounded"
                   style={{
                     border: "1px solid #F59E0B",
                     color: "#F59E0B",
+                    backgroundColor: "#0D1B2E",
                   }}
                 >
                   In Progress
@@ -232,23 +219,40 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => updateStatus(r.id, "Fixed")}
-                  className="px-2 py-1 text-xs rounded"
+                  className="px-3 py-2 text-xs rounded"
                   style={{
                     border: "1px solid #10B981",
                     color: "#10B981",
+                    backgroundColor: "#0D1B2E",
                   }}
                 >
                   Fixed
                 </button>
+
+                <button
+                  onClick={() => deleteReport(r.id)}
+                  className="px-3 py-2 text-xs rounded"
+                  style={{
+                    border: "1px solid #EF4444",
+                    color: "#EF4444",
+                    backgroundColor: "#0D1B2E",
+                  }}
+                >
+                  Delete This Report
+                </button>
               </div>
 
-              <div className="flex gap-2 mb-3 flex-wrap">
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                Archive Outcome
+              </div>
+              <div className="flex flex-wrap gap-3 mb-5">
                 <button
                   onClick={() => archiveReport(r.id, "Fixed")}
-                  className="px-2 py-1 text-xs rounded"
+                  className="px-3 py-2 text-xs rounded"
                   style={{
                     border: "1px solid #10B981",
                     color: "#10B981",
+                    backgroundColor: "#0D1B2E",
                   }}
                 >
                   Archive Fixed
@@ -256,10 +260,11 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => archiveReport(r.id, "Abandoned")}
-                  className="px-2 py-1 text-xs rounded"
+                  className="px-3 py-2 text-xs rounded"
                   style={{
                     border: "1px solid #F59E0B",
                     color: "#F59E0B",
+                    backgroundColor: "#0D1B2E",
                   }}
                 >
                   Archive Abandoned
@@ -267,10 +272,11 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => archiveReport(r.id, "Failed")}
-                  className="px-2 py-1 text-xs rounded"
+                  className="px-3 py-2 text-xs rounded"
                   style={{
                     border: "1px solid #EF4444",
                     color: "#EF4444",
+                    backgroundColor: "#0D1B2E",
                   }}
                 >
                   Archive Failed
@@ -285,7 +291,7 @@ export default function SystemReportsModal({
                 value={r.notes}
                 onChange={(e) => updateNotes(r.id, e.target.value)}
                 placeholder="Add update, fix notes, what was changed, and whether it worked."
-                className="w-full min-h-[110px] p-3 rounded-lg text-sm"
+                className="w-full min-h-[120px] p-3 rounded-lg text-sm"
                 style={{
                   backgroundColor: "#0D1B2E",
                   border: "1px solid #1B2A4A",
