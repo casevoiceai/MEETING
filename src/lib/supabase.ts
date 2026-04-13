@@ -3,37 +3,47 @@ import { createClient } from "@supabase/supabase-js";
 const url = import.meta.env.VITE_SUPABASE_URL as string;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+if (!url) {
+  throw new Error("Missing VITE_SUPABASE_URL");
+}
+
+if (!key) {
+  throw new Error("Missing VITE_SUPABASE_ANON_KEY");
+}
+
 export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: false,
   },
 });
 
 let signingInPromise: Promise<void> | null = null;
 
 export async function ensureSupabaseSession(): Promise<void> {
-  const { data, error } = await supabase.auth.getSession();
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
-  if (error) {
-    throw error;
+  if (sessionError) {
+    throw sessionError;
   }
 
-  if (data.session) {
+  if (session) {
     return;
   }
 
   if (!signingInPromise) {
-    signingInPromise = supabase.auth
-      .signInAnonymously()
-      .then(({ error: signInError }) => {
-        if (signInError) {
-          throw signInError;
-        }
-      })
-      .finally(() => {
-        signingInPromise = null;
-      });
+    signingInPromise = (async () => {
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) {
+        throw error;
+      }
+    })().finally(() => {
+      signingInPromise = null;
+    });
   }
 
   await signingInPromise;
