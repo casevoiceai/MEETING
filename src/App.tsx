@@ -10,9 +10,15 @@ import EmailView from "./screens/EmailView";
 import IntegrationsView from "./screens/IntegrationsView";
 import SourceOfTruthPanel from "./components/SourceOfTruthPanel";
 import CriticalPathPanel from "./components/CriticalPathPanel";
-import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
+import {
+  getOrCreateSession,
+  loadSession,
+  type Session,
+  type SearchResult,
+  type LinkableType,
+} from "./lib/db";
 import { getPendingCount } from "./lib/approval";
-import { getLastBackupLog, isBackupOverdue } from "./lib/cricalPath";
+import { getLastBackupLog, isBackupOverdue } from "./lib/criticalPath";
 import OfflineStatusBar from "./components/OfflineStatusBar";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import BackupExportModal from "./components/BackupExportModal";
