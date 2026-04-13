@@ -13,6 +13,7 @@ type Service = {
   explanation: string;
   impact: string;
   steps: string[];
+  prompt: string;
 };
 
 function getNowLabel() {
@@ -37,12 +38,13 @@ function buildServices(): Service[] {
       explanation: "Database is responding normally.",
       impact: "Core data system is working.",
       steps: ["No action needed"],
+      prompt: "Database is connected. No action needed.",
     },
     {
       name: "Google Drive",
       status: "Error",
       error: "Failed to fetch",
-      cause: "Auth token or API route issue",
+      cause: "Auth token issue or broken integration route",
       action: "Fix integration",
       owner: "Integrations",
       updatedAt: now,
@@ -56,6 +58,28 @@ function buildServices(): Service[] {
         "Re-authenticate Google Drive connection",
         "Test connection again",
       ],
+      prompt: `Issue: Google Drive integration failed with "Failed to fetch".
+
+Current state:
+- Database connected
+- Google Drive failing
+- Notion connected
+- Sync queue connected
+- Auth warning present
+- Environment warning present
+
+Likely causes:
+- Google auth token issue
+- Broken integration route
+- Missing or incorrect environment variables
+- Redirect URI mismatch
+
+Your task:
+1. Identify the exact root cause
+2. Name the exact file or files to edit
+3. Provide the exact code fix
+4. List the exact environment variables to verify
+5. Explain exactly how to test the fix`,
     },
     {
       name: "Notion",
@@ -68,6 +92,7 @@ function buildServices(): Service[] {
       explanation: "Notion connection is working.",
       impact: "Docs sync is active.",
       steps: ["No action needed"],
+      prompt: "Notion is connected. No action needed.",
     },
     {
       name: "Sync Queue",
@@ -80,6 +105,7 @@ function buildServices(): Service[] {
       explanation: "No pending jobs.",
       impact: "System is idle.",
       steps: ["No action needed"],
+      prompt: "Sync Queue is connected and empty. No action needed.",
     },
     {
       name: "Auth",
@@ -91,11 +117,18 @@ function buildServices(): Service[] {
       updatedAt: now,
       explanation: "Your session is getting old.",
       impact: "Integrations may break soon.",
-      steps: [
-        "Log out",
-        "Log back in",
-        "Re-test integrations",
-      ],
+      steps: ["Log out", "Log back in", "Re-test integrations"],
+      prompt: `Issue: Auth token may expire soon.
+
+Current state:
+- Session aging warning
+- Connected services may fail if token expires
+
+Your task:
+1. Explain the likely auth issue
+2. List the file or config area involved
+3. Explain what needs to be refreshed
+4. Explain how to test after re-auth`,
     },
     {
       name: "Environment",
@@ -113,6 +146,16 @@ function buildServices(): Service[] {
         "Add missing values",
         "Redeploy app",
       ],
+      prompt: `Issue: Environment mismatch possible.
+
+Current state:
+- Some required environment values may be missing or inconsistent
+
+Your task:
+1. Identify likely missing or mismatched env variables
+2. Explain where to verify them
+3. Explain how to confirm the correct values
+4. Explain how to redeploy and test`,
     },
   ];
 }
@@ -148,6 +191,15 @@ export default function SystemHealthPanel() {
 
   const handleRefresh = () => {
     setServices(buildServices());
+  };
+
+  const handleCopy = async (service: Service) => {
+    try {
+      await navigator.clipboard.writeText(service.prompt);
+      alert("Fix prompt copied");
+    } catch {
+      alert(service.prompt);
+    }
   };
 
   return (
@@ -236,6 +288,17 @@ export default function SystemHealthPanel() {
                   {s.steps.map((step, i) => (
                     <div key={i}>• {step}</div>
                   ))}
+
+                  <button
+                    onClick={() => handleCopy(s)}
+                    className="mt-2 px-2 py-1 text-xs rounded"
+                    style={{
+                      backgroundColor: "#1B2A4A",
+                      color: "#C9A84C",
+                    }}
+                  >
+                    Copy Fix Prompt
+                  </button>
                 </div>
               )}
             </div>
