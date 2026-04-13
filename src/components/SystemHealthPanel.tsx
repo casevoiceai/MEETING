@@ -1,12 +1,36 @@
 import { useEffect, useState } from "react";
 
+const STORAGE_KEYS = [
+  "systemReports",
+  "system_reports",
+  "systemHealthReports",
+  "system_health_reports",
+  "meetingRoomSystemReports",
+];
+
 export default function SystemHealthPanel() {
   const [reports, setReports] = useState([]);
 
   useEffect(() => {
-    const stored =
-      JSON.parse(localStorage.getItem("systemReports")) || [];
-    setReports(stored);
+    let all = [];
+
+    STORAGE_KEYS.forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          all.push(...parsed);
+        }
+      } catch {}
+    });
+
+    // dedupe
+    const map = new Map();
+    all.forEach((r) => map.set(r.id, r));
+
+    setReports(Array.from(map.values()));
   }, []);
 
   const createVaultRecord = (report, status) => {
@@ -40,8 +64,8 @@ export default function SystemHealthPanel() {
         </div>
 
         {reports.length === 0 && (
-          <div className="text-gray-400 text-sm">
-            No reports found
+          <div className="text-red-400 text-sm">
+            No reports found (data missing)
           </div>
         )}
 
