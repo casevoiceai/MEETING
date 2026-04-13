@@ -87,8 +87,8 @@ function getStatusColor(status: ServiceStatus) {
 }
 
 function getPanelState(services: Service[]) {
-  if (services.some((service) => service.status === "Error")) return "Degraded";
-  if (services.some((service) => service.status === "Warning")) return "Warning";
+  if (services.some((s) => s.status === "Error")) return "Degraded";
+  if (services.some((s) => s.status === "Warning")) return "Warning";
   return "Healthy";
 }
 
@@ -122,14 +122,18 @@ export default function SystemHealthPanel() {
   const services = useMemo(() => buildServices(), []);
   const panelState = getPanelState(services);
   const panelStateColor = getPanelStateColor(panelState);
-  const errorCount = services.filter((service) => service.status === "Error").length;
-  const warningCount = services.filter((service) => service.status === "Warning").length;
+  const errorCount = services.filter((s) => s.status === "Error").length;
+  const warningCount = services.filter((s) => s.status === "Warning").length;
   const lastCheck = services[0]?.updatedAt ?? getNowLabel();
+
+  const handleRetry = () => {
+    window.location.reload();
+  };
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen((v) => !v)}
         className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest"
         style={{
           backgroundColor: "#111D30",
@@ -160,15 +164,28 @@ export default function SystemHealthPanel() {
               </div>
             </div>
 
-            <div
-              className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-widest"
-              style={{
-                backgroundColor: "rgba(255,255,255,0.04)",
-                border: `1px solid ${panelStateColor}55`,
-                color: panelStateColor,
-              }}
-            >
-              {panelState}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRetry}
+                className="px-2 py-1 rounded text-xs font-bold"
+                style={{
+                  backgroundColor: "#1B2A4A",
+                  color: "#C9A84C",
+                }}
+              >
+                Retry
+              </button>
+
+              <div
+                className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-widest"
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${panelStateColor}55`,
+                  color: panelStateColor,
+                }}
+              >
+                {panelState}
+              </div>
             </div>
           </div>
 
@@ -183,7 +200,9 @@ export default function SystemHealthPanel() {
               <div className="text-[10px] uppercase tracking-widest text-gray-400">
                 Services
               </div>
-              <div className="mt-1 text-sm font-semibold text-white">{services.length}</div>
+              <div className="mt-1 text-sm font-semibold text-white">
+                {services.length}
+              </div>
             </div>
 
             <div
@@ -196,7 +215,9 @@ export default function SystemHealthPanel() {
               <div className="text-[10px] uppercase tracking-widest text-red-300">
                 Errors
               </div>
-              <div className="mt-1 text-sm font-semibold text-red-200">{errorCount}</div>
+              <div className="mt-1 text-sm font-semibold text-red-200">
+                {errorCount}
+              </div>
             </div>
 
             <div
@@ -209,7 +230,9 @@ export default function SystemHealthPanel() {
               <div className="text-[10px] uppercase tracking-widest text-amber-300">
                 Warnings
               </div>
-              <div className="mt-1 text-sm font-semibold text-amber-200">{warningCount}</div>
+              <div className="mt-1 text-sm font-semibold text-amber-200">
+                {warningCount}
+              </div>
             </div>
           </div>
 
@@ -223,15 +246,24 @@ export default function SystemHealthPanel() {
                 type="button"
                 className="w-full flex justify-between items-start text-left"
                 onClick={() =>
-                  setExpanded((current) => (current === service.name ? null : service.name))
+                  setExpanded((current) =>
+                    current === service.name ? null : service.name
+                  )
                 }
               >
                 <div>
-                  <div className="font-bold text-sm text-white">{service.name}</div>
-                  <div className="text-xs mt-1" style={{ color: getStatusColor(service.status) }}>
+                  <div className="font-bold text-sm text-white">
+                    {service.name}
+                  </div>
+                  <div
+                    className="text-xs mt-1"
+                    style={{ color: getStatusColor(service.status) }}
+                  >
                     {service.status}
                   </div>
-                  <div className="text-[11px] mt-1 text-gray-400">{service.error}</div>
+                  <div className="text-[11px] mt-1 text-gray-400">
+                    {service.error}
+                  </div>
                 </div>
 
                 <div className="text-xs text-gray-400">
@@ -242,23 +274,30 @@ export default function SystemHealthPanel() {
               {expanded === service.name && (
                 <div className="mt-3 text-xs space-y-2 text-gray-300">
                   <div>
-                    <b className="text-white">Exact Error:</b> {service.error}
+                    <b className="text-white">Exact Error:</b>{" "}
+                    {service.error}
                   </div>
                   <div>
-                    <b className="text-white">Likely Cause:</b> {service.cause}
+                    <b className="text-white">Likely Cause:</b>{" "}
+                    {service.cause}
                   </div>
                   <div>
-                    <b className="text-white">Suggested Action:</b> {service.action}
+                    <b className="text-white">Suggested Action:</b>{" "}
+                    {service.action}
                   </div>
                   <div>
-                    <b className="text-white">Assigned Owner:</b> {service.owner}
+                    <b className="text-white">Assigned Owner:</b>{" "}
+                    {service.owner}
                   </div>
                   <div>
-                    <b className="text-white">Last Updated:</b> {service.updatedAt}
+                    <b className="text-white">Last Updated:</b>{" "}
+                    {service.updatedAt}
                   </div>
 
                   <button
-                    onClick={() => navigator.clipboard.writeText(generatePrompt(service))}
+                    onClick={() =>
+                      navigator.clipboard.writeText(generatePrompt(service))
+                    }
                     className="mt-2 px-2 py-1 text-xs rounded"
                     style={{
                       backgroundColor: "#1B2A4A",
@@ -276,7 +315,9 @@ export default function SystemHealthPanel() {
             className="border-t pt-3 mt-3 text-xs text-gray-400"
             style={{ borderColor: "#1B2A4A" }}
           >
-            <div className="text-white font-semibold mb-1">Recent Errors</div>
+            <div className="text-white font-semibold mb-1">
+              Recent Errors
+            </div>
             <div>10:14 — Google Drive failed</div>
             <div>10:12 — Retry success</div>
             <div>10:09 — Notion OK</div>
