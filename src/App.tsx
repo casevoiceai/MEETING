@@ -12,12 +12,22 @@ import SourceOfTruthPanel from "./components/SourceOfTruthPanel";
 import CriticalPathPanel from "./components/CriticalPathPanel";
 import { getOrCreateSession, loadSession, type Session, type SearchResult, type LinkableType } from "./lib/db";
 import { getPendingCount } from "./lib/approval";
-import { getLastBackupLog, isBackupOverdue } from "./lib/criticalPath";
+import { getLastBackupLog, isBackupOverdue } from "./lib/cricalPath";
 import OfflineStatusBar from "./components/OfflineStatusBar";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import BackupExportModal from "./components/BackupExportModal";
+import { ensureSupabaseSession } from "./lib/supabase";
 
-type View = "meeting" | "sessions" | "vault" | "tags" | "projects" | "email" | "integrations" | "source-of-truth" | "recovery";
+type View =
+  | "meeting"
+  | "sessions"
+  | "vault"
+  | "tags"
+  | "projects"
+  | "email"
+  | "integrations"
+  | "source-of-truth"
+  | "recovery";
 
 const NAV_ITEMS: { id: View; label: string }[] = [
   { id: "meeting", label: "Meeting" },
@@ -32,7 +42,10 @@ const NAV_ITEMS: { id: View; label: string }[] = [
 ];
 
 function NavButton({
-  active, onClick, children, badge,
+  active,
+  onClick,
+  children,
+  badge,
 }: {
   active: boolean;
   onClick: () => void;
@@ -40,6 +53,7 @@ function NavButton({
   badge?: number;
 }) {
   const [hovered, setHovered] = useState(false);
+
   return (
     <button
       onClick={onClick}
@@ -48,10 +62,18 @@ function NavButton({
       className="relative px-5 py-2.5 text-sm font-bold tracking-wider uppercase rounded-lg transition-all"
       style={
         active
-          ? { backgroundColor: "#1B2A4A", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.3)" }
+          ? {
+              backgroundColor: "#1B2A4A",
+              color: "#C9A84C",
+              border: "1px solid rgba(201,168,76,0.3)",
+            }
           : hovered
-          ? { color: "#C9A84C", border: "1px solid rgba(201,168,76,0.15)", backgroundColor: "rgba(201,168,76,0.04)" }
-          : { color: "#8A9BB5", border: "1px solid transparent" }
+            ? {
+                color: "#C9A84C",
+                border: "1px solid rgba(201,168,76,0.15)",
+                backgroundColor: "rgba(201,168,76,0.04)",
+              }
+            : { color: "#8A9BB5", border: "1px solid transparent" }
       }
     >
       {children}
@@ -79,10 +101,27 @@ export default function App() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    getOrCreateSession().then((s) => {
-      setSession(s);
-      setSessionKey(s.session_key);
-    }).catch(() => {});
+    let isMounted = true;
+
+    async function boot() {
+      try {
+        await ensureSupabaseSession();
+        const s = await getOrCreateSession();
+
+        if (!isMounted) return;
+
+        setSession(s);
+        setSessionKey(s.session_key);
+      } catch (error) {
+        console.error("App bootstrap failed:", error);
+      }
+    }
+
+    boot();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -90,11 +129,16 @@ export default function App() {
     pollRef.current = setInterval(() => {
       getPendingCount().then(setPendingApprovalCount).catch(() => {});
     }, 15000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   useEffect(() => {
-    getLastBackupLog().then((log) => setBackupOverdue(isBackupOverdue(log))).catch(() => {});
+    getLastBackupLog()
+      .then((log) => setBackupOverdue(isBackupOverdue(log)))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -104,17 +148,25 @@ export default function App() {
         setSearchOpen((v) => !v);
       }
     }
+
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
   }, []);
 
   const handleOpenSession = useCallback(async (key: string) => {
-    const result = await loadSession(key);
-    if (result) {
-      setSession(result.session);
-      setSessionKey(key);
+    try {
+      await ensureSupabaseSession();
+      const result = await loadSession(key);
+
+      if (result) {
+        setSession(result.session);
+        setSessionKey(key);
+      }
+
+      setView("meeting");
+    } catch (error) {
+      console.error("Failed to open session:", error);
     }
-    setView("meeting");
   }, []);
 
   const handleSearchNavigate = useCallback((type: SearchResult["type"], _id: string) => {
@@ -125,6 +177,7 @@ export default function App() {
       session: "sessions",
       project: "projects",
     };
+
     setView(viewMap[type]);
   }, []);
 
@@ -136,6 +189,7 @@ export default function App() {
       session: "sessions",
       project: "projects",
     };
+
     setView(viewMap[type]);
     setLinkedNavTarget({ type, id });
   }, []);
@@ -143,7 +197,12 @@ export default function App() {
   return (
     <div
       className="min-h-screen flex flex-col"
-      style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF", fontFamily: "'Inter', sans-serif", fontSize: "16px" }}
+      style={{
+        backgroundColor: "#0D1B2E",
+        color: "#FFFFFF",
+        fontFamily: "'Inter', sans-serif",
+        fontSize: "16px",
+      }}
     >
       <div
         className="flex items-center gap-1.5 px-6 py-3.5 border-b flex-shrink-0"
@@ -158,7 +217,13 @@ export default function App() {
             key={item.id}
             active={view === item.id}
             onClick={() => setView(item.id)}
-            badge={item.id === "integrations" ? pendingApprovalCount : item.id === "recovery" && backupOverdue ? 1 : undefined}
+            badge={
+              item.id === "integrations"
+                ? pendingApprovalCount
+                : item.id === "recovery" && backupOverdue
+                  ? 1
+                  : undefined
+            }
           >
             {item.label}
           </NavButton>
@@ -167,7 +232,10 @@ export default function App() {
         <div className="ml-auto flex items-center gap-3">
           <div
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-            style={{ backgroundColor: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}
+            style={{
+              backgroundColor: "rgba(245,158,11,0.06)",
+              border: "1px solid rgba(245,158,11,0.2)",
+            }}
             title="User approval required for all final actions"
           >
             <Shield size={11} style={{ color: "#F59E0B" }} />
@@ -187,7 +255,11 @@ export default function App() {
           <button
             onClick={() => setBackupOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all hover:opacity-80"
-            style={{ backgroundColor: "rgba(201,168,76,0.06)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.2)" }}
+            style={{
+              backgroundColor: "rgba(201,168,76,0.06)",
+              color: "#C9A84C",
+              border: "1px solid rgba(201,168,76,0.2)",
+            }}
             title="Export Backup"
           >
             <Download size={11} />
@@ -201,12 +273,21 @@ export default function App() {
           <button
             onClick={() => setSearchOpen(true)}
             className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm transition-all hover:opacity-80"
-            style={{ backgroundColor: "#111D30", color: "#8A9BB5", border: "1px solid #1B2A4A" }}
+            style={{
+              backgroundColor: "#111D30",
+              color: "#8A9BB5",
+              border: "1px solid #1B2A4A",
+            }}
             title="Search (Ctrl+K)"
           >
             <Search size={13} />
             <span className="text-xs tracking-wider">Search</span>
-            <kbd className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "#1B2A4A", color: "#3A4F6A" }}>⌘K</kbd>
+            <kbd
+              className="text-[10px] px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: "#1B2A4A", color: "#3A4F6A" }}
+            >
+              ⌘K
+            </kbd>
           </button>
 
           {session && (
@@ -219,26 +300,44 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-h-0">
         {view === "meeting" && <StaffMeetingRoom sessionId={session?.id ?? null} sessionKey={sessionKey} />}
-        {view === "sessions" && <SessionsView onOpenSession={handleOpenSession} onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "session" ? linkedNavTarget.id : undefined} />}
+        {view === "sessions" && (
+          <SessionsView
+            onOpenSession={handleOpenSession}
+            onNavigateLinked={handleLinkedNavigation}
+            linkedTarget={linkedNavTarget?.type === "session" ? linkedNavTarget.id : undefined}
+          />
+        )}
         {view === "email" && <EmailView onPendingChange={setPendingApprovalCount} />}
-        {view === "vault" && <VaultView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "file" || linkedNavTarget?.type === "note" ? linkedNavTarget : undefined} />}
-        {view === "tags" && <TagsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "tag" ? linkedNavTarget.id : undefined} />}
-        {view === "projects" && <ProjectsView onNavigateLinked={handleLinkedNavigation} linkedTarget={linkedNavTarget?.type === "project" ? linkedNavTarget.id : undefined} />}
+        {view === "vault" && (
+          <VaultView
+            onNavigateLinked={handleLinkedNavigation}
+            linkedTarget={
+              linkedNavTarget?.type === "file" || linkedNavTarget?.type === "note"
+                ? linkedNavTarget
+                : undefined
+            }
+          />
+        )}
+        {view === "tags" && (
+          <TagsView
+            onNavigateLinked={handleLinkedNavigation}
+            linkedTarget={linkedNavTarget?.type === "tag" ? linkedNavTarget.id : undefined}
+          />
+        )}
+        {view === "projects" && (
+          <ProjectsView
+            onNavigateLinked={handleLinkedNavigation}
+            linkedTarget={linkedNavTarget?.type === "project" ? linkedNavTarget.id : undefined}
+          />
+        )}
         {view === "integrations" && <IntegrationsView onPendingChange={setPendingApprovalCount} />}
         {view === "source-of-truth" && <SourceOfTruthPanel sessionKey={sessionKey} />}
         {view === "recovery" && <CriticalPathPanel />}
       </div>
 
-      {searchOpen && (
-        <GlobalSearch
-          onNavigate={handleSearchNavigate}
-          onClose={() => setSearchOpen(false)}
-        />
-      )}
+      {searchOpen && <GlobalSearch onNavigate={handleSearchNavigate} onClose={() => setSearchOpen(false)} />}
 
-      {backupOpen && (
-        <BackupExportModal onClose={() => setBackupOpen(false)} />
-      )}
+      {backupOpen && <BackupExportModal onClose={() => setBackupOpen(false)} />}
     </div>
   );
 }
