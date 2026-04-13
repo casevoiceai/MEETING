@@ -10,15 +10,55 @@ type Report = {
   notes: string;
 };
 
+type CustodyEntry = {
+  time: string;
+  action: string;
+  location: string;
+  details: string;
+};
+
 type HistoryReport = Report & {
   archivedAt: string;
   outcome: "Fixed" | "Abandoned" | "Failed";
+  folder: string;
+  recordType: "archived";
+  custodyTags: string[];
+  custodyTrail: CustodyEntry[];
 };
 
 type SavedReport = Report & {
   savedAt: string;
   folder: string;
+  recordType: "saved";
+  custodyTags: string[];
+  custodyTrail: CustodyEntry[];
 };
+
+function nowLabel() {
+  return new Date().toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function ownerTag(owner: string) {
+  return `OWNER_${owner.toUpperCase().replace(/\s+/g, "_")}`;
+}
+
+function statusTag(status: string) {
+  return `STATUS_${status.toUpperCase().replace(/\s+/g, "_")}`;
+}
+
+function baseTrail(report: Report): CustodyEntry[] {
+  return [
+    {
+      time: report.time || nowLabel(),
+      action: "Report created",
+      location: "System Reports / Active",
+      details: `${report.service} issue opened and assigned to ${report.owner}`,
+    },
+  ];
+}
 
 export default function SystemReportsModal({
   open,
@@ -75,14 +115,32 @@ export default function SystemReportsModal({
     const existingHistory = localStorage.getItem("system_health_reports_history");
     const parsedHistory: HistoryReport[] = existingHistory ? JSON.parse(existingHistory) : [];
 
+    const folder = `Vault / System Health Reports / Archive / ${outcome}`;
+    const time = nowLabel();
+
     const archivedReport: HistoryReport = {
       ...target,
       fixStatus: outcome,
-      archivedAt: new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
+      archivedAt: time,
       outcome,
+      folder,
+      recordType: "archived",
+      custodyTags: [
+        "SYSTEM_REPORT",
+        "ARCHIVED",
+        ownerTag(target.owner),
+        statusTag(target.fixStatus),
+        `OUTCOME_${outcome.toUpperCase()}`,
+      ],
+      custodyTrail: [
+        ...baseTrail(target),
+        {
+          time,
+          action: `Archived as ${outcome}`,
+          location: folder,
+          details: target.notes?.trim() || `No final notes entered before archive.`,
+        },
+      ],
     };
 
     localStorage.setItem(
@@ -97,27 +155,43 @@ export default function SystemReportsModal({
     const existing = localStorage.getItem("vault_system_health_reports");
     const parsed: SavedReport[] = existing ? JSON.parse(existing) : [];
 
-    const alreadySaved = parsed.some(
-      (item) =>
-        item.message === report.message &&
-        item.time === report.time &&
-        item.service === report.service
-    );
-
-    if (alreadySaved) return;
+    const time = nowLabel();
+    const folder = "Vault / System Health Reports / Saved";
 
     const savedReport: SavedReport = {
       ...report,
-      savedAt: new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-      folder: "Vault/System Health Reports",
+      savedAt: time,
+      folder,
+      recordType: "saved",
+      custodyTags: [
+        "SYSTEM_REPORT",
+        "VAULT_SAVED",
+        ownerTag(report.owner),
+        statusTag(report.fixStatus),
+      ],
+      custodyTrail: [
+        ...baseTrail(report),
+        {
+          time,
+          action: "Saved to Vault",
+          location: folder,
+          details: report.notes?.trim() || "Saved without notes.",
+        },
+      ],
     };
+
+    const withoutDuplicate = parsed.filter(
+      (item) =>
+        !(
+          item.message === report.message &&
+          item.service === report.service &&
+          item.owner === report.owner
+        )
+    );
 
     localStorage.setItem(
       "vault_system_health_reports",
-      JSON.stringify([savedReport, ...parsed])
+      JSON.stringify([savedReport, ...withoutDuplicate])
     );
   };
 
@@ -219,7 +293,7 @@ export default function SystemReportsModal({
                 <div className="text-sm text-gray-400">{r.time}</div>
               </div>
 
-              <div className="text-base mb-6 whitespace-pre-wrap text-white">
+              <div className="text-base mb-4 whitespace-pre-wrap text-white">
                 {r.message}
               </div>
 
