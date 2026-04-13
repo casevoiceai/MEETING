@@ -51,6 +51,10 @@ export default function SystemReportsModal({
     );
   };
 
+  const deleteReport = (id: number) => {
+    save(reports.filter((r) => r.id !== id));
+  };
+
   if (!open) return null;
 
   return (
@@ -59,16 +63,20 @@ export default function SystemReportsModal({
       style={{ background: "rgba(0,0,0,0.75)", zIndex: 3000 }}
     >
       <div
-        className="w-[700px] max-h-[80vh] overflow-y-auto p-5 rounded-xl"
+        className="w-[760px] max-h-[82vh] overflow-y-auto p-5 rounded-xl"
         style={{
           backgroundColor: "#0D1B2E",
           border: "1px solid #1B2A4A",
         }}
       >
         <div className="flex justify-between items-center mb-4">
-          <div className="text-lg text-white font-bold">
-            🚨 System Reports (Active Fires)
+          <div>
+            <div className="text-lg text-white font-bold">System Reports</div>
+            <div className="text-xs text-gray-400">
+              Active fires, team messages, status tracking, and fix notes.
+            </div>
           </div>
+
           <button
             onClick={onClose}
             className="px-3 py-1 text-xs rounded"
@@ -95,20 +103,49 @@ export default function SystemReportsModal({
                 borderColor: "#1B2A4A",
               }}
             >
-              <div className="flex justify-between mb-2">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
                 <div className="text-sm font-bold text-white">
                   {r.service}
                 </div>
+
+                <div
+                  className="px-2 py-1 rounded text-[10px] font-bold uppercase"
+                  style={{
+                    border: "1px solid #C084FC",
+                    color: "#C084FC",
+                  }}
+                >
+                  {r.owner}
+                </div>
+
+                <div
+                  className="px-2 py-1 rounded text-[10px] font-bold uppercase"
+                  style={{
+                    border:
+                      r.fixStatus === "Fixed"
+                        ? "1px solid #10B981"
+                        : r.fixStatus === "In Progress"
+                        ? "1px solid #F59E0B"
+                        : "1px solid #94A3B8",
+                    color:
+                      r.fixStatus === "Fixed"
+                        ? "#10B981"
+                        : r.fixStatus === "In Progress"
+                        ? "#F59E0B"
+                        : "#94A3B8",
+                  }}
+                >
+                  {r.fixStatus}
+                </div>
+
                 <div className="text-xs text-gray-400">{r.time}</div>
               </div>
 
-              <div className="text-xs text-gray-400 mb-2">
-                Owner: {r.owner}
+              <div className="text-sm mb-4 whitespace-pre-wrap text-white">
+                {r.message}
               </div>
 
-              <div className="text-sm mb-3">{r.message}</div>
-
-              <div className="flex gap-2 mb-3">
+              <div className="flex gap-2 mb-3 flex-wrap">
                 <button
                   onClick={() => updateStatus(r.id, "Pending")}
                   className="px-2 py-1 text-xs rounded"
@@ -141,17 +178,33 @@ export default function SystemReportsModal({
                 >
                   Fixed
                 </button>
+
+                <button
+                  onClick={() => deleteReport(r.id)}
+                  className="px-2 py-1 text-xs rounded"
+                  style={{
+                    border: "1px solid #EF4444",
+                    color: "#EF4444",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+                What was done to fix
               </div>
 
               <textarea
                 value={r.notes}
                 onChange={(e) => updateNotes(r.id, e.target.value)}
-                placeholder="What was done to fix?"
-                className="w-full p-2 text-xs rounded"
+                placeholder="Add update, fix notes, what was changed, and whether it worked."
+                className="w-full min-h-[110px] p-3 rounded-lg text-sm"
                 style={{
                   backgroundColor: "#0D1B2E",
                   border: "1px solid #1B2A4A",
-                  color: "#fff",
+                  color: "#FFFFFF",
+                  resize: "vertical",
                 }}
               />
             </div>
