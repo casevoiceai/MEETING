@@ -10,6 +10,11 @@ type Report = {
   notes: string;
 };
 
+type HistoryReport = Report & {
+  archivedAt: string;
+  outcome: "Fixed" | "Abandoned" | "Failed";
+};
+
 export default function SystemReportsModal({
   open,
   onClose,
@@ -25,22 +30,16 @@ export default function SystemReportsModal({
       try {
         const parsed = JSON.parse(stored);
 
-        // REMOVE DUPLICATES (same message + time)
         const unique = parsed.filter(
           (r: Report, i: number, arr: Report[]) =>
             i ===
             arr.findIndex(
-              (x) =>
-                x.message === r.message &&
-                x.time === r.time
+              (x) => x.message === r.message && x.time === r.time
             )
         );
 
         setReports(unique);
-        localStorage.setItem(
-          "system_health_reports",
-          JSON.stringify(unique)
-        );
+        localStorage.setItem("system_health_reports", JSON.stringify(unique));
       } catch {
         setReports([]);
       }
@@ -49,10 +48,7 @@ export default function SystemReportsModal({
 
   const save = (next: Report[]) => {
     setReports(next);
-    localStorage.setItem(
-      "system_health_reports",
-      JSON.stringify(next)
-    );
+    localStorage.setItem("system_health_reports", JSON.stringify(next));
   };
 
   const updateStatus = (id: number, fixStatus: string) => {
@@ -71,7 +67,30 @@ export default function SystemReportsModal({
     );
   };
 
-  const deleteReport = (id: number) => {
+  const archiveReport = (id: number, outcome: "Fixed" | "Abandoned" | "Failed") => {
+    const target = reports.find((r) => r.id === id);
+    if (!target) return;
+
+    const existingHistory = localStorage.getItem("system_health_reports_history");
+    const parsedHistory: HistoryReport[] = existingHistory
+      ? JSON.parse(existingHistory)
+      : [];
+
+    const archivedReport: HistoryReport = {
+      ...target,
+      fixStatus: outcome,
+      archivedAt: new Date().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+      outcome,
+    };
+
+    localStorage.setItem(
+      "system_health_reports_history",
+      JSON.stringify([archivedReport, ...parsedHistory])
+    );
+
     save(reports.filter((r) => r.id !== id));
   };
 
@@ -190,9 +209,7 @@ export default function SystemReportsModal({
 
               <div className="flex gap-2 mb-3 flex-wrap">
                 <button
-                  onClick={() =>
-                    updateStatus(r.id, "Pending")
-                  }
+                  onClick={() => updateStatus(r.id, "Pending")}
                   className="px-2 py-1 text-xs rounded"
                   style={{
                     border: "1px solid #94A3B8",
@@ -203,9 +220,7 @@ export default function SystemReportsModal({
                 </button>
 
                 <button
-                  onClick={() =>
-                    updateStatus(r.id, "In Progress")
-                  }
+                  onClick={() => updateStatus(r.id, "In Progress")}
                   className="px-2 py-1 text-xs rounded"
                   style={{
                     border: "1px solid #F59E0B",
@@ -216,9 +231,7 @@ export default function SystemReportsModal({
                 </button>
 
                 <button
-                  onClick={() =>
-                    updateStatus(r.id, "Fixed")
-                  }
+                  onClick={() => updateStatus(r.id, "Fixed")}
                   className="px-2 py-1 text-xs rounded"
                   style={{
                     border: "1px solid #10B981",
@@ -227,16 +240,40 @@ export default function SystemReportsModal({
                 >
                   Fixed
                 </button>
+              </div>
+
+              <div className="flex gap-2 mb-3 flex-wrap">
+                <button
+                  onClick={() => archiveReport(r.id, "Fixed")}
+                  className="px-2 py-1 text-xs rounded"
+                  style={{
+                    border: "1px solid #10B981",
+                    color: "#10B981",
+                  }}
+                >
+                  Archive Fixed
+                </button>
 
                 <button
-                  onClick={() => deleteReport(r.id)}
+                  onClick={() => archiveReport(r.id, "Abandoned")}
+                  className="px-2 py-1 text-xs rounded"
+                  style={{
+                    border: "1px solid #F59E0B",
+                    color: "#F59E0B",
+                  }}
+                >
+                  Archive Abandoned
+                </button>
+
+                <button
+                  onClick={() => archiveReport(r.id, "Failed")}
                   className="px-2 py-1 text-xs rounded"
                   style={{
                     border: "1px solid #EF4444",
                     color: "#EF4444",
                   }}
                 >
-                  Delete
+                  Archive Failed
                 </button>
               </div>
 
@@ -246,9 +283,7 @@ export default function SystemReportsModal({
 
               <textarea
                 value={r.notes}
-                onChange={(e) =>
-                  updateNotes(r.id, e.target.value)
-                }
+                onChange={(e) => updateNotes(r.id, e.target.value)}
                 placeholder="Add update, fix notes, what was changed, and whether it worked."
                 className="w-full min-h-[110px] p-3 rounded-lg text-sm"
                 style={{
