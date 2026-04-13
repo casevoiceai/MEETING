@@ -1,28 +1,28 @@
 import { createClient } from '@supabase/supabase-js';
 
+// This version adds a literal fallback to check if variables are actually flowing
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("DEBUG: Supabase credentials missing! Check Vercel Env Vars.");
-} else {
-  console.log("DEBUG: Supabase initialized with URL:", supabaseUrl);
+if (!supabaseUrl || supabaseUrl.includes('undefined')) {
+  console.error("🚨 Vercel URL is still undefined after redeploy!");
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+export const supabase = createClient(
+  supabaseUrl || 'https://lzkiwsqezugptwugcehg.supabase.co', 
+  supabaseAnonKey || ''
+);
 
 export async function ensureSupabaseSession() {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError || !session) {
-    console.log("DEBUG: No session found, attempting anonymous sign-in...");
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) {
-      console.error("DEBUG: Anonymous sign-in failed:", error.message);
-      return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      const { data } = await supabase.auth.signInAnonymously();
+      return data?.session;
     }
-    return data.session;
+    return session;
+  } catch (e) {
+    console.error("Auth helper failed", e);
+    return null;
   }
-  
-  return session;
 }
