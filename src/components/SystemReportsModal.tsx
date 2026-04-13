@@ -15,6 +15,11 @@ type HistoryReport = Report & {
   outcome: "Fixed" | "Abandoned" | "Failed";
 };
 
+type SavedReport = Report & {
+  savedAt: string;
+  folder: string;
+};
+
 export default function SystemReportsModal({
   open,
   onClose,
@@ -90,24 +95,30 @@ export default function SystemReportsModal({
 
   const saveToVault = (report: Report) => {
     const existing = localStorage.getItem("vault_system_health_reports");
-    const parsed = existing ? JSON.parse(existing) : [];
+    const parsed: SavedReport[] = existing ? JSON.parse(existing) : [];
 
-    const saved = {
+    const alreadySaved = parsed.some(
+      (item) =>
+        item.message === report.message &&
+        item.time === report.time &&
+        item.service === report.service
+    );
+
+    if (alreadySaved) return;
+
+    const savedReport: SavedReport = {
       ...report,
       savedAt: new Date().toLocaleTimeString([], {
         hour: "numeric",
         minute: "2-digit",
       }),
+      folder: "Vault/System Health Reports",
     };
 
     localStorage.setItem(
       "vault_system_health_reports",
-      JSON.stringify([saved, ...parsed])
+      JSON.stringify([savedReport, ...parsed])
     );
-  };
-
-  const clearAll = () => {
-    save([]);
   };
 
   if (!open) return null;
@@ -132,29 +143,16 @@ export default function SystemReportsModal({
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={clearAll}
-              className="px-4 py-2 text-sm rounded"
-              style={{
-                backgroundColor: "#EF4444",
-                color: "#FFFFFF",
-              }}
-            >
-              Clear All
-            </button>
-
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm rounded"
-              style={{
-                backgroundColor: "#1B2A4A",
-                color: "#C9A84C",
-              }}
-            >
-              Close
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded"
+            style={{
+              backgroundColor: "#1B2A4A",
+              color: "#C9A84C",
+            }}
+          >
+            Close
+          </button>
         </div>
 
         {reports.length === 0 && <div className="text-gray-400">No active issues.</div>}
@@ -169,17 +167,17 @@ export default function SystemReportsModal({
                 borderColor: "#1B2A4A",
               }}
             >
-              {/* X DELETE */}
               <button
                 onClick={() => deleteReport(r.id)}
                 style={{
                   position: "absolute",
                   top: "10px",
-                  right: "10px",
+                  right: "12px",
                   color: "#EF4444",
-                  fontSize: "16px",
+                  fontSize: "18px",
                   fontWeight: "bold",
                   background: "transparent",
+                  lineHeight: 1,
                 }}
               >
                 ✕
@@ -225,7 +223,6 @@ export default function SystemReportsModal({
                 {r.message}
               </div>
 
-              {/* STATUS */}
               <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
                 Status
               </div>
@@ -267,7 +264,6 @@ export default function SystemReportsModal({
                 </button>
               </div>
 
-              {/* ARCHIVE + SAVE */}
               <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
                 Actions
               </div>
@@ -281,7 +277,7 @@ export default function SystemReportsModal({
                     backgroundColor: "#0D1B2E",
                   }}
                 >
-                  Archive Fixed
+                  Archive as Fixed
                 </button>
 
                 <button
@@ -293,7 +289,7 @@ export default function SystemReportsModal({
                     backgroundColor: "#0D1B2E",
                   }}
                 >
-                  Archive Abandoned
+                  Archive as Abandoned
                 </button>
 
                 <button
@@ -305,7 +301,7 @@ export default function SystemReportsModal({
                     backgroundColor: "#0D1B2E",
                   }}
                 >
-                  Archive Failed
+                  Archive as Failed
                 </button>
 
                 <button
@@ -317,7 +313,7 @@ export default function SystemReportsModal({
                     backgroundColor: "#0D1B2E",
                   }}
                 >
-                  💾 Save Report
+                  Save Report to Vault
                 </button>
               </div>
 
