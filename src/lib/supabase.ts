@@ -1,50 +1,28 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL as string;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!url) {
-  throw new Error("Missing VITE_SUPABASE_URL");
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("DEBUG: Supabase credentials missing! Check Vercel Env Vars.");
+} else {
+  console.log("DEBUG: Supabase initialized with URL:", supabaseUrl);
 }
 
-if (!key) {
-  throw new Error("Missing VITE_SUPABASE_ANON_KEY");
-}
+export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
 
-export const supabase = createClient(url, key, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false,
-  },
-});
-
-let signingInPromise: Promise<void> | null = null;
-
-export async function ensureSupabaseSession(): Promise<void> {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError) {
-    throw sessionError;
+export async function ensureSupabaseSession() {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  
+  if (sessionError || !session) {
+    console.log("DEBUG: No session found, attempting anonymous sign-in...");
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error) {
+      console.error("DEBUG: Anonymous sign-in failed:", error.message);
+      return null;
+    }
+    return data.session;
   }
-
-  if (session) {
-    return;
-  }
-
-  if (!signingInPromise) {
-    signingInPromise = (async () => {
-      const { error } = await supabase.auth.signInAnonymously();
-      if (error) {
-        throw error;
-      }
-    })().finally(() => {
-      signingInPromise = null;
-    });
-  }
-
-  await signingInPromise;
+  
+  return session;
 }
