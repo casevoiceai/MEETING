@@ -341,7 +341,12 @@ export default function App() {
         {view === "recovery" && <CriticalPathPanel />}
       </div>
 
-      {searchOpen && <GlobalSearch onNavigate={handleSearchNavigate} onClose={() => setSearchOpen(false)} />}
+      {searchOpen && (
+        <GlobalSearch
+          onNavigate={handleSearchNavigate}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
 
       {backupOpen && <BackupExportModal onClose={() => setBackupOpen(false)} />}
     </div>
