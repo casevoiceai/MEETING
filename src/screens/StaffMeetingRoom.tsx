@@ -1,14 +1,49 @@
 import React, { useState } from 'react';
 
+type Message = {
+  role: 'user' | 'mentor';
+  text: string;
+};
+
 export default function StaffMeetingRoom() {
   const [entered, setEntered] = useState(false);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<string[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  const generateMentorReply = (text: string) => {
+    const lower = text.toLowerCase();
+
+    if (lower.includes('hello') || lower.includes('hi')) {
+      return 'Hey. I’m here. What are we working on?';
+    }
+
+    if (lower.includes('stuck')) {
+      return 'Good. That means you found the edge. What exactly is blocking you?';
+    }
+
+    if (lower.includes('idea')) {
+      return 'Say it out loud. Even if it’s messy.';
+    }
+
+    return 'Talk to me. Give me more detail.';
+  };
 
   const sendMessage = () => {
     const trimmed = input.trim();
     if (!trimmed) return;
-    setMessages((prev) => [...prev, trimmed]);
+
+    const newMessages: Message[] = [
+      ...messages,
+      { role: 'user', text: trimmed },
+    ];
+
+    const reply = generateMentorReply(trimmed);
+
+    setMessages([
+      ...newMessages,
+      { role: 'mentor', text: reply },
+    ]);
+
     setInput('');
   };
 
@@ -23,16 +58,14 @@ export default function StaffMeetingRoom() {
           flexDirection: 'column',
           padding: '24px',
           fontFamily: 'Arial, sans-serif',
-          boxSizing: 'border-box',
         }}
       >
         <div
           style={{
-            fontSize: 'clamp(36px, 6vw, 64px)',
+            fontSize: '56px',
             fontWeight: 900,
             marginBottom: '24px',
             textAlign: 'center',
-            lineHeight: 1.1,
           }}
         >
           STAFF MEETING ROOM
@@ -40,11 +73,10 @@ export default function StaffMeetingRoom() {
 
         <button
           style={{
-            width: '100%',
-            fontSize: 'clamp(24px, 4vw, 36px)',
-            padding: '22px',
+            fontSize: '36px',
+            padding: '24px',
             background: '#00FF00',
-            color: '#000000',
+            color: '#000',
             border: 'none',
             cursor: 'pointer',
             fontWeight: 800,
@@ -67,92 +99,72 @@ export default function StaffMeetingRoom() {
         flexDirection: 'column',
         padding: '24px',
         fontFamily: 'Arial, sans-serif',
-        boxSizing: 'border-box',
       }}
     >
-      <div
-        style={{
-          fontSize: 'clamp(34px, 5vw, 56px)',
-          fontWeight: 900,
-          marginBottom: '18px',
-          lineHeight: 1.1,
-        }}
-      >
+      <div style={{ fontSize: '42px', fontWeight: 900, marginBottom: '16px' }}>
         ROOM ACTIVE
       </div>
 
       <div
         style={{
           flex: 1,
-          minHeight: '400px',
           overflowY: 'auto',
           border: '2px solid #00FF00',
           padding: '20px',
           marginBottom: '16px',
-          fontSize: '28px',
+          fontSize: '26px',
           background: '#050505',
-          boxSizing: 'border-box',
         }}
       >
-        {messages.length === 0 ? (
-          <div style={{ color: '#aaaaaa' }}>NO MESSAGES YET</div>
-        ) : (
-          messages.map((msg, i) => (
-            <div
-              key={i}
-              style={{
-                marginBottom: '14px',
-                color: '#00FF00',
-                wordBreak: 'break-word',
-              }}
-            >
-              {msg}
-            </div>
-          ))
+        {messages.length === 0 && (
+          <div style={{ color: '#888' }}>START THE CONVERSATION</div>
         )}
+
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            style={{
+              marginBottom: '14px',
+              color: msg.role === 'user' ? '#00FF00' : '#FFFFFF',
+            }}
+          >
+            {msg.role === 'user' ? 'YOU: ' : 'MENTOR: '}
+            {msg.text}
+          </div>
+        ))}
       </div>
 
-      <div
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') sendMessage();
+        }}
         style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr',
-          gap: '12px',
+          fontSize: '28px',
+          padding: '18px',
+          background: '#000',
+          color: '#00FF00',
+          border: '2px solid #00FF00',
+          marginBottom: '10px',
+        }}
+        placeholder="TYPE MESSAGE..."
+      />
+
+      <button
+        onClick={sendMessage}
+        style={{
+          fontSize: '28px',
+          padding: '18px',
+          background: '#00FF00',
+          color: '#000',
+          border: 'none',
+          cursor: 'pointer',
+          fontWeight: 900,
         }}
       >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') sendMessage();
-          }}
-          style={{
-            width: '100%',
-            fontSize: '32px',
-            padding: '18px',
-            background: '#000000',
-            color: '#00FF00',
-            border: '2px solid #00FF00',
-            boxSizing: 'border-box',
-          }}
-          placeholder="TYPE SOMETHING..."
-        />
-
-        <button
-          onClick={sendMessage}
-          style={{
-            width: '100%',
-            fontSize: '32px',
-            padding: '20px',
-            background: '#00FF00',
-            color: '#000000',
-            border: 'none',
-            cursor: 'pointer',
-            fontWeight: 900,
-          }}
-        >
-          SEND MESSAGE
-        </button>
-      </div>
+        SEND
+      </button>
     </div>
   );
 }
