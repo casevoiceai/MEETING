@@ -1,12 +1,6 @@
 import React from 'react';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
 export default function StaffMeetingRoom() {
-  const hasUrl = !!supabaseUrl;
-  const hasKey = !!supabaseAnonKey;
-
   return (
     <div
       style={{
@@ -16,56 +10,46 @@ export default function StaffMeetingRoom() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '40px',
         fontFamily: 'Arial, sans-serif',
+        padding: '40px',
       }}
     >
       <div
         style={{
-          maxWidth: '1000px',
+          maxWidth: '1200px',
           width: '100%',
           textAlign: 'center',
         }}
       >
         <div
           style={{
-            fontSize: '56px',
+            fontSize: '64px',
             fontWeight: 900,
             lineHeight: 1.2,
-            marginBottom: '32px',
+            marginBottom: '28px',
           }}
         >
-          STAFF MEETING ROOM SAFE TEST
+          STAFF APP SAFE MODE
         </div>
 
         <div
           style={{
-            fontSize: '36px',
-            fontWeight: 700,
+            fontSize: '38px',
+            fontWeight: 800,
             marginBottom: '24px',
           }}
         >
-          APP IS RUNNING
+          APP IS WORKING
         </div>
 
         <div
           style={{
-            fontSize: '32px',
+            fontSize: '30px',
             fontWeight: 700,
-            marginBottom: '16px',
+            marginBottom: '18px',
           }}
         >
-          SUPABASE URL: {hasUrl ? 'FOUND' : 'MISSING'}
-        </div>
-
-        <div
-          style={{
-            fontSize: '32px',
-            fontWeight: 700,
-            marginBottom: '40px',
-          }}
-        >
-          SUPABASE KEY: {hasKey ? 'FOUND' : 'MISSING'}
+          SUPABASE IS OFF
         </div>
 
         <div
@@ -75,8 +59,8 @@ export default function StaffMeetingRoom() {
             lineHeight: 1.5,
           }}
         >
-          If either one says MISSING, your original app will break until those
-          environment variables are added.
+          This app is running without MyStatement keys so nothing gets mixed up
+          or damaged.
         </div>
       </div>
     </div>
