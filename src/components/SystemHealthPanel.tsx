@@ -31,62 +31,67 @@ export default function SystemHealthPanel() {
   };
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="fixed right-0 top-[80px] w-[420px] h-[calc(100vh-80px)] bg-[#0D1B2E] border-l border-[#1B2A4A] overflow-y-auto z-50">
 
-      {reports.map((report) => (
-        <div key={report.id} className="bg-[#111D30] p-4 rounded">
+      <div className="p-4">
 
-          <div className="text-white font-semibold mb-1">
-            {report.title || report.service}
-          </div>
-
-          <div className="text-gray-400 mb-4">
-            {report.description}
-          </div>
-
-          {/* STATUS */}
-          <div className="flex gap-2 mb-3">
-            <button className="border px-3 py-1 text-white">Pending</button>
-            <button className="border px-3 py-1 text-yellow-400">In Progress</button>
-            <button className="border px-3 py-1 text-green-400">Fixed</button>
-          </div>
-
-          {/* ACTIONS */}
-          <div className="flex gap-2 flex-wrap">
-
-            <button
-              onClick={() => createVaultRecord(report, "FIXED")}
-              className="bg-green-600 px-3 py-2 rounded text-white"
-            >
-              Archive as Fixed
-            </button>
-
-            <button
-              onClick={() => createVaultRecord(report, "ABANDONED")}
-              className="bg-yellow-600 px-3 py-2 rounded text-white"
-            >
-              Archive as Abandoned
-            </button>
-
-            <button
-              onClick={() => createVaultRecord(report, "FAILED")}
-              className="bg-red-600 px-3 py-2 rounded text-white"
-            >
-              Archive as Failed
-            </button>
-
-            <button
-              onClick={() => createVaultRecord(report, "SAVED")}
-              className="bg-blue-600 px-3 py-2 rounded text-white"
-            >
-              Save Report to Vault
-            </button>
-
-          </div>
-
+        <div className="text-sm text-[#8BA4C2] mb-2 uppercase">
+          System Health
         </div>
-      ))}
 
+        {reports.length === 0 && (
+          <div className="text-gray-400 text-sm">
+            No reports found
+          </div>
+        )}
+
+        {reports.map((report) => (
+          <div key={report.id} className="bg-[#111D30] p-4 rounded mb-4">
+
+            <div className="text-white font-semibold mb-1">
+              {report.title || report.service}
+            </div>
+
+            <div className="text-gray-400 mb-4 text-sm">
+              {report.description}
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+
+              <button
+                onClick={() => createVaultRecord(report, "FIXED")}
+                className="bg-green-600 px-3 py-2 rounded text-white text-xs"
+              >
+                Fixed
+              </button>
+
+              <button
+                onClick={() => createVaultRecord(report, "ABANDONED")}
+                className="bg-yellow-600 px-3 py-2 rounded text-white text-xs"
+              >
+                Abandoned
+              </button>
+
+              <button
+                onClick={() => createVaultRecord(report, "FAILED")}
+                className="bg-red-600 px-3 py-2 rounded text-white text-xs"
+              >
+                Failed
+              </button>
+
+              <button
+                onClick={() => createVaultRecord(report, "SAVED")}
+                className="bg-blue-600 px-3 py-2 rounded text-white text-xs"
+              >
+                Save
+              </button>
+
+            </div>
+
+          </div>
+        ))}
+
+      </div>
     </div>
   );
 }
