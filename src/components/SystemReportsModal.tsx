@@ -88,6 +88,24 @@ export default function SystemReportsModal({
     save(reports.filter((r) => r.id !== id));
   };
 
+  const saveToVault = (report: Report) => {
+    const existing = localStorage.getItem("vault_system_health_reports");
+    const parsed = existing ? JSON.parse(existing) : [];
+
+    const saved = {
+      ...report,
+      savedAt: new Date().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    };
+
+    localStorage.setItem(
+      "vault_system_health_reports",
+      JSON.stringify([saved, ...parsed])
+    );
+  };
+
   const clearAll = () => {
     save([]);
   };
@@ -145,12 +163,28 @@ export default function SystemReportsModal({
           {reports.map((r) => (
             <div
               key={r.id}
-              className="p-5 rounded border"
+              className="p-5 rounded border relative"
               style={{
                 backgroundColor: "#111D30",
                 borderColor: "#1B2A4A",
               }}
             >
+              {/* X DELETE */}
+              <button
+                onClick={() => deleteReport(r.id)}
+                style={{
+                  position: "absolute",
+                  top: "10px",
+                  right: "10px",
+                  color: "#EF4444",
+                  fontSize: "16px",
+                  fontWeight: "bold",
+                  background: "transparent",
+                }}
+              >
+                ✕
+              </button>
+
               <div className="flex flex-wrap items-center gap-3 mb-4">
                 <div className="text-lg font-bold text-white">{r.service}</div>
 
@@ -191,6 +225,7 @@ export default function SystemReportsModal({
                 {r.message}
               </div>
 
+              {/* STATUS */}
               <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
                 Status
               </div>
@@ -230,22 +265,11 @@ export default function SystemReportsModal({
                 >
                   Fixed
                 </button>
-
-                <button
-                  onClick={() => deleteReport(r.id)}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #EF4444",
-                    color: "#EF4444",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  Delete This Report
-                </button>
               </div>
 
+              {/* ARCHIVE + SAVE */}
               <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
-                Archive Outcome
+                Actions
               </div>
               <div className="flex flex-wrap gap-4 mb-6">
                 <button
@@ -282,6 +306,18 @@ export default function SystemReportsModal({
                   }}
                 >
                   Archive Failed
+                </button>
+
+                <button
+                  onClick={() => saveToVault(r)}
+                  className="px-4 py-2 text-sm rounded"
+                  style={{
+                    border: "1px solid #3B82F6",
+                    color: "#3B82F6",
+                    backgroundColor: "#0D1B2E",
+                  }}
+                >
+                  💾 Save Report
                 </button>
               </div>
 
