@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export default function SystemReportsPanel() {
+export default function SystemHealthPanel() {
   const [reports, setReports] = useState([]);
 
   useEffect(() => {
@@ -32,6 +32,7 @@ export default function SystemReportsPanel() {
 
   return (
     <div className="p-4 space-y-6">
+
       {reports.map((report) => (
         <div key={report.id} className="bg-[#111D30] p-4 rounded">
 
@@ -43,6 +44,14 @@ export default function SystemReportsPanel() {
             {report.description}
           </div>
 
+          {/* STATUS */}
+          <div className="flex gap-2 mb-3">
+            <button className="border px-3 py-1 text-white">Pending</button>
+            <button className="border px-3 py-1 text-yellow-400">In Progress</button>
+            <button className="border px-3 py-1 text-green-400">Fixed</button>
+          </div>
+
+          {/* ACTIONS */}
           <div className="flex gap-2 flex-wrap">
 
             <button
@@ -74,8 +83,10 @@ export default function SystemReportsPanel() {
             </button>
 
           </div>
+
         </div>
       ))}
+
     </div>
   );
 }
