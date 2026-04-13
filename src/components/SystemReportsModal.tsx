@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Report = {
   id: number;
@@ -64,6 +64,28 @@ function baseTrail(report: Report): CustodyEntry[] {
   ];
 }
 
+function getStatusColors(status: string) {
+  if (status === "Fixed") {
+    return { border: "#10B981", text: "#10B981", soft: "rgba(16,185,129,0.12)" };
+  }
+
+  if (status === "In Progress") {
+    return { border: "#F59E0B", text: "#F59E0B", soft: "rgba(245,158,11,0.12)" };
+  }
+
+  if (status === "Failed") {
+    return { border: "#EF4444", text: "#EF4444", soft: "rgba(239,68,68,0.12)" };
+  }
+
+  return { border: "#94A3B8", text: "#CBD5E1", soft: "rgba(148,163,184,0.12)" };
+}
+
+function summarizeMessage(message: string) {
+  const clean = message.replace(/\s+/g, " ").trim();
+  if (clean.length <= 120) return clean;
+  return `${clean.slice(0, 117)}...`;
+}
+
 export default function SystemReportsModal({
   open,
   onClose,
@@ -72,6 +94,8 @@ export default function SystemReportsModal({
   onClose: () => void;
 }) {
   const [reports, setReports] = useState<Report[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("system_health_reports");
@@ -93,6 +117,24 @@ export default function SystemReportsModal({
       setReports([]);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!reports.length) {
+      setSelectedId(null);
+      setAdvancedOpen(false);
+      return;
+    }
+
+    if (!reports.some((report) => report.id === selectedId)) {
+      setSelectedId(reports[0].id);
+      setAdvancedOpen(false);
+    }
+  }, [reports, selectedId]);
+
+  const selectedReport = useMemo(
+    () => reports.find((report) => report.id === selectedId) ?? null,
+    [reports, selectedId]
+  );
 
   const save = (next: Report[]) => {
     setReports(next);
@@ -210,216 +252,336 @@ export default function SystemReportsModal({
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.75)", zIndex: 3000 }}
+      className="fixed inset-0 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.78)", zIndex: 3000 }}
     >
       <div
-        className="w-[860px] max-h-[84vh] overflow-y-auto p-6 rounded-xl"
+        className="w-full max-w-[1180px] max-h-[88vh] overflow-hidden rounded-2xl border"
         style={{
           backgroundColor: "#0D1B2E",
-          border: "1px solid #1B2A4A",
+          borderColor: "#1B2A4A",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.4)",
         }}
       >
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center justify-between gap-4 border-b px-6 py-5"
+          style={{ borderColor: "#1B2A4A" }}>
           <div>
-            <div className="text-xl text-white font-bold">System Reports</div>
-            <div className="text-sm text-gray-400 mt-1">
-              Active fires, team messages, status tracking, and fix notes.
+            <div className="text-2xl font-bold text-white">System Reports</div>
+            <div className="mt-1 text-sm" style={{ color: "#8BA4C2" }}>
+              Big picture on the left. Clean working detail on the right.
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded"
+            className="rounded-xl px-4 py-2 text-sm font-semibold"
             style={{
-              backgroundColor: "#1B2A4A",
-              color: "#C9A84C",
+              backgroundColor: "#13243B",
+              color: "#E2E8F0",
+              border: "1px solid #1B2A4A",
             }}
           >
             Close
           </button>
         </div>
 
-        {reports.length === 0 && <div className="text-gray-400">No active issues.</div>}
-
-        <div className="space-y-6">
-          {reports.map((r) => (
-            <div
-              key={r.id}
-              className="p-5 rounded border relative"
-              style={{
-                backgroundColor: "#111D30",
-                borderColor: "#1B2A4A",
-              }}
-            >
-              <button
-                onClick={() => deleteReport(r.id)}
-                style={{
-                  position: "absolute",
-                  top: "10px",
-                  right: "12px",
-                  color: "#EF4444",
-                  fontSize: "18px",
-                  fontWeight: "bold",
-                  background: "transparent",
-                  lineHeight: 1,
-                }}
+        <div className="grid h-[calc(88vh-89px)] grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+          <div className="border-r p-5 overflow-y-auto" style={{ borderColor: "#1B2A4A" }}>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-lg font-semibold text-white">Active reports</div>
+                <div className="text-sm" style={{ color: "#8BA4C2" }}>
+                  Pick one report to work. Keep the rest simple.
+                </div>
+              </div>
+              <div
+                className="rounded-full px-3 py-1 text-sm font-bold"
+                style={{ background: "#13243B", color: "#C9A84C", border: "1px solid #1B2A4A" }}
               >
-                ✕
-              </button>
-
-              <div className="flex flex-wrap items-center gap-3 mb-4">
-                <div className="text-lg font-bold text-white">{r.service}</div>
-
-                <div
-                  className="px-3 py-1 rounded text-[11px] font-bold uppercase"
-                  style={{
-                    border: "1px solid #C084FC",
-                    color: "#C084FC",
-                  }}
-                >
-                  {r.owner}
-                </div>
-
-                <div
-                  className="px-3 py-1 rounded text-[11px] font-bold uppercase"
-                  style={{
-                    border:
-                      r.fixStatus === "Fixed"
-                        ? "1px solid #10B981"
-                        : r.fixStatus === "In Progress"
-                          ? "1px solid #F59E0B"
-                          : "1px solid #94A3B8",
-                    color:
-                      r.fixStatus === "Fixed"
-                        ? "#10B981"
-                        : r.fixStatus === "In Progress"
-                          ? "#F59E0B"
-                          : "#94A3B8",
-                  }}
-                >
-                  {r.fixStatus}
-                </div>
-
-                <div className="text-sm text-gray-400">{r.time}</div>
+                {reports.length}
               </div>
-
-              <div className="text-base mb-4 whitespace-pre-wrap text-white">
-                {r.message}
-              </div>
-
-              <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
-                Status
-              </div>
-              <div className="flex flex-wrap gap-4 mb-6">
-                <button
-                  onClick={() => updateStatus(r.id, "Pending")}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #94A3B8",
-                    color: "#94A3B8",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  Pending
-                </button>
-
-                <button
-                  onClick={() => updateStatus(r.id, "In Progress")}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #F59E0B",
-                    color: "#F59E0B",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  In Progress
-                </button>
-
-                <button
-                  onClick={() => updateStatus(r.id, "Fixed")}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #10B981",
-                    color: "#10B981",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  Fixed
-                </button>
-              </div>
-
-              <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
-                Actions
-              </div>
-              <div className="flex flex-wrap gap-4 mb-6">
-                <button
-                  onClick={() => archiveReport(r.id, "Fixed")}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #10B981",
-                    color: "#10B981",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  Archive as Fixed
-                </button>
-
-                <button
-                  onClick={() => archiveReport(r.id, "Abandoned")}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #F59E0B",
-                    color: "#F59E0B",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  Archive as Abandoned
-                </button>
-
-                <button
-                  onClick={() => archiveReport(r.id, "Failed")}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #EF4444",
-                    color: "#EF4444",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  Archive as Failed
-                </button>
-
-                <button
-                  onClick={() => saveToVault(r)}
-                  className="px-4 py-2 text-sm rounded"
-                  style={{
-                    border: "1px solid #3B82F6",
-                    color: "#3B82F6",
-                    backgroundColor: "#0D1B2E",
-                  }}
-                >
-                  Save Report to Vault
-                </button>
-              </div>
-
-              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-                What was done to fix
-              </div>
-
-              <textarea
-                value={r.notes}
-                onChange={(e) => updateNotes(r.id, e.target.value)}
-                placeholder="Add update, fix notes, what was changed, and whether it worked."
-                className="w-full min-h-[140px] p-4 rounded-lg text-sm"
-                style={{
-                  backgroundColor: "#0D1B2E",
-                  border: "1px solid #1B2A4A",
-                  color: "#FFFFFF",
-                  resize: "vertical",
-                }}
-              />
             </div>
-          ))}
+
+            {reports.length === 0 ? (
+              <div
+                className="rounded-2xl border p-6 text-base"
+                style={{ background: "#111D30", borderColor: "#1B2A4A", color: "#94A3B8" }}
+              >
+                No active issues.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reports.map((report) => {
+                  const statusColors = getStatusColors(report.fixStatus);
+                  const isSelected = report.id === selectedId;
+
+                  return (
+                    <button
+                      key={report.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(report.id);
+                        setAdvancedOpen(false);
+                      }}
+                      className="w-full rounded-2xl border p-5 text-left transition"
+                      style={{
+                        background: isSelected ? "#13243B" : "#111D30",
+                        borderColor: isSelected ? "#3B82F6" : "#1B2A4A",
+                        boxShadow: isSelected ? "0 0 0 1px rgba(59,130,246,0.15)" : "none",
+                      }}
+                    >
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <div className="text-lg font-bold text-white">{report.service}</div>
+                        <div
+                          className="rounded-full px-3 py-1 text-xs font-bold uppercase"
+                          style={{
+                            border: `1px solid ${statusColors.border}`,
+                            color: statusColors.text,
+                            background: statusColors.soft,
+                          }}
+                        >
+                          {report.fixStatus}
+                        </div>
+                        <div
+                          className="rounded-full px-3 py-1 text-xs font-bold uppercase"
+                          style={{
+                            border: "1px solid #7C3AED",
+                            color: "#D8B4FE",
+                            background: "rgba(124,58,237,0.12)",
+                          }}
+                        >
+                          {report.owner}
+                        </div>
+                      </div>
+
+                      <div className="mb-3 text-base leading-7 text-white">
+                        {summarizeMessage(report.message)}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-sm font-medium" style={{ color: "#8BA4C2" }}>
+                          {report.time}
+                        </div>
+                        <div className="flex gap-2">
+                          <span
+                            className="rounded-lg px-3 py-2 text-sm font-semibold"
+                            style={{ background: "#0D1B2E", color: "#E2E8F0", border: "1px solid #1B2A4A" }}
+                          >
+                            Open
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="overflow-y-auto p-5">
+            {!selectedReport ? (
+              <div
+                className="rounded-2xl border p-6 text-base"
+                style={{ background: "#111D30", borderColor: "#1B2A4A", color: "#94A3B8" }}
+              >
+                Pick a report from the left.
+              </div>
+            ) : (
+              <div
+                className="rounded-2xl border p-5"
+                style={{ background: "#111D30", borderColor: "#1B2A4A" }}
+              >
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="mb-2 text-2xl font-bold text-white">{selectedReport.service}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div
+                        className="rounded-full px-3 py-1 text-xs font-bold uppercase"
+                        style={{
+                          border: `1px solid ${getStatusColors(selectedReport.fixStatus).border}`,
+                          color: getStatusColors(selectedReport.fixStatus).text,
+                          background: getStatusColors(selectedReport.fixStatus).soft,
+                        }}
+                      >
+                        {selectedReport.fixStatus}
+                      </div>
+                      <div
+                        className="rounded-full px-3 py-1 text-xs font-bold uppercase"
+                        style={{
+                          border: "1px solid #7C3AED",
+                          color: "#D8B4FE",
+                          background: "rgba(124,58,237,0.12)",
+                        }}
+                      >
+                        {selectedReport.owner}
+                      </div>
+                      <div className="text-sm font-medium" style={{ color: "#8BA4C2" }}>
+                        {selectedReport.time}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => deleteReport(selectedReport.id)}
+                    className="rounded-xl px-4 py-2 text-sm font-semibold"
+                    style={{
+                      background: "rgba(239,68,68,0.12)",
+                      border: "1px solid #EF4444",
+                      color: "#FCA5A5",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                <div className="mb-5 rounded-2xl border p-4" style={{ background: "#0D1B2E", borderColor: "#1B2A4A" }}>
+                  <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "#8BA4C2" }}>
+                    Summary
+                  </div>
+                  <div className="text-lg leading-8 text-white whitespace-pre-wrap">
+                    {selectedReport.message}
+                  </div>
+                </div>
+
+                <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {(["Pending", "In Progress", "Fixed"] as const).map((status) => {
+                    const isActive = selectedReport.fixStatus === status;
+                    const colors = getStatusColors(status);
+                    return (
+                      <button
+                        key={status}
+                        onClick={() => updateStatus(selectedReport.id, status)}
+                        className="rounded-xl px-4 py-3 text-sm font-bold"
+                        style={{
+                          border: `1px solid ${colors.border}`,
+                          color: colors.text,
+                          background: isActive ? colors.soft : "#0D1B2E",
+                        }}
+                      >
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <button
+                    onClick={() => saveToVault(selectedReport)}
+                    className="rounded-xl px-4 py-3 text-sm font-bold"
+                    style={{ border: "1px solid #3B82F6", color: "#60A5FA", background: "#0D1B2E" }}
+                  >
+                    Save to Vault
+                  </button>
+                  <button
+                    onClick={() => archiveReport(selectedReport.id, "Fixed")}
+                    className="rounded-xl px-4 py-3 text-sm font-bold"
+                    style={{ border: "1px solid #10B981", color: "#10B981", background: "#0D1B2E" }}
+                  >
+                    Archive Fixed
+                  </button>
+                  <button
+                    onClick={() => archiveReport(selectedReport.id, "Abandoned")}
+                    className="rounded-xl px-4 py-3 text-sm font-bold"
+                    style={{ border: "1px solid #F59E0B", color: "#F59E0B", background: "#0D1B2E" }}
+                  >
+                    Archive Abandoned
+                  </button>
+                  <button
+                    onClick={() => archiveReport(selectedReport.id, "Failed")}
+                    className="rounded-xl px-4 py-3 text-sm font-bold"
+                    style={{ border: "1px solid #EF4444", color: "#F87171", background: "#0D1B2E" }}
+                  >
+                    Archive Failed
+                  </button>
+                </div>
+
+                <div className="mb-5 rounded-2xl border p-4" style={{ background: "#0D1B2E", borderColor: "#1B2A4A" }}>
+                  <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "#8BA4C2" }}>
+                    Notes
+                  </div>
+                  <textarea
+                    value={selectedReport.notes}
+                    onChange={(e) => updateNotes(selectedReport.id, e.target.value)}
+                    placeholder="Add what was changed, what happened, and whether it worked."
+                    className="w-full min-h-[180px] rounded-xl p-4 text-base leading-7"
+                    style={{
+                      backgroundColor: "#08121F",
+                      border: "1px solid #1B2A4A",
+                      color: "#FFFFFF",
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                <div className="rounded-2xl border" style={{ background: "#0D1B2E", borderColor: "#1B2A4A" }}>
+                  <button
+                    onClick={() => setAdvancedOpen((value) => !value)}
+                    className="flex w-full items-center justify-between px-4 py-4 text-left"
+                    style={{ color: "#E2E8F0" }}
+                  >
+                    <div>
+                      <div className="text-base font-bold">Advanced</div>
+                      <div className="text-sm" style={{ color: "#8BA4C2" }}>
+                        Tags, chain of custody, and archive detail.
+                      </div>
+                    </div>
+                    <div className="text-xl font-bold" style={{ color: "#C9A84C" }}>
+                      {advancedOpen ? "−" : "+"}
+                    </div>
+                  </button>
+
+                  {advancedOpen && (
+                    <div className="border-t px-4 pb-4 pt-4" style={{ borderColor: "#1B2A4A" }}>
+                      <div className="mb-4">
+                        <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "#8BA4C2" }}>
+                          Tags
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {["SYSTEM_REPORT", ownerTag(selectedReport.owner), statusTag(selectedReport.fixStatus)].map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full px-3 py-1 text-xs font-bold"
+                              style={{ background: "#13243B", color: "#C9A84C", border: "1px solid #1B2A4A" }}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-2 text-xs font-bold uppercase tracking-[0.18em]" style={{ color: "#8BA4C2" }}>
+                          Chain of custody
+                        </div>
+                        <div className="space-y-3">
+                          {baseTrail(selectedReport).map((entry, index) => (
+                            <div
+                              key={`${entry.time}-${entry.action}-${index}`}
+                              className="rounded-xl border p-3"
+                              style={{ background: "#08121F", borderColor: "#1B2A4A" }}
+                            >
+                              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                                <div className="text-sm font-bold text-white">{entry.action}</div>
+                                <div className="text-xs font-semibold" style={{ color: "#8BA4C2" }}>
+                                  {entry.time}
+                                </div>
+                              </div>
+                              <div className="text-sm font-semibold" style={{ color: "#C9A84C" }}>
+                                {entry.location}
+                              </div>
+                              <div className="mt-1 text-sm leading-6" style={{ color: "#CBD5E1" }}>
+                                {entry.details}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
