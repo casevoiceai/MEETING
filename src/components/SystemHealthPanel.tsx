@@ -15,6 +15,16 @@ type Service = {
   owner: string;
 };
 
+type Report = {
+  id: number;
+  time: string;
+  service: string;
+  owner: string;
+  message: string;
+  fixStatus: string;
+  notes: string;
+};
+
 function getNowLabel() {
   return new Date().toLocaleTimeString([], {
     hour: "numeric",
@@ -149,12 +159,27 @@ export default function SystemHealthPanel() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [services] = useState<Service[]>(buildServices());
   const [teamMessage, setTeamMessage] = useState<string | null>(null);
+  const [reports, setReports] = useState<Report[]>([]);
 
   const panelState = getPanelState(services);
   const panelStateColor = getPanelStateColor(panelState);
   const errorCount = services.filter((s) => s.status === "Error").length;
   const warningCount = services.filter((s) => s.status === "Warning").length;
   const lastCheck = getNowLabel();
+
+  const logToVault = (service: Service) => {
+    const newReport: Report = {
+      id: Date.now(),
+      time: getNowLabel(),
+      service: service.name,
+      owner: service.owner,
+      message: service.prompt,
+      fixStatus: "Pending",
+      notes: "Awaiting action",
+    };
+
+    setReports((prev) => [newReport, ...prev]);
+  };
 
   return (
     <>
@@ -175,12 +200,6 @@ export default function SystemHealthPanel() {
               <div className="px-2 py-1 text-xs font-bold rounded" style={{ border: `1px solid ${panelStateColor}`, color: panelStateColor }}>
                 {panelState}
               </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div>Services: {services.length}</div>
-              <div>Errors: {errorCount}</div>
-              <div>Warnings: {warningCount}</div>
             </div>
 
             {services.map((s) => (
@@ -218,9 +237,10 @@ export default function SystemHealthPanel() {
 
                     <div className="flex gap-2 mt-3">
                       <button
-                        onClick={() =>
-                          setTeamMessage(`@${s.owner} FIX NEEDED:\n\n${s.prompt}`)
-                        }
+                        onClick={() => {
+                          setTeamMessage(`@${s.owner} FIX NEEDED:\n\n${s.prompt}`);
+                          logToVault(s);
+                        }}
                         className="px-2 py-1 text-xs rounded"
                         style={{
                           backgroundColor: "#1B2A4A",
