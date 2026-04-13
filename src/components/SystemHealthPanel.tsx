@@ -14,6 +14,7 @@ type Service = {
   impact: string;
   steps: string[];
   prompt: string;
+  severity: "Low" | "Medium" | "High";
 };
 
 function getNowLabel() {
@@ -39,6 +40,7 @@ function buildServices(): Service[] {
       impact: "Core data system is working.",
       steps: ["No action needed"],
       prompt: "Database OK",
+      severity: "Low",
     },
     {
       name: "Google Drive",
@@ -58,7 +60,29 @@ function buildServices(): Service[] {
         "Re-authenticate Google Drive connection",
         "Test connection again",
       ],
-      prompt: `Fix Google Drive integration. Failed to fetch error. Diagnose auth, route, env variables.`,
+      prompt: `Issue: Google Drive integration failed with "Failed to fetch".
+
+Current state:
+- Database connected
+- Google Drive failing
+- Notion connected
+- Sync queue connected
+- Auth warning present
+- Environment warning present
+
+Likely causes:
+- Google auth token issue
+- Broken integration route
+- Missing or incorrect environment variables
+- Redirect URI mismatch
+
+Your task:
+1. Identify the exact root cause
+2. Name the exact file or files to edit
+3. Provide the exact code fix
+4. List the exact environment variables to verify
+5. Explain exactly how to test the fix`,
+      severity: "High",
     },
     {
       name: "Notion",
@@ -72,6 +96,7 @@ function buildServices(): Service[] {
       impact: "Docs sync is active.",
       steps: ["No action needed"],
       prompt: "Notion OK",
+      severity: "Low",
     },
     {
       name: "Sync Queue",
@@ -82,9 +107,10 @@ function buildServices(): Service[] {
       owner: "Ops",
       updatedAt: now,
       explanation: "No pending jobs.",
-      impact: "System idle.",
+      impact: "System is idle.",
       steps: ["No action needed"],
       prompt: "Queue OK",
+      severity: "Low",
     },
     {
       name: "Auth",
@@ -94,10 +120,21 @@ function buildServices(): Service[] {
       action: "Refresh session",
       owner: "Auth",
       updatedAt: now,
-      explanation: "Session aging.",
-      impact: "May break integrations.",
-      steps: ["Log out", "Log in again"],
-      prompt: "Fix auth token aging issue",
+      explanation: "Your session is getting old.",
+      impact: "Integrations may break soon.",
+      steps: ["Log out", "Log back in", "Re-test integrations"],
+      prompt: `Issue: Auth token may expire soon.
+
+Current state:
+- Session aging warning
+- Connected services may fail if token expires
+
+Your task:
+1. Explain the likely auth issue
+2. List the file or config area involved
+3. Explain what needs to be refreshed
+4. Explain how to test after re-auth`,
+      severity: "Medium",
     },
     {
       name: "Environment",
@@ -107,10 +144,25 @@ function buildServices(): Service[] {
       action: "Verify env",
       owner: "DevOps",
       updatedAt: now,
-      explanation: "Env mismatch.",
-      impact: "Hidden failures possible.",
-      steps: ["Check Vercel env", "Compare .env", "Redeploy"],
-      prompt: "Fix environment mismatch",
+      explanation: "Environment variables may not match.",
+      impact: "Some services may fail silently.",
+      steps: [
+        "Open Vercel environment settings",
+        "Compare with local .env",
+        "Add missing values",
+        "Redeploy app",
+      ],
+      prompt: `Issue: Environment mismatch possible.
+
+Current state:
+- Some required environment values may be missing or inconsistent
+
+Your task:
+1. Identify likely missing or mismatched env variables
+2. Explain where to verify them
+3. Explain how to confirm the correct values
+4. Explain how to redeploy and test`,
+      severity: "Medium",
     },
   ];
 }
@@ -118,6 +170,12 @@ function buildServices(): Service[] {
 function getStatusColor(status: ServiceStatus) {
   if (status === "Error") return "#EF4444";
   if (status === "Warning") return "#F59E0B";
+  return "#10B981";
+}
+
+function getSeverityColor(severity: "Low" | "Medium" | "High") {
+  if (severity === "High") return "#EF4444";
+  if (severity === "Medium") return "#F59E0B";
   return "#10B981";
 }
 
@@ -228,6 +286,16 @@ export default function SystemHealthPanel() {
                     <div>{s.error}</div>
                     <div>{s.explanation}</div>
                     <div>{s.impact}</div>
+
+                    <div
+                      className="inline-block px-2 py-1 rounded text-[10px] font-bold uppercase"
+                      style={{
+                        border: `1px solid ${getSeverityColor(s.severity)}`,
+                        color: getSeverityColor(s.severity),
+                      }}
+                    >
+                      Severity: {s.severity}
+                    </div>
 
                     <div className="text-yellow-300 font-bold">FIX STEPS:</div>
                     {s.steps.map((step, i) => (
