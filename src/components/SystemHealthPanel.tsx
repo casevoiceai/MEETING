@@ -103,16 +103,22 @@ function generatePrompt(service: Service) {
 
 Status: ${service.status}
 Error: ${service.error}
-Likely Cause: ${service.cause}
-Suggested Action: ${service.action}
-Owner: ${service.owner}
+
+Likely Cause:
+${service.cause}
+
+Suggested Action:
+${service.action}
+
+Owner:
+${service.owner}
 
 Your task:
-1. Identify the exact failure point
-2. Provide the exact file to edit
-3. Provide the exact code change
-4. List all environment variables to verify
-5. Explain how to test the fix`;
+1. Identify exact failure point
+2. Provide exact file to edit
+3. Provide exact code fix
+4. List env variables to verify
+5. Explain how to test fix`;
 }
 
 export default function SystemHealthPanel() {
@@ -125,6 +131,16 @@ export default function SystemHealthPanel() {
   const errorCount = services.filter((s) => s.status === "Error").length;
   const warningCount = services.filter((s) => s.status === "Warning").length;
   const lastCheck = services[0]?.updatedAt ?? getNowLabel();
+
+  const handleCopy = async (service: Service) => {
+    const text = generatePrompt(service);
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Fix prompt copied");
+    } catch {
+      alert(text);
+    }
+  };
 
   return (
     <div className="relative">
@@ -278,9 +294,7 @@ export default function SystemHealthPanel() {
                   </div>
 
                   <button
-                    onClick={() =>
-                      navigator.clipboard.writeText(generatePrompt(service))
-                    }
+                    onClick={() => handleCopy(service)}
                     className="mt-2 px-2 py-1 text-xs rounded"
                     style={{
                       backgroundColor: "#1B2A4A",
