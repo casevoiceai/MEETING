@@ -23,7 +23,24 @@ export default function SystemReportsModal({
     const stored = localStorage.getItem("system_health_reports");
     if (stored) {
       try {
-        setReports(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+
+        // REMOVE DUPLICATES (same message + time)
+        const unique = parsed.filter(
+          (r: Report, i: number, arr: Report[]) =>
+            i ===
+            arr.findIndex(
+              (x) =>
+                x.message === r.message &&
+                x.time === r.time
+            )
+        );
+
+        setReports(unique);
+        localStorage.setItem(
+          "system_health_reports",
+          JSON.stringify(unique)
+        );
       } catch {
         setReports([]);
       }
@@ -32,7 +49,10 @@ export default function SystemReportsModal({
 
   const save = (next: Report[]) => {
     setReports(next);
-    localStorage.setItem("system_health_reports", JSON.stringify(next));
+    localStorage.setItem(
+      "system_health_reports",
+      JSON.stringify(next)
+    );
   };
 
   const updateStatus = (id: number, fixStatus: string) => {
@@ -55,6 +75,10 @@ export default function SystemReportsModal({
     save(reports.filter((r) => r.id !== id));
   };
 
+  const clearAll = () => {
+    save([]);
+  };
+
   if (!open) return null;
 
   return (
@@ -71,26 +95,43 @@ export default function SystemReportsModal({
       >
         <div className="flex justify-between items-center mb-4">
           <div>
-            <div className="text-lg text-white font-bold">System Reports</div>
+            <div className="text-lg text-white font-bold">
+              System Reports
+            </div>
             <div className="text-xs text-gray-400">
               Active fires, team messages, status tracking, and fix notes.
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="px-3 py-1 text-xs rounded"
-            style={{
-              backgroundColor: "#1B2A4A",
-              color: "#C9A84C",
-            }}
-          >
-            Close
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={clearAll}
+              className="px-3 py-1 text-xs rounded"
+              style={{
+                backgroundColor: "#EF4444",
+                color: "#FFFFFF",
+              }}
+            >
+              Clear All
+            </button>
+
+            <button
+              onClick={onClose}
+              className="px-3 py-1 text-xs rounded"
+              style={{
+                backgroundColor: "#1B2A4A",
+                color: "#C9A84C",
+              }}
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         {reports.length === 0 && (
-          <div className="text-gray-400">No active issues.</div>
+          <div className="text-gray-400">
+            No active issues.
+          </div>
         )}
 
         <div className="space-y-4">
@@ -138,7 +179,9 @@ export default function SystemReportsModal({
                   {r.fixStatus}
                 </div>
 
-                <div className="text-xs text-gray-400">{r.time}</div>
+                <div className="text-xs text-gray-400">
+                  {r.time}
+                </div>
               </div>
 
               <div className="text-sm mb-4 whitespace-pre-wrap text-white">
@@ -147,7 +190,9 @@ export default function SystemReportsModal({
 
               <div className="flex gap-2 mb-3 flex-wrap">
                 <button
-                  onClick={() => updateStatus(r.id, "Pending")}
+                  onClick={() =>
+                    updateStatus(r.id, "Pending")
+                  }
                   className="px-2 py-1 text-xs rounded"
                   style={{
                     border: "1px solid #94A3B8",
@@ -158,7 +203,9 @@ export default function SystemReportsModal({
                 </button>
 
                 <button
-                  onClick={() => updateStatus(r.id, "In Progress")}
+                  onClick={() =>
+                    updateStatus(r.id, "In Progress")
+                  }
                   className="px-2 py-1 text-xs rounded"
                   style={{
                     border: "1px solid #F59E0B",
@@ -169,7 +216,9 @@ export default function SystemReportsModal({
                 </button>
 
                 <button
-                  onClick={() => updateStatus(r.id, "Fixed")}
+                  onClick={() =>
+                    updateStatus(r.id, "Fixed")
+                  }
                   className="px-2 py-1 text-xs rounded"
                   style={{
                     border: "1px solid #10B981",
@@ -197,7 +246,9 @@ export default function SystemReportsModal({
 
               <textarea
                 value={r.notes}
-                onChange={(e) => updateNotes(r.id, e.target.value)}
+                onChange={(e) =>
+                  updateNotes(r.id, e.target.value)
+                }
                 placeholder="Add update, fix notes, what was changed, and whether it worked."
                 className="w-full min-h-[110px] p-3 rounded-lg text-sm"
                 style={{
