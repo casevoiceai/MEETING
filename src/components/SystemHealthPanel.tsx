@@ -25,12 +25,8 @@ function getNowLabel() {
 }
 
 function statusColor(status: HealthStatus) {
-  if (status === "connected") {
-    return "#10B981";
-  }
-  if (status === "warning") {
-    return "#F59E0B";
-  }
+  if (status === "connected") return "#10B981";
+  if (status === "warning") return "#F59E0B";
   return "#EF4444";
 }
 
@@ -46,7 +42,8 @@ function buildSystemState(): HealthItem[] {
       key: "database",
       name: "Database",
       status: "connected",
-      summary: "None",
+      summary: "Healthy",
+      friendlyExplanation: "Database is connected and responding normally.",
       updatedAt: getNowLabel(),
     },
     {
@@ -60,7 +57,7 @@ function buildSystemState(): HealthItem[] {
       likelyCause: "Auth token issue or broken integration route",
       impact: "Drive sync is blocked.",
       suggestedAction:
-        "Open Vercel project settings, check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, confirm redirect URI matches, re-authenticate Google Drive connection, then test again.",
+        "Open Vercel project settings. Check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Confirm redirect URI matches. Re-authenticate Google Drive connection. Test again.",
       owner: "Integrations",
       severity: "high",
       updatedAt: getNowLabel(),
@@ -69,14 +66,15 @@ function buildSystemState(): HealthItem[] {
       key: "notion",
       name: "Notion",
       status: "connected",
-      summary: "None",
+      summary: "Healthy",
+      friendlyExplanation: "Notion connection is working normally.",
       updatedAt: getNowLabel(),
     },
     {
       key: "sync-queue",
       name: "Sync Queue",
       status: "connected",
-      summary: "Connected",
+      summary: "Ready",
       friendlyExplanation: "Queue is online and ready to process jobs.",
       updatedAt: getNowLabel(),
     },
@@ -105,7 +103,7 @@ function buildSystemState(): HealthItem[] {
       likelyCause: "Missing or inconsistent deployment configuration",
       impact: "Integrations may behave inconsistently between screens or deployments.",
       suggestedAction:
-        "Compare local, GitHub, and Vercel environment values and re-deploy after correction.",
+        "Compare local, GitHub, and Vercel environment values. Re-deploy after correction.",
       owner: "Environment",
       severity: "medium",
       updatedAt: getNowLabel(),
@@ -143,12 +141,9 @@ export default function SystemHealthPanel() {
       `Issue: ${item.name} integration failed with "${item.exactError || item.summary}".`,
       "",
       "Current state:",
-      `- Database connected`,
       `- ${item.name} ${item.status === "error" ? "failing" : item.status}`,
-      `- Notion connected`,
-      `- Sync queue connected`,
-      `- Auth warning present`,
-      `- Environment warning present`,
+      `- Owner: ${item.owner || "Unassigned"}`,
+      `- Severity: ${item.severity || "unknown"}`,
       "",
       "Likely causes:",
       `- ${item.likelyCause || "Unknown cause"}`,
@@ -170,14 +165,15 @@ export default function SystemHealthPanel() {
 
   const autoFix = (item: HealthItem) => {
     const lines = [
-      `Auto-fix attempt:`,
+      "Auto-fix attempt:",
       "",
-      `${item.name}`,
+      item.name,
       "",
       "Reset cached auth state",
       "Retry integration route",
       "Revalidate environment variables",
     ].join("\n");
+
     alert(lines);
   };
 
@@ -191,8 +187,7 @@ export default function SystemHealthPanel() {
       service: item.name,
       owner: item.owner || "Unassigned",
       message:
-        item.suggestedAction ||
-        `${item.name} needs review and follow-up.`,
+        item.suggestedAction || `${item.name} needs review and follow-up.`,
       fixStatus: "Pending",
       notes: "",
     };
@@ -225,7 +220,7 @@ export default function SystemHealthPanel() {
 
       {open && (
         <div
-          className="absolute right-0 mt-3 w-[390px] rounded-2xl p-4"
+          className="absolute right-0 mt-3 w-[430px] rounded-2xl p-4"
           style={{
             backgroundColor: "#0F1E33",
             border: "1px solid #1B2A4A",
@@ -288,7 +283,10 @@ export default function SystemHealthPanel() {
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div
               className="rounded-xl p-3"
-              style={{ border: "1px solid #1B2A4A", backgroundColor: "#111D30" }}
+              style={{
+                border: "1px solid #1B2A4A",
+                backgroundColor: "#111D30",
+              }}
             >
               <div
                 className="text-[10px] font-bold uppercase tracking-[0.18em]"
@@ -336,7 +334,7 @@ export default function SystemHealthPanel() {
             </div>
           </div>
 
-          <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
             {items.map((item) => {
               const isExpanded = !!expanded[item.key];
               const color = statusColor(item.status);
@@ -359,7 +357,7 @@ export default function SystemHealthPanel() {
                         {item.name}
                       </div>
                       <div
-                        className="text-base font-semibold mt-1"
+                        className="text-sm font-semibold mt-1"
                         style={{ color }}
                       >
                         {statusLabel(item.status)}
@@ -379,52 +377,126 @@ export default function SystemHealthPanel() {
 
                   {isExpanded && (
                     <div className="px-4 pb-4">
-                      {item.exactError && (
-                        <div className="mb-2 text-sm text-white">
-                          <span className="font-bold">Exact Error: </span>
-                          {item.exactError}
+                      <div
+                        className="grid gap-3 mb-4"
+                        style={{ gridTemplateColumns: "1fr 1fr" }}
+                      >
+                        <div
+                          className="rounded-xl p-3"
+                          style={{
+                            backgroundColor: "#0D1B2E",
+                            border: "1px solid #1B2A4A",
+                          }}
+                        >
+                          <div
+                            className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1"
+                            style={{ color: "#8A9BB5" }}
+                          >
+                            Exact Error
+                          </div>
+                          <div className="text-sm text-white">
+                            {item.exactError || "None"}
+                          </div>
                         </div>
-                      )}
+
+                        <div
+                          className="rounded-xl p-3"
+                          style={{
+                            backgroundColor: "#0D1B2E",
+                            border: "1px solid #1B2A4A",
+                          }}
+                        >
+                          <div
+                            className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1"
+                            style={{ color: "#8A9BB5" }}
+                          >
+                            Owner
+                          </div>
+                          <div className="text-sm text-white">
+                            {item.owner || "Unassigned"}
+                          </div>
+                        </div>
+
+                        <div
+                          className="rounded-xl p-3"
+                          style={{
+                            backgroundColor: "#0D1B2E",
+                            border: "1px solid #1B2A4A",
+                          }}
+                        >
+                          <div
+                            className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1"
+                            style={{ color: "#8A9BB5" }}
+                          >
+                            Likely Cause
+                          </div>
+                          <div className="text-sm text-white">
+                            {item.likelyCause || "None"}
+                          </div>
+                        </div>
+
+                        <div
+                          className="rounded-xl p-3"
+                          style={{
+                            backgroundColor: "#0D1B2E",
+                            border: "1px solid #1B2A4A",
+                          }}
+                        >
+                          <div
+                            className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1"
+                            style={{ color: "#8A9BB5" }}
+                          >
+                            Impact
+                          </div>
+                          <div className="text-sm text-white">
+                            {item.impact || "None"}
+                          </div>
+                        </div>
+                      </div>
 
                       {item.friendlyExplanation && (
-                        <div className="mb-2 text-sm text-white">
-                          <span className="font-bold">Friendly Explanation: </span>
-                          {item.friendlyExplanation}
-                        </div>
-                      )}
-
-                      {item.likelyCause && (
-                        <div className="mb-2 text-sm text-white">
-                          <span className="font-bold">Likely Cause: </span>
-                          {item.likelyCause}
-                        </div>
-                      )}
-
-                      {item.impact && (
-                        <div className="mb-2 text-sm text-white">
-                          <span className="font-bold">Impact: </span>
-                          {item.impact}
+                        <div
+                          className="rounded-xl p-3 mb-3"
+                          style={{
+                            backgroundColor: "#0D1B2E",
+                            border: "1px solid #1B2A4A",
+                          }}
+                        >
+                          <div
+                            className="text-[10px] font-bold uppercase tracking-[0.18em] mb-1"
+                            style={{ color: "#8A9BB5" }}
+                          >
+                            Friendly Explanation
+                          </div>
+                          <div className="text-sm text-white">
+                            {item.friendlyExplanation}
+                          </div>
                         </div>
                       )}
 
                       {item.suggestedAction && (
-                        <div className="mb-2 text-sm text-white">
-                          <span className="font-bold">Suggested Action: </span>
-                          {item.suggestedAction}
-                        </div>
-                      )}
-
-                      {item.owner && (
-                        <div className="mb-2 text-sm text-white">
-                          <span className="font-bold">Assigned Owner: </span>
-                          {item.owner}
-                        </div>
-                      )}
-
-                      {item.updatedAt && (
-                        <div className="mb-3 text-sm text-white">
-                          <span className="font-bold">Last Updated: </span>
-                          {item.updatedAt}
+                        <div
+                          className="rounded-xl p-3 mb-3"
+                          style={{
+                            backgroundColor: "#0D1B2E",
+                            border: "1px solid #1B2A4A",
+                          }}
+                        >
+                          <div
+                            className="text-[10px] font-bold uppercase tracking-[0.18em] mb-2"
+                            style={{ color: "#C9A84C" }}
+                          >
+                            Fix Steps
+                          </div>
+                          <ul className="space-y-1 text-sm text-white">
+                            {item.suggestedAction
+                              .split(".")
+                              .map((step) => step.trim())
+                              .filter(Boolean)
+                              .map((step, idx) => (
+                                <li key={idx}>• {step}</li>
+                              ))}
+                          </ul>
                         </div>
                       )}
 
@@ -458,73 +530,43 @@ export default function SystemHealthPanel() {
                         </div>
                       )}
 
-                      {item.status !== "connected" && (
-                        <>
-                          <div
-                            className="text-[11px] font-bold uppercase tracking-[0.18em] mb-2"
-                            style={{ color: "#C9A84C" }}
-                          >
-                            Fix Steps:
-                          </div>
-                          <ul
-                            className="text-sm space-y-1 mb-4 pl-4"
-                            style={{ color: "#FFFFFF" }}
-                          >
-                            {(item.suggestedAction || "")
-                              .split(",")
-                              .map((step) => step.trim())
-                              .filter(Boolean)
-                              .map((step, idx) => (
-                                <li key={idx}>• {step}</li>
-                              ))}
-                          </ul>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          onClick={() => autoFix(item)}
+                          className="px-3 py-2 rounded-lg text-xs font-bold"
+                          style={{
+                            border: "1px solid rgba(59,130,246,0.4)",
+                            color: "#60A5FA",
+                            backgroundColor: "rgba(30,64,175,0.15)",
+                          }}
+                        >
+                          Auto Fix
+                        </button>
 
-                          <div
-                            className="text-[11px] font-bold uppercase tracking-[0.18em] mb-2"
-                            style={{ color: "#8A9BB5" }}
-                          >
-                            Auto Fix:
-                          </div>
+                        <button
+                          onClick={() => copyFixPrompt(item)}
+                          className="px-3 py-2 rounded-lg text-xs font-bold"
+                          style={{
+                            border: "1px solid rgba(245,158,11,0.4)",
+                            color: "#FCD34D",
+                            backgroundColor: "rgba(120,53,15,0.15)",
+                          }}
+                        >
+                          Fix Prompt
+                        </button>
 
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              onClick={() => autoFix(item)}
-                              className="px-3 py-2 rounded-lg text-xs font-bold"
-                              style={{
-                                border: "1px solid rgba(59,130,246,0.4)",
-                                color: "#60A5FA",
-                                backgroundColor: "rgba(30,64,175,0.15)",
-                              }}
-                            >
-                              Auto Fix
-                            </button>
-
-                            <button
-                              onClick={() => copyFixPrompt(item)}
-                              className="px-3 py-2 rounded-lg text-xs font-bold"
-                              style={{
-                                border: "1px solid rgba(245,158,11,0.4)",
-                                color: "#FCD34D",
-                                backgroundColor: "rgba(120,53,15,0.15)",
-                              }}
-                            >
-                              Fix Prompt
-                            </button>
-
-                            <button
-                              onClick={() => sendToTeam(item)}
-                              className="px-3 py-2 rounded-lg text-xs font-bold"
-                              style={{
-                                border: "1px solid rgba(16,185,129,0.4)",
-                                color: "#34D399",
-                                backgroundColor: "rgba(6,95,70,0.15)",
-                              }}
-                            >
-                              Send to Team
-                            </button>
-                          </div>
-                        </>
-                      )}
+                        <button
+                          onClick={() => sendToTeam(item)}
+                          className="px-3 py-2 rounded-lg text-xs font-bold"
+                          style={{
+                            border: "1px solid rgba(16,185,129,0.4)",
+                            color: "#34D399",
+                            backgroundColor: "rgba(6,95,70,0.15)",
+                          }}
+                        >
+                          Send to Team
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
