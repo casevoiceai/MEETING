@@ -63,7 +63,7 @@ function buildServices(): Service[] {
       name: "Auth",
       status: "Warning",
       error: "Token may expire soon",
-      cause: "Session age increasing",
+      cause: "Session aging",
       action: "Refresh session token and re-test integration",
       owner: "Auth",
       updatedAt: now,
@@ -126,10 +126,6 @@ export default function SystemHealthPanel() {
   const warningCount = services.filter((s) => s.status === "Warning").length;
   const lastCheck = services[0]?.updatedAt ?? getNowLabel();
 
-  const handleRetry = () => {
-    window.location.reload();
-  };
-
   return (
     <div className="relative">
       <button
@@ -146,7 +142,7 @@ export default function SystemHealthPanel() {
 
       {open && (
         <div
-          className="absolute right-0 mt-2 w-[440px] rounded-xl p-4 space-y-3"
+          className="fixed top-[70px] right-6 w-[440px] max-h-[80vh] overflow-y-auto rounded-xl p-4 space-y-3"
           style={{
             backgroundColor: "#0D1B2E",
             border: "1px solid #1B2A4A",
@@ -164,28 +160,15 @@ export default function SystemHealthPanel() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRetry}
-                className="px-2 py-1 rounded text-xs font-bold"
-                style={{
-                  backgroundColor: "#1B2A4A",
-                  color: "#C9A84C",
-                }}
-              >
-                Retry
-              </button>
-
-              <div
-                className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-widest"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.04)",
-                  border: `1px solid ${panelStateColor}55`,
-                  color: panelStateColor,
-                }}
-              >
-                {panelState}
-              </div>
+            <div
+              className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-widest"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.04)",
+                border: `1px solid ${panelStateColor}55`,
+                color: panelStateColor,
+              }}
+            >
+              {panelState}
             </div>
           </div>
 
