@@ -10,6 +10,8 @@ type Service = {
   action: string;
   owner: string;
   updatedAt: string;
+  explanation: string;
+  impact: string;
 };
 
 function getNowLabel() {
@@ -31,6 +33,8 @@ function buildServices(): Service[] {
       action: "No action needed",
       owner: "Backend",
       updatedAt: now,
+      explanation: "The database is reachable and responding normally.",
+      impact: "Storage and retrieval are working.",
     },
     {
       name: "Google Drive",
@@ -40,6 +44,9 @@ function buildServices(): Service[] {
       action: "Check Google token, route, and environment values",
       owner: "Integrations",
       updatedAt: now,
+      explanation:
+        "The app tried to reach Google Drive and did not get a usable response back.",
+      impact: "Drive sync and Drive-based file actions are blocked.",
     },
     {
       name: "Notion",
@@ -49,6 +56,8 @@ function buildServices(): Service[] {
       action: "No action needed",
       owner: "Docs",
       updatedAt: now,
+      explanation: "The Notion connection is live and responding normally.",
+      impact: "Notion sync is available.",
     },
     {
       name: "Sync Queue",
@@ -58,6 +67,8 @@ function buildServices(): Service[] {
       action: "No action needed",
       owner: "Ops",
       updatedAt: now,
+      explanation: "There are no pending background sync jobs right now.",
+      impact: "Nothing is stuck in the queue.",
     },
     {
       name: "Auth",
@@ -67,6 +78,9 @@ function buildServices(): Service[] {
       action: "Refresh session token and re-test integration",
       owner: "Auth",
       updatedAt: now,
+      explanation:
+        "Your current auth session may be getting old and could expire soon.",
+      impact: "Connected services may fail if the session expires.",
     },
     {
       name: "Environment",
@@ -76,6 +90,9 @@ function buildServices(): Service[] {
       action: "Verify all required environment variables",
       owner: "DevOps",
       updatedAt: now,
+      explanation:
+        "One or more configuration values may be missing, wrong, or not matching across app layers.",
+      impact: "Some integrations may fail even if the UI looks normal.",
     },
   ];
 }
@@ -104,8 +121,14 @@ function generatePrompt(service: Service) {
 Status: ${service.status}
 Error: ${service.error}
 
+Friendly Explanation:
+${service.explanation}
+
 Likely Cause:
 ${service.cause}
+
+Impact:
+${service.impact}
 
 Suggested Action:
 ${service.action}
@@ -294,8 +317,16 @@ export default function SystemHealthPanel() {
                     {service.error}
                   </div>
                   <div>
+                    <b className="text-white">Friendly Explanation:</b>{" "}
+                    {service.explanation}
+                  </div>
+                  <div>
                     <b className="text-white">Likely Cause:</b>{" "}
                     {service.cause}
+                  </div>
+                  <div>
+                    <b className="text-white">Impact:</b>{" "}
+                    {service.impact}
                   </div>
                   <div>
                     <b className="text-white">Suggested Action:</b>{" "}
