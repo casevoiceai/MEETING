@@ -1,6 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
-const supabaseUrl = 'https://lzkiwsqezugptwugcehg.supabase.co';
-const supabaseAnonKey = 'sb_publishable_btVRhvhpBvfdpM0EIlvngQ_A4gMMwxA';
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export default defineConfig({
+  plugins: [react()],
+})
