@@ -100,24 +100,24 @@ export default function SystemReportsModal({
       style={{ background: "rgba(0,0,0,0.75)", zIndex: 3000 }}
     >
       <div
-        className="w-[820px] max-h-[82vh] overflow-y-auto p-5 rounded-xl"
+        className="w-[860px] max-h-[84vh] overflow-y-auto p-6 rounded-xl"
         style={{
           backgroundColor: "#0D1B2E",
           border: "1px solid #1B2A4A",
         }}
       >
-        <div className="flex justify-between items-center mb-5">
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <div className="text-lg text-white font-bold">System Reports</div>
-            <div className="text-xs text-gray-400">
+            <div className="text-xl text-white font-bold">System Reports</div>
+            <div className="text-sm text-gray-400 mt-1">
               Active fires, team messages, status tracking, and fix notes.
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <button
               onClick={clearAll}
-              className="px-3 py-1.5 text-xs rounded"
+              className="px-4 py-2 text-sm rounded"
               style={{
                 backgroundColor: "#EF4444",
                 color: "#FFFFFF",
@@ -128,7 +128,7 @@ export default function SystemReportsModal({
 
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs rounded"
+              className="px-4 py-2 text-sm rounded"
               style={{
                 backgroundColor: "#1B2A4A",
                 color: "#C9A84C",
@@ -141,7 +141,7 @@ export default function SystemReportsModal({
 
         {reports.length === 0 && <div className="text-gray-400">No active issues.</div>}
 
-        <div className="space-y-5">
+        <div className="space-y-6">
           {reports.map((r) => (
             <div
               key={r.id}
@@ -152,10 +152,10 @@ export default function SystemReportsModal({
               }}
             >
               <div className="flex flex-wrap items-center gap-3 mb-4">
-                <div className="text-base font-bold text-white">{r.service}</div>
+                <div className="text-lg font-bold text-white">{r.service}</div>
 
                 <div
-                  className="px-2.5 py-1 rounded text-[10px] font-bold uppercase"
+                  className="px-3 py-1 rounded text-[11px] font-bold uppercase"
                   style={{
                     border: "1px solid #C084FC",
                     color: "#C084FC",
@@ -165,7 +165,7 @@ export default function SystemReportsModal({
                 </div>
 
                 <div
-                  className="px-2.5 py-1 rounded text-[10px] font-bold uppercase"
+                  className="px-3 py-1 rounded text-[11px] font-bold uppercase"
                   style={{
                     border:
                       r.fixStatus === "Fixed"
@@ -184,18 +184,20 @@ export default function SystemReportsModal({
                   {r.fixStatus}
                 </div>
 
-                <div className="text-xs text-gray-400">{r.time}</div>
+                <div className="text-sm text-gray-400">{r.time}</div>
               </div>
 
-              <div className="text-sm mb-5 whitespace-pre-wrap text-white">{r.message}</div>
+              <div className="text-base mb-6 whitespace-pre-wrap text-white">
+                {r.message}
+              </div>
 
-              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+              <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
                 Status
               </div>
-              <div className="flex flex-wrap gap-3 mb-5">
+              <div className="flex flex-wrap gap-4 mb-6">
                 <button
                   onClick={() => updateStatus(r.id, "Pending")}
-                  className="px-3 py-2 text-xs rounded"
+                  className="px-4 py-2 text-sm rounded"
                   style={{
                     border: "1px solid #94A3B8",
                     color: "#94A3B8",
@@ -207,7 +209,7 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => updateStatus(r.id, "In Progress")}
-                  className="px-3 py-2 text-xs rounded"
+                  className="px-4 py-2 text-sm rounded"
                   style={{
                     border: "1px solid #F59E0B",
                     color: "#F59E0B",
@@ -219,7 +221,7 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => updateStatus(r.id, "Fixed")}
-                  className="px-3 py-2 text-xs rounded"
+                  className="px-4 py-2 text-sm rounded"
                   style={{
                     border: "1px solid #10B981",
                     color: "#10B981",
@@ -231,7 +233,7 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => deleteReport(r.id)}
-                  className="px-3 py-2 text-xs rounded"
+                  className="px-4 py-2 text-sm rounded"
                   style={{
                     border: "1px solid #EF4444",
                     color: "#EF4444",
@@ -242,13 +244,13 @@ export default function SystemReportsModal({
                 </button>
               </div>
 
-              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+              <div className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">
                 Archive Outcome
               </div>
-              <div className="flex flex-wrap gap-3 mb-5">
+              <div className="flex flex-wrap gap-4 mb-6">
                 <button
                   onClick={() => archiveReport(r.id, "Fixed")}
-                  className="px-3 py-2 text-xs rounded"
+                  className="px-4 py-2 text-sm rounded"
                   style={{
                     border: "1px solid #10B981",
                     color: "#10B981",
@@ -260,7 +262,7 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => archiveReport(r.id, "Abandoned")}
-                  className="px-3 py-2 text-xs rounded"
+                  className="px-4 py-2 text-sm rounded"
                   style={{
                     border: "1px solid #F59E0B",
                     color: "#F59E0B",
@@ -272,7 +274,7 @@ export default function SystemReportsModal({
 
                 <button
                   onClick={() => archiveReport(r.id, "Failed")}
-                  className="px-3 py-2 text-xs rounded"
+                  className="px-4 py-2 text-sm rounded"
                   style={{
                     border: "1px solid #EF4444",
                     color: "#EF4444",
@@ -283,7 +285,7 @@ export default function SystemReportsModal({
                 </button>
               </div>
 
-              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
                 What was done to fix
               </div>
 
@@ -291,7 +293,7 @@ export default function SystemReportsModal({
                 value={r.notes}
                 onChange={(e) => updateNotes(r.id, e.target.value)}
                 placeholder="Add update, fix notes, what was changed, and whether it worked."
-                className="w-full min-h-[120px] p-3 rounded-lg text-sm"
+                className="w-full min-h-[140px] p-4 rounded-lg text-sm"
                 style={{
                   backgroundColor: "#0D1B2E",
                   border: "1px solid #1B2A4A",
