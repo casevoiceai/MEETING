@@ -35,16 +35,21 @@ export default function VaultView(_props: VaultViewProps) {
   };
 
   const updateStatus = (id: number, fixStatus: string) => {
-    const next = reports.map((report) =>
-      report.id === id ? { ...report, fixStatus } : report
+    const next = reports.map((r) =>
+      r.id === id ? { ...r, fixStatus } : r
     );
     saveReports(next);
   };
 
   const updateNotes = (id: number, notes: string) => {
-    const next = reports.map((report) =>
-      report.id === id ? { ...report, notes } : report
+    const next = reports.map((r) =>
+      r.id === id ? { ...r, notes } : r
     );
+    saveReports(next);
+  };
+
+  const deleteReport = (id: number) => {
+    const next = reports.filter((r) => r.id !== id);
     saveReports(next);
   };
 
@@ -53,7 +58,7 @@ export default function VaultView(_props: VaultViewProps) {
       className="flex-1 min-h-0 overflow-auto"
       style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF" }}
     >
-      <div className="p-6">
+      <div className="p-6 max-w-5xl mx-auto">
         <div className="mb-6">
           <div
             className="text-xs font-bold uppercase tracking-widest mb-2"
@@ -61,9 +66,7 @@ export default function VaultView(_props: VaultViewProps) {
           >
             Vault
           </div>
-          <h1 className="text-2xl font-bold" style={{ color: "#FFFFFF" }}>
-            System Health Reports
-          </h1>
+          <h1 className="text-2xl font-bold">System Health Reports</h1>
           <p className="text-sm mt-2" style={{ color: "#8A9BB5" }}>
             TM Message log, status tracking, and fix notes.
           </p>
@@ -82,17 +85,19 @@ export default function VaultView(_props: VaultViewProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {reports.map((report) => (
+            {reports.map((r) => (
               <div
-                key={report.id}
-                className="rounded-xl p-4 border"
+                key={r.id}
+                className="rounded-xl p-5 border"
                 style={{
                   backgroundColor: "#111D30",
                   borderColor: "#1B2A4A",
                 }}
               >
+                {/* HEADER */}
                 <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <div className="text-sm font-bold">{report.service}</div>
+                  <div className="text-sm font-bold">{r.service}</div>
+
                   <div
                     className="px-2 py-1 rounded text-[10px] font-bold uppercase"
                     style={{
@@ -100,39 +105,43 @@ export default function VaultView(_props: VaultViewProps) {
                       color: "#C084FC",
                     }}
                   >
-                    {report.owner}
+                    {r.owner}
                   </div>
+
                   <div
                     className="px-2 py-1 rounded text-[10px] font-bold uppercase"
                     style={{
                       border:
-                        report.fixStatus === "Fixed"
+                        r.fixStatus === "Fixed"
                           ? "1px solid #10B981"
-                          : report.fixStatus === "In Progress"
-                            ? "1px solid #F59E0B"
-                            : "1px solid #94A3B8",
+                          : r.fixStatus === "In Progress"
+                          ? "1px solid #F59E0B"
+                          : "1px solid #94A3B8",
                       color:
-                        report.fixStatus === "Fixed"
+                        r.fixStatus === "Fixed"
                           ? "#10B981"
-                          : report.fixStatus === "In Progress"
-                            ? "#F59E0B"
-                            : "#94A3B8",
+                          : r.fixStatus === "In Progress"
+                          ? "#F59E0B"
+                          : "#94A3B8",
                     }}
                   >
-                    {report.fixStatus}
+                    {r.fixStatus}
                   </div>
+
                   <div className="text-xs" style={{ color: "#8A9BB5" }}>
-                    {report.time}
+                    {r.time}
                   </div>
                 </div>
 
+                {/* MESSAGE */}
                 <div className="text-sm mb-4 whitespace-pre-wrap">
-                  {report.message}
+                  {r.message}
                 </div>
 
+                {/* STATUS BUTTONS */}
                 <div className="flex gap-2 mb-4">
                   <button
-                    onClick={() => updateStatus(report.id, "Pending")}
+                    onClick={() => updateStatus(r.id, "Pending")}
                     className="px-3 py-1 text-xs rounded"
                     style={{
                       backgroundColor: "#1B2A4A",
@@ -144,7 +153,7 @@ export default function VaultView(_props: VaultViewProps) {
                   </button>
 
                   <button
-                    onClick={() => updateStatus(report.id, "In Progress")}
+                    onClick={() => updateStatus(r.id, "In Progress")}
                     className="px-3 py-1 text-xs rounded"
                     style={{
                       backgroundColor: "#1B2A4A",
@@ -156,7 +165,7 @@ export default function VaultView(_props: VaultViewProps) {
                   </button>
 
                   <button
-                    onClick={() => updateStatus(report.id, "Fixed")}
+                    onClick={() => updateStatus(r.id, "Fixed")}
                     className="px-3 py-1 text-xs rounded"
                     style={{
                       backgroundColor: "#1B2A4A",
@@ -166,17 +175,33 @@ export default function VaultView(_props: VaultViewProps) {
                   >
                     Fixed
                   </button>
+
+                  <button
+                    onClick={() => deleteReport(r.id)}
+                    className="px-3 py-1 text-xs rounded"
+                    style={{
+                      backgroundColor: "#1B2A4A",
+                      color: "#EF4444",
+                      border: "1px solid #EF4444",
+                    }}
+                  >
+                    Delete
+                  </button>
                 </div>
 
-                <div className="mb-2 text-xs font-bold uppercase tracking-widest" style={{ color: "#8A9BB5" }}>
+                {/* NOTES */}
+                <div
+                  className="mb-2 text-xs font-bold uppercase tracking-widest"
+                  style={{ color: "#8A9BB5" }}
+                >
                   What was done to fix
                 </div>
 
                 <textarea
-                  value={report.notes}
-                  onChange={(e) => updateNotes(report.id, e.target.value)}
+                  value={r.notes}
+                  onChange={(e) => updateNotes(r.id, e.target.value)}
                   placeholder="Add update, fix notes, what was changed, and whether it worked."
-                  className="w-full min-h-[96px] p-3 rounded-lg text-sm"
+                  className="w-full min-h-[110px] p-3 rounded-lg text-sm"
                   style={{
                     backgroundColor: "#0D1B2E",
                     border: "1px solid #1B2A4A",
