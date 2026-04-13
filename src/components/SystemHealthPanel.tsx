@@ -12,6 +12,7 @@ type Service = {
   prompt: string;
   severity: "Low" | "Medium" | "High";
   autoFix: string[];
+  owner: string;
 };
 
 function getNowLabel() {
@@ -33,6 +34,7 @@ function buildServices(): Service[] {
       prompt: "Database OK",
       severity: "Low",
       autoFix: [],
+      owner: "Backend",
     },
     {
       name: "Google Drive",
@@ -55,6 +57,7 @@ function buildServices(): Service[] {
         "Retry integration route",
         "Revalidate environment variables",
       ],
+      owner: "Integrations",
     },
     {
       name: "Notion",
@@ -66,6 +69,7 @@ function buildServices(): Service[] {
       prompt: "Notion OK",
       severity: "Low",
       autoFix: [],
+      owner: "Integrations",
     },
     {
       name: "Sync Queue",
@@ -77,6 +81,7 @@ function buildServices(): Service[] {
       prompt: "Queue OK",
       severity: "Low",
       autoFix: [],
+      owner: "Backend",
     },
     {
       name: "Auth",
@@ -88,6 +93,7 @@ function buildServices(): Service[] {
       prompt: "Fix auth token aging issue",
       severity: "Medium",
       autoFix: ["Refresh session token"],
+      owner: "Auth",
     },
     {
       name: "Environment",
@@ -99,6 +105,7 @@ function buildServices(): Service[] {
       prompt: "Fix environment mismatch",
       severity: "Medium",
       autoFix: ["Reload env config"],
+      owner: "DevOps",
     },
   ];
 }
@@ -113,6 +120,16 @@ function getSeverityColor(severity: "Low" | "Medium" | "High") {
   if (severity === "High") return "#EF4444";
   if (severity === "Medium") return "#F59E0B";
   return "#10B981";
+}
+
+function getOwnerColor(owner: string) {
+  const map: Record<string, string> = {
+    Backend: "#60A5FA",
+    Integrations: "#C084FC",
+    Auth: "#F59E0B",
+    DevOps: "#34D399",
+  };
+  return map[owner] || "#94A3B8";
 }
 
 function getPanelState(services: Service[]) {
@@ -217,12 +234,22 @@ export default function SystemHealthPanel() {
                       Severity: {s.severity}
                     </div>
 
+                    {/* NEW OWNER TAG */}
+                    <div
+                      className="inline-block px-2 py-1 rounded text-[10px] font-bold uppercase"
+                      style={{
+                        border: `1px solid ${getOwnerColor(s.owner)}`,
+                        color: getOwnerColor(s.owner),
+                      }}
+                    >
+                      Owner: {s.owner}
+                    </div>
+
                     <div className="text-yellow-300 font-bold">FIX STEPS:</div>
                     {s.steps.map((step, i) => (
                       <div key={i}>• {step}</div>
                     ))}
 
-                    {/* FIXED BUTTON SPACING */}
                     <div className="flex gap-2 mt-3">
                       {s.autoFix.length > 0 && (
                         <button
@@ -259,23 +286,13 @@ export default function SystemHealthPanel() {
       </div>
 
       {selectedPrompt && (
-        <div
-          className="fixed inset-0 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}
-        >
-          <div
-            className="w-[500px] p-4 rounded-lg"
-            style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
-          >
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}>
+          <div className="w-[500px] p-4 rounded-lg" style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}>
             <div className="text-white mb-2">Fix Prompt</div>
             <div className="text-xs text-gray-300 whitespace-pre-wrap mb-3">
               {selectedPrompt}
             </div>
-            <button
-              onClick={() => setSelectedPrompt(null)}
-              className="px-3 py-1 text-xs rounded"
-              style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
-            >
+            <button onClick={() => setSelectedPrompt(null)} className="px-3 py-1 text-xs rounded" style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}>
               Close
             </button>
           </div>
@@ -283,18 +300,10 @@ export default function SystemHealthPanel() {
       )}
 
       {autoFixService && (
-        <div
-          className="fixed inset-0 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}
-        >
-          <div
-            className="w-[520px] p-4 rounded-lg"
-            style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
-          >
+        <div className="fixed inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}>
+          <div className="w-[520px] p-4 rounded-lg" style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}>
             <div className="text-white mb-2">Auto Fix Attempt</div>
-            <div className="text-xs text-gray-300 mb-3">
-              {autoFixService.name}
-            </div>
+            <div className="text-xs text-gray-300 mb-3">{autoFixService.name}</div>
 
             <div className="space-y-2 text-xs text-gray-300 mb-4">
               {autoFixService.autoFix.map((step, i) => (
@@ -302,11 +311,7 @@ export default function SystemHealthPanel() {
               ))}
             </div>
 
-            <button
-              onClick={() => setAutoFixService(null)}
-              className="px-3 py-1 text-xs rounded"
-              style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
-            >
+            <button onClick={() => setAutoFixService(null)} className="px-3 py-1 text-xs rounded" style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}>
               Close
             </button>
           </div>
