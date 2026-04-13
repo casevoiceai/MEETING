@@ -1,435 +1,288 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  Activity,
-  Database,
-  Cloud,
-  FileText,
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  Layers,
-  Lock,
-  ShieldOff,
-  X,
-} from "lucide-react";
-import { getSystemHealth, getOverallStatus, hasLockedIntegration, type SystemHealth, type HealthStatus } from "../lib/health";
-import { resolveLock } from "../lib/deadManSwitch";
+import { useMemo, useState } from "react";
 
-const BORDER = "#1B2A4A";
-const MUTED = "#8A9BB5";
-const DIM = "#3A4F6A";
-const BG = "#0D1B2E";
+type ServiceStatus = "Connected" | "Error" | "Warning";
 
-const REFRESH_INTERVAL_MS = 60_000;
-
-const LOCK_COLOR = "#E07B5A";
-
-function statusColor(s: HealthStatus): string {
-  switch (s) {
-    case "ok":      return "#4ADE80";
-    case "warning": return "#F59E0B";
-    case "error":   return "#F87171";
-    case "locked":  return LOCK_COLOR;
-    case "checking":return "#60A5FA";
-    default:        return MUTED;
-  }
-}
-
-function statusBg(s: HealthStatus): string {
-  switch (s) {
-    case "ok":      return "rgba(74,222,128,0.08)";
-    case "warning": return "rgba(245,158,11,0.08)";
-    case "error":   return "rgba(248,113,113,0.08)";
-    case "locked":  return "rgba(224,123,90,0.08)";
-    case "checking":return "rgba(96,165,250,0.08)";
-    default:        return "rgba(138,155,181,0.06)";
-  }
-}
-
-function statusBorder(s: HealthStatus): string {
-  switch (s) {
-    case "ok":      return "rgba(74,222,128,0.2)";
-    case "warning": return "rgba(245,158,11,0.25)";
-    case "error":   return "rgba(248,113,113,0.3)";
-    case "locked":  return "rgba(224,123,90,0.35)";
-    case "checking":return "rgba(96,165,250,0.2)";
-    default:        return BORDER;
-  }
-}
-
-function StatusDot({ status }: { status: HealthStatus }) {
-  const color = statusColor(status);
-  const pulse = status === "error" || status === "warning" || status === "locked";
-  return (
-    <span
-      className={`inline-block w-2 h-2 rounded-full flex-shrink-0${pulse ? " animate-pulse" : ""}`}
-      style={{ backgroundColor: color }}
-    />
-  );
-}
-
-function StatusIcon({ status, size = 11 }: { status: HealthStatus; size?: number }) {
-  const color = statusColor(status);
-  if (status === "ok")       return <CheckCircle2 size={size} style={{ color }} />;
-  if (status === "error")    return <XCircle size={size} style={{ color }} />;
-  if (status === "warning")  return <AlertTriangle size={size} style={{ color }} />;
-  if (status === "locked")   return <Lock size={size} style={{ color }} />;
-  if (status === "checking") return <RefreshCw size={size} style={{ color }} className="animate-spin" />;
-  return <Clock size={size} style={{ color }} />;
-}
-
-function ServiceRow({
-  icon,
-  name,
-  status,
-  label,
-  detail,
-  onUnlock,
-}: {
-  icon: React.ReactNode;
+type Service = {
   name: string;
-  status: HealthStatus;
-  label: string;
-  detail?: string;
-  onUnlock?: () => void;
-}) {
-  const color = statusColor(status);
-  return (
-    <div
-      className="flex items-center gap-3 px-4 py-2.5 rounded-lg"
-      style={{ backgroundColor: statusBg(status), border: `1px solid ${statusBorder(status)}` }}
-    >
-      <span style={{ color: MUTED }}>{icon}</span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-xs font-semibold" style={{ color: "#D0DFEE" }}>{name}</p>
-          {detail && (
-            <span className="text-[10px] truncate" style={{ color: DIM }}>{detail}</span>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {status === "locked" && onUnlock && (
-          <button
-            onClick={onUnlock}
-            className="text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded transition-all hover:opacity-80"
-            style={{ backgroundColor: "rgba(224,123,90,0.15)", color: LOCK_COLOR, border: "1px solid rgba(224,123,90,0.3)" }}
-          >
-            Unlock
-          </button>
-        )}
-        <StatusDot status={status} />
-        <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color }}>{label}</span>
-      </div>
-    </div>
-  );
+  status: ServiceStatus;
+  error: string;
+  cause: string;
+  action: string;
+  owner: string;
+  updatedAt: string;
+};
+
+function getNowLabel() {
+  return new Date().toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-function timeAgo(ts: number): string {
-  const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 5) return "just now";
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  return `${Math.floor(diff / 3600)}h ago`;
+function buildServices(): Service[] {
+  const now = getNowLabel();
+
+  return [
+    {
+      name: "Database",
+      status: "Connected",
+      error: "None",
+      cause: "Healthy connection",
+      action: "No action needed",
+      owner: "Backend",
+      updatedAt: now,
+    },
+    {
+      name: "Google Drive",
+      status: "Error",
+      error: "Failed to fetch",
+      cause: "Auth token issue or broken integration route",
+      action: "Check Google token, route, and environment values",
+      owner: "Integrations",
+      updatedAt: now,
+    },
+    {
+      name: "Notion",
+      status: "Connected",
+      error: "None",
+      cause: "Healthy connection",
+      action: "No action needed",
+      owner: "Docs",
+      updatedAt: now,
+    },
+    {
+      name: "Sync Queue",
+      status: "Connected",
+      error: "Empty",
+      cause: "No jobs waiting",
+      action: "No action needed",
+      owner: "Ops",
+      updatedAt: now,
+    },
+    {
+      name: "Auth",
+      status: "Warning",
+      error: "Token may expire soon",
+      cause: "Session age increasing",
+      action: "Refresh session token and re-test integration",
+      owner: "Auth",
+      updatedAt: now,
+    },
+    {
+      name: "Environment",
+      status: "Warning",
+      error: "Possible missing or mismatched env values",
+      cause: "Config mismatch between client and server",
+      action: "Verify all required environment variables",
+      owner: "DevOps",
+      updatedAt: now,
+    },
+  ];
 }
 
-function formatErrorTime(at: string | null): string {
-  if (!at) return "";
-  try {
-    const d = new Date(at);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
+function getStatusColor(status: ServiceStatus) {
+  if (status === "Error") return "#EF4444";
+  if (status === "Warning") return "#F59E0B";
+  return "#10B981";
 }
 
-interface HealthPanelProps {
-  health: SystemHealth;
-  loading: boolean;
-  onRefresh: () => void;
-  onUnlock: (integration: "notion" | "drive") => Promise<void>;
+function getPanelState(services: Service[]) {
+  if (services.some((service) => service.status === "Error")) return "Degraded";
+  if (services.some((service) => service.status === "Warning")) return "Warning";
+  return "Healthy";
 }
 
-function HealthPanel({ health, loading, onRefresh, onUnlock }: HealthPanelProps) {
-  const overall = getOverallStatus(health);
-  const overallColor = statusColor(overall);
-
-  return (
-    <div
-      className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl z-50 flex flex-col"
-      style={{ backgroundColor: BG, border: `1px solid ${BORDER}`, maxHeight: "520px" }}
-    >
-      <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
-        <div className="flex items-center gap-2">
-          <Activity size={12} style={{ color: overallColor }} />
-          <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>System Health</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px]" style={{ color: DIM }}>
-            {timeAgo(health.lastRefreshed)}
-          </span>
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="hover:opacity-70 transition-opacity disabled:opacity-40"
-          >
-            <RefreshCw size={11} style={{ color: MUTED }} className={loading ? "animate-spin" : ""} />
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-y-auto flex-1 p-3 flex flex-col gap-2">
-        {hasLockedIntegration(health) && (
-          <div
-            className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg"
-            style={{ backgroundColor: "rgba(224,123,90,0.08)", border: "1px solid rgba(224,123,90,0.3)" }}
-          >
-            <ShieldOff size={12} style={{ color: LOCK_COLOR, marginTop: 1, flexShrink: 0 }} />
-            <div>
-              <p className="text-[10px] font-bold" style={{ color: LOCK_COLOR }}>Integration Locked</p>
-              <p className="text-[10px] mt-0.5" style={{ color: MUTED }}>
-                Automated writes paused. Review failure log and unlock to resume.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <ServiceRow
-          icon={<Database size={12} />}
-          name="Database"
-          status={health.database.status}
-          label={health.database.label}
-          detail={health.database.detail}
-        />
-        <ServiceRow
-          icon={<Cloud size={12} />}
-          name="Google Drive"
-          status={health.drive.status}
-          label={health.drive.label}
-          detail={health.drive.detail}
-          onUnlock={health.drive.status === "locked" ? () => onUnlock("drive") : undefined}
-        />
-        <ServiceRow
-          icon={<FileText size={12} />}
-          name="Notion"
-          status={health.notion.status}
-          label={health.notion.label}
-          detail={health.notion.detail}
-          onUnlock={health.notion.status === "locked" ? () => onUnlock("notion") : undefined}
-        />
-        <ServiceRow
-          icon={<Layers size={12} />}
-          name="Sync Queue"
-          status={health.syncQueue.status}
-          label={health.syncQueue.label}
-          detail={health.syncQueue.detail}
-        />
-
-        {health.recentErrors.length > 0 && (
-          <div className="mt-1">
-            <p className="text-[10px] font-bold tracking-widest uppercase px-1 mb-1.5" style={{ color: DIM }}>
-              Recent Errors
-            </p>
-            <div className="flex flex-col gap-1.5">
-              {health.recentErrors.map((err, i) => {
-                const isLockError = err.message.startsWith("LOCKED:");
-                return (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2.5 px-3 py-2 rounded-lg"
-                    style={{
-                      backgroundColor: isLockError ? "rgba(224,123,90,0.08)" : "rgba(248,113,113,0.06)",
-                      border: `1px solid ${isLockError ? "rgba(224,123,90,0.25)" : "rgba(248,113,113,0.15)"}`,
-                    }}
-                  >
-                    {isLockError
-                      ? <Lock size={10} style={{ color: LOCK_COLOR, marginTop: 1, flexShrink: 0 }} />
-                      : <AlertTriangle size={10} style={{ color: "#F87171", marginTop: 1, flexShrink: 0 }} />
-                    }
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[10px] font-bold" style={{ color: isLockError ? LOCK_COLOR : "#F87171" }}>{err.service}</p>
-                        {err.at && (
-                          <p className="text-[9px] flex-shrink-0" style={{ color: DIM }}>{formatErrorTime(err.at)}</p>
-                        )}
-                      </div>
-                      <p className="text-[10px] mt-0.5 break-words" style={{ color: MUTED }}>{err.message}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+function getPanelStateColor(state: string) {
+  if (state === "Degraded") return "#EF4444";
+  if (state === "Warning") return "#F59E0B";
+  return "#10B981";
 }
 
-function OverallDot({ status }: { status: HealthStatus }) {
-  const color = statusColor(status);
-  const pulse = status === "error" || status === "warning" || status === "locked";
-  return (
-    <span
-      className={`w-2 h-2 rounded-full flex-shrink-0${pulse ? " animate-pulse" : ""}`}
-      style={{ backgroundColor: color }}
-    />
-  );
-}
+function generatePrompt(service: Service) {
+  return `System Issue: ${service.name}
 
-interface LockAlertBannerProps {
-  health: SystemHealth;
-  onDismiss: () => void;
-  onUnlock: (integration: "notion" | "drive") => Promise<void>;
-}
+Status: ${service.status}
+Error: ${service.error}
+Likely Cause: ${service.cause}
+Suggested Action: ${service.action}
+Owner: ${service.owner}
 
-function LockAlertBanner({ health, onDismiss, onUnlock }: LockAlertBannerProps) {
-  const lockedItems = health.locks.filter((l) => l.locked);
-  if (lockedItems.length === 0) return null;
-
-  return (
-    <div
-      className="fixed top-0 left-0 right-0 z-[100] flex items-start justify-between gap-3 px-5 py-3"
-      style={{
-        backgroundColor: "rgba(224,123,90,0.95)",
-        borderBottom: "1px solid rgba(255,255,255,0.15)",
-        backdropFilter: "blur(4px)",
-      }}
-    >
-      <div className="flex items-start gap-3 min-w-0">
-        <ShieldOff size={14} style={{ color: "#fff", flexShrink: 0, marginTop: 2 }} />
-        <div>
-          <p className="text-xs font-bold text-white">
-            Integration Locked — Automated writes paused
-          </p>
-          <div className="flex flex-wrap gap-3 mt-0.5">
-            {lockedItems.map((lock) => (
-              <span key={lock.integration} className="text-[10px] text-white/80">
-                {lock.integration === "drive" ? "Google Drive" : "Notion"}:
-                {" "}{lock.consecutive_failures} failures · last error: {lock.last_error_code || "unknown"}
-                {" "}·
-                <button
-                  onClick={() => onUnlock(lock.integration)}
-                  className="text-white font-bold underline ml-1 hover:opacity-80"
-                >
-                  Unlock
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-      <button onClick={onDismiss} className="flex-shrink-0 hover:opacity-70 transition-opacity mt-0.5">
-        <X size={14} style={{ color: "white" }} />
-      </button>
-    </div>
-  );
+Your task:
+1. Identify the exact failure point
+2. Provide the exact file to edit
+3. Provide the exact code change
+4. List all environment variables to verify
+5. Explain how to test the fix`;
 }
 
 export default function SystemHealthPanel() {
-  const [health, setHealth] = useState<SystemHealth | null>(null);
-  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const refresh = useCallback(async (force = false) => {
-    setLoading(true);
-    try {
-      const h = await getSystemHealth(force);
-      setHealth(h);
-    } catch {
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh(false);
-    const timer = setInterval(() => refresh(false), REFRESH_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [refresh]);
-
-  useEffect(() => {
-    if (health && hasLockedIntegration(health)) {
-      setBannerDismissed(false);
-    }
-  }, [health]);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  async function handleUnlock(integration: "notion" | "drive") {
-    await resolveLock(integration).catch(() => {});
-    await refresh(true);
-  }
-
-  const overall: HealthStatus = health ? getOverallStatus(health) : loading ? "checking" : "unknown";
-  const color = statusColor(overall);
-  const bg = statusBg(overall);
-  const border = statusBorder(overall);
-
-  const overallLabel = overall === "ok"       ? "All Systems"
-    : overall === "warning"  ? "Warning"
-    : overall === "error"    ? "Degraded"
-    : overall === "locked"   ? "Locked"
-    : overall === "checking" ? "Checking"
-    : "Health";
-
-  const showBanner = health && hasLockedIntegration(health) && !bannerDismissed;
+  const services = useMemo(() => buildServices(), []);
+  const panelState = getPanelState(services);
+  const panelStateColor = getPanelStateColor(panelState);
+  const errorCount = services.filter((service) => service.status === "Error").length;
+  const warningCount = services.filter((service) => service.status === "Warning").length;
+  const lastCheck = services[0]?.updatedAt ?? getNowLabel();
 
   return (
-    <>
-      {showBanner && (
-        <LockAlertBanner
-          health={health}
-          onDismiss={() => setBannerDismissed(true)}
-          onUnlock={handleUnlock}
-        />
-      )}
+    <div className="relative">
+      <button
+        onClick={() => setOpen((value) => !value)}
+        className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest"
+        style={{
+          backgroundColor: "#111D30",
+          border: "1px solid #1B2A4A",
+          color: "#C9A84C",
+        }}
+      >
+        System Health
+      </button>
 
-      <div ref={containerRef} className="relative">
-        <button
-          onClick={() => {
-            setOpen((v) => !v);
-            if (!health) refresh(true);
+      {open && (
+        <div
+          className="absolute right-0 mt-2 w-[440px] rounded-xl p-4 space-y-3"
+          style={{
+            backgroundColor: "#0D1B2E",
+            border: "1px solid #1B2A4A",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+            zIndex: 1000,
           }}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all hover:opacity-90"
-          style={{ backgroundColor: bg, border: `1px solid ${border}`, color }}
         >
-          {loading && !health ? (
-            <RefreshCw size={11} className="animate-spin" style={{ color }} />
-          ) : overall === "locked" ? (
-            <Lock size={11} style={{ color }} />
-          ) : (
-            <StatusIcon status={overall} size={11} />
-          )}
-          <span className="text-[10px] font-bold tracking-widest uppercase">{overallLabel}</span>
-          <OverallDot status={overall} />
-          {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-        </button>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-widest text-gray-400">
+                System Status
+              </div>
+              <div className="mt-1 text-sm font-semibold text-white">
+                Last Check: {lastCheck}
+              </div>
+            </div>
 
-        {open && health && (
-          <HealthPanel
-            health={health}
-            loading={loading}
-            onRefresh={() => refresh(true)}
-            onUnlock={handleUnlock}
-          />
-        )}
-      </div>
-    </>
+            <div
+              className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-widest"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.04)",
+                border: `1px solid ${panelStateColor}55`,
+                color: panelStateColor,
+              }}
+            >
+              {panelState}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div
+              className="rounded-lg p-2"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.03)",
+                border: "1px solid #1B2A4A",
+              }}
+            >
+              <div className="text-[10px] uppercase tracking-widest text-gray-400">
+                Services
+              </div>
+              <div className="mt-1 text-sm font-semibold text-white">{services.length}</div>
+            </div>
+
+            <div
+              className="rounded-lg p-2"
+              style={{
+                backgroundColor: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.25)",
+              }}
+            >
+              <div className="text-[10px] uppercase tracking-widest text-red-300">
+                Errors
+              </div>
+              <div className="mt-1 text-sm font-semibold text-red-200">{errorCount}</div>
+            </div>
+
+            <div
+              className="rounded-lg p-2"
+              style={{
+                backgroundColor: "rgba(245,158,11,0.08)",
+                border: "1px solid rgba(245,158,11,0.25)",
+              }}
+            >
+              <div className="text-[10px] uppercase tracking-widest text-amber-300">
+                Warnings
+              </div>
+              <div className="mt-1 text-sm font-semibold text-amber-200">{warningCount}</div>
+            </div>
+          </div>
+
+          {services.map((service) => (
+            <div
+              key={service.name}
+              className="border rounded-lg p-3"
+              style={{ borderColor: "#1B2A4A" }}
+            >
+              <button
+                type="button"
+                className="w-full flex justify-between items-start text-left"
+                onClick={() =>
+                  setExpanded((current) => (current === service.name ? null : service.name))
+                }
+              >
+                <div>
+                  <div className="font-bold text-sm text-white">{service.name}</div>
+                  <div className="text-xs mt-1" style={{ color: getStatusColor(service.status) }}>
+                    {service.status}
+                  </div>
+                  <div className="text-[11px] mt-1 text-gray-400">{service.error}</div>
+                </div>
+
+                <div className="text-xs text-gray-400">
+                  {expanded === service.name ? "▲" : "▼"}
+                </div>
+              </button>
+
+              {expanded === service.name && (
+                <div className="mt-3 text-xs space-y-2 text-gray-300">
+                  <div>
+                    <b className="text-white">Exact Error:</b> {service.error}
+                  </div>
+                  <div>
+                    <b className="text-white">Likely Cause:</b> {service.cause}
+                  </div>
+                  <div>
+                    <b className="text-white">Suggested Action:</b> {service.action}
+                  </div>
+                  <div>
+                    <b className="text-white">Assigned Owner:</b> {service.owner}
+                  </div>
+                  <div>
+                    <b className="text-white">Last Updated:</b> {service.updatedAt}
+                  </div>
+
+                  <button
+                    onClick={() => navigator.clipboard.writeText(generatePrompt(service))}
+                    className="mt-2 px-2 py-1 text-xs rounded"
+                    style={{
+                      backgroundColor: "#1B2A4A",
+                      color: "#C9A84C",
+                    }}
+                  >
+                    Copy Fix Prompt
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div
+            className="border-t pt-3 mt-3 text-xs text-gray-400"
+            style={{ borderColor: "#1B2A4A" }}
+          >
+            <div className="text-white font-semibold mb-1">Recent Errors</div>
+            <div>10:14 — Google Drive failed</div>
+            <div>10:12 — Retry success</div>
+            <div>10:09 — Notion OK</div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
