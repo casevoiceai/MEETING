@@ -12,6 +12,7 @@ type Service = {
   updatedAt: string;
   explanation: string;
   impact: string;
+  steps: string[];
 };
 
 function getNowLabel() {
@@ -33,66 +34,85 @@ function buildServices(): Service[] {
       action: "No action needed",
       owner: "Backend",
       updatedAt: now,
-      explanation: "The database is reachable and responding normally.",
-      impact: "Storage and retrieval are working.",
+      explanation: "Database is responding normally.",
+      impact: "Core data system is working.",
+      steps: ["No action needed"],
     },
     {
       name: "Google Drive",
       status: "Error",
       error: "Failed to fetch",
-      cause: "Auth token issue or broken integration route",
-      action: "Check Google token, route, and environment values",
+      cause: "Auth token or API route issue",
+      action: "Fix integration",
       owner: "Integrations",
       updatedAt: now,
       explanation:
-        "The app tried to reach Google Drive and did not get a usable response back.",
-      impact: "Drive sync and Drive-based file actions are blocked.",
+        "The app tried to reach Google Drive but did not get a usable response.",
+      impact: "Drive sync is blocked.",
+      steps: [
+        "Open Vercel project settings",
+        "Check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET",
+        "Confirm redirect URI matches",
+        "Re-authenticate Google Drive connection",
+        "Test connection again",
+      ],
     },
     {
       name: "Notion",
       status: "Connected",
       error: "None",
-      cause: "Healthy connection",
-      action: "No action needed",
+      cause: "Healthy",
+      action: "None",
       owner: "Docs",
       updatedAt: now,
-      explanation: "The Notion connection is live and responding normally.",
-      impact: "Notion sync is available.",
+      explanation: "Notion connection is working.",
+      impact: "Docs sync is active.",
+      steps: ["No action needed"],
     },
     {
       name: "Sync Queue",
       status: "Connected",
       error: "Empty",
-      cause: "No jobs waiting",
-      action: "No action needed",
+      cause: "No jobs",
+      action: "None",
       owner: "Ops",
       updatedAt: now,
-      explanation: "There are no pending background sync jobs right now.",
-      impact: "Nothing is stuck in the queue.",
+      explanation: "No pending jobs.",
+      impact: "System is idle.",
+      steps: ["No action needed"],
     },
     {
       name: "Auth",
       status: "Warning",
       error: "Token may expire soon",
       cause: "Session aging",
-      action: "Refresh session token and re-test integration",
+      action: "Refresh session",
       owner: "Auth",
       updatedAt: now,
-      explanation:
-        "Your current auth session may be getting old and could expire soon.",
-      impact: "Connected services may fail if the session expires.",
+      explanation: "Your session is getting old.",
+      impact: "Integrations may break soon.",
+      steps: [
+        "Log out",
+        "Log back in",
+        "Re-test integrations",
+      ],
     },
     {
       name: "Environment",
       status: "Warning",
-      error: "Possible missing or mismatched env values",
-      cause: "Config mismatch between client and server",
-      action: "Verify all required environment variables",
+      error: "Env mismatch possible",
+      cause: "Missing values",
+      action: "Verify env",
       owner: "DevOps",
       updatedAt: now,
-      explanation:
-        "One or more configuration values may be missing, wrong, or not matching across app layers.",
-      impact: "Some integrations may fail even if the UI looks normal.",
+      explanation: "Environment variables may not match.",
+      impact: "Some services may fail silently.",
+      steps: [
+        "Open Vercel environment settings",
+        "Compare with local .env",
+        "Add missing values",
+        "Redeploy app",
+      ],
     },
   ];
 }
@@ -115,35 +135,6 @@ function getPanelStateColor(state: string) {
   return "#10B981";
 }
 
-function generatePrompt(service: Service) {
-  return `System Issue: ${service.name}
-
-Status: ${service.status}
-Error: ${service.error}
-
-Friendly Explanation:
-${service.explanation}
-
-Likely Cause:
-${service.cause}
-
-Impact:
-${service.impact}
-
-Suggested Action:
-${service.action}
-
-Owner:
-${service.owner}
-
-Your task:
-1. Identify exact failure point
-2. Provide exact file to edit
-3. Provide exact code fix
-4. List env variables to verify
-5. Explain how to test fix`;
-}
-
 export default function SystemHealthPanel() {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -157,16 +148,6 @@ export default function SystemHealthPanel() {
 
   const handleRefresh = () => {
     setServices(buildServices());
-  };
-
-  const handleCopy = async (service: Service) => {
-    const text = generatePrompt(service);
-    try {
-      await navigator.clipboard.writeText(text);
-      alert("Fix prompt copied");
-    } catch {
-      alert(text);
-    }
   };
 
   return (
@@ -193,20 +174,16 @@ export default function SystemHealthPanel() {
             zIndex: 1000,
           }}
         >
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex justify-between items-center">
             <div>
-              <div className="text-xs uppercase tracking-widest text-gray-400">
-                System Status
-              </div>
-              <div className="mt-1 text-sm font-semibold text-white">
-                Last Check: {lastCheck}
-              </div>
+              <div className="text-xs text-gray-400">SYSTEM STATUS</div>
+              <div className="text-sm text-white">Last Check: {lastCheck}</div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex gap-2">
               <button
                 onClick={handleRefresh}
-                className="px-2 py-1 rounded text-xs font-bold"
+                className="px-2 py-1 text-xs rounded"
                 style={{
                   backgroundColor: "#1B2A4A",
                   color: "#C9A84C",
@@ -216,10 +193,9 @@ export default function SystemHealthPanel() {
               </button>
 
               <div
-                className="px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-widest"
+                className="px-2 py-1 text-xs font-bold rounded"
                 style={{
-                  backgroundColor: "rgba(255,255,255,0.04)",
-                  border: `1px solid ${panelStateColor}55`,
+                  border: `1px solid ${panelStateColor}`,
                   color: panelStateColor,
                 }}
               >
@@ -228,144 +204,47 @@ export default function SystemHealthPanel() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div
-              className="rounded-lg p-2"
-              style={{
-                backgroundColor: "rgba(255,255,255,0.03)",
-                border: "1px solid #1B2A4A",
-              }}
-            >
-              <div className="text-[10px] uppercase tracking-widest text-gray-400">
-                Services
-              </div>
-              <div className="mt-1 text-sm font-semibold text-white">
-                {services.length}
-              </div>
-            </div>
-
-            <div
-              className="rounded-lg p-2"
-              style={{
-                backgroundColor: "rgba(239,68,68,0.08)",
-                border: "1px solid rgba(239,68,68,0.25)",
-              }}
-            >
-              <div className="text-[10px] uppercase tracking-widest text-red-300">
-                Errors
-              </div>
-              <div className="mt-1 text-sm font-semibold text-red-200">
-                {errorCount}
-              </div>
-            </div>
-
-            <div
-              className="rounded-lg p-2"
-              style={{
-                backgroundColor: "rgba(245,158,11,0.08)",
-                border: "1px solid rgba(245,158,11,0.25)",
-              }}
-            >
-              <div className="text-[10px] uppercase tracking-widest text-amber-300">
-                Warnings
-              </div>
-              <div className="mt-1 text-sm font-semibold text-amber-200">
-                {warningCount}
-              </div>
-            </div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div>Services: {services.length}</div>
+            <div>Errors: {errorCount}</div>
+            <div>Warnings: {warningCount}</div>
           </div>
 
-          {services.map((service) => (
-            <div
-              key={service.name}
-              className="border rounded-lg p-3"
-              style={{ borderColor: "#1B2A4A" }}
-            >
-              <button
-                type="button"
-                className="w-full flex justify-between items-start text-left"
-                onClick={() =>
-                  setExpanded((current) =>
-                    current === service.name ? null : service.name
-                  )
-                }
+          {services.map((s) => (
+            <div key={s.name} className="border p-3 rounded" style={{ borderColor: "#1B2A4A" }}>
+              <div
+                className="flex justify-between cursor-pointer"
+                onClick={() => setExpanded(expanded === s.name ? null : s.name)}
               >
                 <div>
-                  <div className="font-bold text-sm text-white">
-                    {service.name}
-                  </div>
-                  <div
-                    className="text-xs mt-1"
-                    style={{ color: getStatusColor(service.status) }}
-                  >
-                    {service.status}
-                  </div>
-                  <div className="text-[11px] mt-1 text-gray-400">
-                    {service.error}
-                  </div>
+                  <div className="text-white">{s.name}</div>
+                  <div style={{ color: getStatusColor(s.status) }}>{s.status}</div>
                 </div>
+                <div>{expanded === s.name ? "▲" : "▼"}</div>
+              </div>
 
-                <div className="text-xs text-gray-400">
-                  {expanded === service.name ? "▲" : "▼"}
-                </div>
-              </button>
+              {expanded === s.name && (
+                <div className="mt-2 text-xs text-gray-300 space-y-2">
+                  <div>{s.error}</div>
+                  <div>{s.explanation}</div>
+                  <div>{s.impact}</div>
 
-              {expanded === service.name && (
-                <div className="mt-3 text-xs space-y-2 text-gray-300">
-                  <div>
-                    <b className="text-white">Exact Error:</b>{" "}
-                    {service.error}
-                  </div>
-                  <div>
-                    <b className="text-white">Friendly Explanation:</b>{" "}
-                    {service.explanation}
-                  </div>
-                  <div>
-                    <b className="text-white">Likely Cause:</b>{" "}
-                    {service.cause}
-                  </div>
-                  <div>
-                    <b className="text-white">Impact:</b>{" "}
-                    {service.impact}
-                  </div>
-                  <div>
-                    <b className="text-white">Suggested Action:</b>{" "}
-                    {service.action}
-                  </div>
-                  <div>
-                    <b className="text-white">Assigned Owner:</b>{" "}
-                    {service.owner}
-                  </div>
-                  <div>
-                    <b className="text-white">Last Updated:</b>{" "}
-                    {service.updatedAt}
+                  <div className="mt-2 text-yellow-300 font-bold">
+                    FIX STEPS:
                   </div>
 
-                  <button
-                    onClick={() => handleCopy(service)}
-                    className="mt-2 px-2 py-1 text-xs rounded"
-                    style={{
-                      backgroundColor: "#1B2A4A",
-                      color: "#C9A84C",
-                    }}
-                  >
-                    Copy Fix Prompt
-                  </button>
+                  {s.steps.map((step, i) => (
+                    <div key={i}>• {step}</div>
+                  ))}
                 </div>
               )}
             </div>
           ))}
 
-          <div
-            className="border-t pt-3 mt-3 text-xs text-gray-400"
-            style={{ borderColor: "#1B2A4A" }}
-          >
-            <div className="text-white font-semibold mb-1">
-              Recent Errors
-            </div>
+          <div className="border-t pt-3 text-xs text-gray-400" style={{ borderColor: "#1B2A4A" }}>
+            <div className="text-white">Recent Errors</div>
             <div>10:14 — Google Drive failed</div>
             <div>10:12 — Retry success</div>
-            <div>10:09 — Notion OK</div>
           </div>
         </div>
       )}
