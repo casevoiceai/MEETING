@@ -1,19 +1,8 @@
-// FULL FILE (REPLACE EVERYTHING)
+// FULL FILE — FIXED DATA PIPELINE + WAITING/QUARANTINE
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  Archive,
-  CheckCircle2,
-  Clock3,
-  FolderOpen,
-  RefreshCw,
-  ShieldAlert,
-  Trash2,
-  XCircle,
-} from "lucide-react";
 
-type ReportRecord = {
+type Report = {
   id: string;
   service: string;
   owner: string;
@@ -22,41 +11,55 @@ type ReportRecord = {
   time: string;
   title: string;
   description: string;
-  notes: string;
-  tags: string[];
-  timeline: { id: string; time: string; label: string; detail?: string }[];
 };
 
-type FilterKey =
-  | "ACTIVE"
-  | "ALL"
-  | "SAVED"
-  | "FIXED"
-  | "FAILED"
-  | "ABANDONED"
-  | "WAITING"
-  | "QUARANTINE";
+const STORAGE_KEYS = [
+  "systemReports",
+  "system_reports",
+  "systemHealthReports",
+  "system_health_reports",
+  "vaultSystemHealthRecords",
+  "meetingRoomSystemReports",
+];
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "ACTIVE", label: "Active" },
-  { key: "ALL", label: "All" },
-  { key: "SAVED", label: "Saved" },
-  { key: "FIXED", label: "Fixed" },
-  { key: "FAILED", label: "Failed" },
-  { key: "ABANDONED", label: "Abandoned" },
-  { key: "WAITING", label: "Waiting Room" },
-  { key: "QUARANTINE", label: "Quarantine" },
+const FILTERS = [
+  "ACTIVE",
+  "ALL",
+  "SAVED",
+  "FIXED",
+  "FAILED",
+  "ABANDONED",
+  "WAITING",
+  "QUARANTINE",
 ];
 
 export default function VaultView() {
-  const [reports, setReports] = useState<ReportRecord[]>([]);
-  const [filter, setFilter] = useState<FilterKey>("ACTIVE");
+  const [reports, setReports] = useState<Report[]>([]);
+  const [filter, setFilter] = useState("ACTIVE");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [confirmTarget, setConfirmTarget] = useState<ReportRecord | null>(null);
+  const [modal, setModal] = useState<Report | null>(null);
 
+  // 🔥 FIX: READ FROM ALL STORAGE KEYS
   useEffect(() => {
-    const stored = localStorage.getItem("systemHealthReports");
-    if (stored) setReports(JSON.parse(stored));
+    let all: Report[] = [];
+
+    STORAGE_KEYS.forEach((key) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          all.push(...parsed);
+        }
+      } catch {}
+    });
+
+    // dedupe by id
+    const map = new Map();
+    all.forEach((r) => map.set(r.id, r));
+
+    setReports(Array.from(map.values()));
   }, []);
 
   const filtered = useMemo(() => {
@@ -64,40 +67,42 @@ export default function VaultView() {
     return reports.filter((r) => r.status === filter);
   }, [reports, filter]);
 
-  const selected = filtered.find((r) => r.id === selectedId);
+  const selected = reports.find((r) => r.id === selectedId);
 
-  const moveStatus = (id: string, status: string) => {
+  const updateStatus = (id: string, status: string) => {
     const next = reports.map((r) =>
-      r.id === id ? { ...r, status, folder: `Vault / ${status}` } : r
+      r.id === id ? { ...r, status } : r
     );
+
     setReports(next);
     localStorage.setItem("systemHealthReports", JSON.stringify(next));
-    setConfirmTarget(null);
+    setModal(null);
   };
 
-  const hardDelete = (id: string) => {
+  const deleteReport = (id: string) => {
     const next = reports.filter((r) => r.id !== id);
     setReports(next);
     localStorage.setItem("systemHealthReports", JSON.stringify(next));
-    setConfirmTarget(null);
+    setModal(null);
     setSelectedId(null);
   };
 
   return (
-    <div className="p-8 text-white bg-[#0D1B2E] min-h-screen">
+    <div className="p-8 bg-[#0D1B2E] text-white min-h-screen">
+
       <h1 className="text-3xl mb-4">System Health Records</h1>
 
-      {/* FILTER */}
-      <div className="flex gap-2 mb-4">
+      {/* FILTERS */}
+      <div className="flex gap-2 mb-6 flex-wrap">
         {FILTERS.map((f) => (
           <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
+            key={f}
+            onClick={() => setFilter(f)}
             className={`px-3 py-1 rounded ${
-              filter === f.key ? "bg-yellow-500 text-black" : "bg-[#111D30]"
+              filter === f ? "bg-yellow-500 text-black" : "bg-[#111D30]"
             }`}
           >
-            {f.label}
+            {f}
           </button>
         ))}
       </div>
@@ -105,99 +110,81 @@ export default function VaultView() {
       {/* TABLE */}
       {filtered.map((r) => (
         <div key={r.id} className="border-b border-[#1B2A4A] py-3">
-          <div className="flex justify-between items-center">
+
+          <div className="flex justify-between">
             <div>{r.service}</div>
-            <button
-              onClick={() =>
-                setSelectedId(selectedId === r.id ? null : r.id)
-              }
-              className="text-yellow-400"
-            >
+            <button onClick={() => setSelectedId(selectedId === r.id ? null : r.id)}>
               {selectedId === r.id ? "Close" : "Open"}
             </button>
           </div>
 
-          {/* OPEN PANEL */}
           {selectedId === r.id && (
             <div className="mt-4 p-4 bg-[#111D30] rounded">
 
-              <h2 className="text-xl mb-2">{r.title}</h2>
+              <h2 className="text-xl">{r.title}</h2>
               <p className="mb-4">{r.description}</p>
 
               {/* NEXT ACTION */}
-              <div className="p-4 mb-4 border border-red-500 rounded">
+              <div className="border border-red-500 p-4 mb-4 rounded">
                 <div className="text-sm text-gray-400">NEXT ACTION</div>
-                <div className="text-lg font-bold mb-2">
-                  Action required now
-                </div>
-                <button className="bg-red-600 px-4 py-2 rounded">
-                  Reconnect Google Drive
-                </button>
+                <div className="font-bold">Action required now</div>
               </div>
 
-              {/* SAFE ACTIONS */}
-              <div className="mt-6 border-t border-[#1B2A4A] pt-4">
-                <div className="text-xs text-gray-400 mb-2">
-                  FILE ACTIONS (SAFE)
-                </div>
+              {/* SAFE ACTION */}
+              <button
+                onClick={() => setModal(r)}
+                className="border border-red-500 px-3 py-2 text-red-400 rounded"
+              >
+                Move / Delete
+              </button>
 
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={() => setConfirmTarget(r)}
-                    className="px-3 py-2 border border-red-500 text-red-400 rounded"
-                  >
-                    Move / Delete
-                  </button>
-                </div>
-              </div>
             </div>
           )}
         </div>
       ))}
 
-      {/* CONFIRM MODAL */}
-      {confirmTarget && (
+      {/* MODAL */}
+      {modal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center">
+
           <div className="bg-[#111D30] p-6 rounded w-[500px]">
 
             <h2 className="text-xl mb-2">Move Record</h2>
 
-            <div className="mb-4 text-sm text-gray-300">
-              <div><b>{confirmTarget.title}</b></div>
-              <div>{confirmTarget.service}</div>
-              <div>{confirmTarget.folder}</div>
+            <div className="mb-4">
+              <div className="font-bold">{modal.title}</div>
+              <div>{modal.service}</div>
             </div>
 
-            <div className="space-y-2 mb-4">
+            <div className="space-y-2">
 
               <button
-                onClick={() => moveStatus(confirmTarget.id, "WAITING")}
+                onClick={() => updateStatus(modal.id, "WAITING")}
                 className="w-full bg-blue-600 p-2 rounded"
               >
-                Move to Waiting Room
+                Waiting Room
               </button>
 
               <button
-                onClick={() => moveStatus(confirmTarget.id, "QUARANTINE")}
+                onClick={() => updateStatus(modal.id, "QUARANTINE")}
                 className="w-full bg-yellow-600 p-2 rounded"
               >
                 Quarantine
               </button>
 
               <button
-                onClick={() => hardDelete(confirmTarget.id)}
+                onClick={() => deleteReport(modal.id)}
                 className="w-full bg-red-700 p-2 rounded"
               >
                 Permanently Delete
               </button>
+
             </div>
 
-            <button
-              onClick={() => setConfirmTarget(null)}
-              className="text-gray-400"
-            >
+            <button onClick={() => setModal(null)} className="mt-4 text-gray-400">
               Cancel
             </button>
+
           </div>
         </div>
       )}
