@@ -48,28 +48,7 @@ function buildServices(): Service[] {
         "Re-authenticate Google Drive connection",
         "Test connection again",
       ],
-      prompt: `Issue: Google Drive integration failed with "Failed to fetch".
-
-Current state:
-- Database connected
-- Google Drive failing
-- Notion connected
-- Sync queue connected
-- Auth warning present
-- Environment warning present
-
-Likely causes:
-- Google auth token issue
-- Broken integration route
-- Missing or incorrect environment variables
-- Redirect URI mismatch
-
-Your task:
-1. Identify the exact root cause
-2. Name the exact file or files to edit
-3. Provide the exact code fix
-4. List the exact environment variables to verify
-5. Explain exactly how to test the fix`,
+      prompt: `Fix Google Drive integration`,
       severity: "High",
       autoFix: [
         "Reset cached auth state",
@@ -103,47 +82,23 @@ Your task:
       name: "Auth",
       status: "Warning",
       error: "Token may expire soon",
-      explanation: "Your session is getting old.",
-      impact: "Integrations may break soon.",
-      steps: ["Log out", "Log back in", "Re-test integrations"],
-      prompt: `Issue: Auth token may expire soon.
-
-Current state:
-- Session aging warning
-- Connected services may fail if token expires
-
-Your task:
-1. Explain the likely auth issue
-2. List the file or config area involved
-3. Explain what needs to be refreshed
-4. Explain how to test after re-auth`,
+      explanation: "Session aging.",
+      impact: "May break integrations.",
+      steps: ["Log out", "Log in again"],
+      prompt: "Fix auth token aging issue",
       severity: "Medium",
-      autoFix: ["Refresh session token", "Revalidate auth state"],
+      autoFix: ["Refresh session token"],
     },
     {
       name: "Environment",
       status: "Warning",
       error: "Env mismatch possible",
-      explanation: "Environment variables may not match.",
-      impact: "Some services may fail silently.",
-      steps: [
-        "Open Vercel environment settings",
-        "Compare with local .env",
-        "Add missing values",
-        "Redeploy app",
-      ],
-      prompt: `Issue: Environment mismatch possible.
-
-Current state:
-- Some required environment values may be missing or inconsistent
-
-Your task:
-1. Identify likely missing or mismatched env variables
-2. Explain where to verify them
-3. Explain how to confirm the correct values
-4. Explain how to redeploy and test`,
+      explanation: "Env mismatch.",
+      impact: "Hidden failures possible.",
+      steps: ["Check env", "Redeploy"],
+      prompt: "Fix environment mismatch",
       severity: "Medium",
-      autoFix: ["Reload env config", "Force redeploy trigger"],
+      autoFix: ["Reload env config"],
     },
   ];
 }
@@ -175,7 +130,7 @@ function getPanelStateColor(state: string) {
 export default function SystemHealthPanel() {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [services, setServices] = useState<Service[]>(buildServices());
+  const [services] = useState<Service[]>(buildServices());
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [autoFixService, setAutoFixService] = useState<Service | null>(null);
 
@@ -184,10 +139,6 @@ export default function SystemHealthPanel() {
   const errorCount = services.filter((s) => s.status === "Error").length;
   const warningCount = services.filter((s) => s.status === "Warning").length;
   const lastCheck = getNowLabel();
-
-  const handleRefresh = () => {
-    setServices(buildServices());
-  };
 
   return (
     <>
@@ -220,27 +171,14 @@ export default function SystemHealthPanel() {
                 <div className="text-sm text-white">Last Check: {lastCheck}</div>
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={handleRefresh}
-                  className="px-2 py-1 text-xs rounded"
-                  style={{
-                    backgroundColor: "#1B2A4A",
-                    color: "#C9A84C",
-                  }}
-                >
-                  Refresh
-                </button>
-
-                <div
-                  className="px-2 py-1 text-xs font-bold rounded"
-                  style={{
-                    border: `1px solid ${panelStateColor}`,
-                    color: panelStateColor,
-                  }}
-                >
-                  {panelState}
-                </div>
+              <div
+                className="px-2 py-1 text-xs font-bold rounded"
+                style={{
+                  border: `1px solid ${panelStateColor}`,
+                  color: panelStateColor,
+                }}
+              >
+                {panelState}
               </div>
             </div>
 
@@ -284,32 +222,34 @@ export default function SystemHealthPanel() {
                       <div key={i}>• {step}</div>
                     ))}
 
-                    {s.autoFix.length > 0 && (
-                      <>
-                        <div className="text-blue-300 font-bold">AUTO FIX:</div>
+                    {/* FIXED BUTTON SPACING */}
+                    <div className="flex gap-2 mt-3">
+                      {s.autoFix.length > 0 && (
                         <button
                           onClick={() => setAutoFixService(s)}
                           className="px-2 py-1 text-xs rounded"
                           style={{
                             backgroundColor: "#1B2A4A",
                             color: "#60A5FA",
+                            border: "1px solid #60A5FA",
                           }}
                         >
-                          Attempt Auto Fix
+                          Auto Fix
                         </button>
-                      </>
-                    )}
+                      )}
 
-                    <button
-                      onClick={() => setSelectedPrompt(s.prompt)}
-                      className="mt-2 px-2 py-1 text-xs rounded"
-                      style={{
-                        backgroundColor: "#1B2A4A",
-                        color: "#C9A84C",
-                      }}
-                    >
-                      Open Fix Prompt
-                    </button>
+                      <button
+                        onClick={() => setSelectedPrompt(s.prompt)}
+                        className="px-2 py-1 text-xs rounded"
+                        style={{
+                          backgroundColor: "#1B2A4A",
+                          color: "#C9A84C",
+                          border: "1px solid #C9A84C",
+                        }}
+                      >
+                        Fix Prompt
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -362,15 +302,13 @@ export default function SystemHealthPanel() {
               ))}
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setAutoFixService(null)}
-                className="px-3 py-1 text-xs rounded"
-                style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
-              >
-                Close
-              </button>
-            </div>
+            <button
+              onClick={() => setAutoFixService(null)}
+              className="px-3 py-1 text-xs rounded"
+              style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
