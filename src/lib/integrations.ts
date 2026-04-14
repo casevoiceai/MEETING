@@ -1,16 +1,25 @@
-
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase";
-import { createDriveSyncLog, createNotionSyncLog, type DriveSyncLog, type NotionSyncLog } from "./db";
+import {
+  createDriveSyncLog,
+  createNotionSyncLog,
+  type DriveSyncLog,
+  type NotionSyncLog,
+} from "./db";
 import { recordFailure, recordSuccess, isLocked } from "./deadManSwitch";
 
 function edgeFn(slug: string) {
   return `${SUPABASE_URL}/functions/v1/${slug}`;
 }
 
-function authHeaders() {
+async function authHeaders() {
+  const session = await supabase.auth.getSession();
+  const accessToken = session.data.session?.access_token;
+
   return {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    Authorization: accessToken
+      ? `Bearer ${accessToken}`
+      : `Bearer ${SUPABASE_ANON_KEY}`,
     apikey: SUPABASE_ANON_KEY,
   };
 }
@@ -28,7 +37,13 @@ async function parseJsonSafe(res: Response): Promise<Record<string, unknown>> {
 async function safeNotionFetch(
   body: Record<string, unknown>,
   operation?: string
-): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string; unavailable?: boolean; locked?: boolean }> {
+): Promise<{
+  success: boolean;
+  data?: Record<string, unknown>;
+  error?: string;
+  unavailable?: boolean;
+  locked?: boolean;
+}> {
   const op = operation ?? (body.action as string | undefined) ?? "notion_operation";
 
   const locked = await isLocked("notion").catch(() => false);
@@ -43,7 +58,7 @@ async function safeNotionFetch(
   try {
     const res = await fetch(edgeFn("notion-sync"), {
       method: "POST",
-      headers: authHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -119,11 +134,15 @@ async function markSyncLogPendingRetry(logId: string, errorMsg: string): Promise
   }
 }
 
-export async function testDriveConnection(): Promise<{ success: boolean; error?: string; folders?: Record<string, string> }> {
+export async function testDriveConnection(): Promise<{
+  success: boolean;
+  error?: string;
+  folders?: Record<string, string>;
+}> {
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
-      headers: authHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify({ action: "test_connection" }),
     });
 
@@ -153,7 +172,11 @@ export async function testDriveConnection(): Promise<{ success: boolean; error?:
   }
 }
 
-export async function testNotionConnection(): Promise<{ success: boolean; error?: string; botName?: string }> {
+export async function testNotionConnection(): Promise<{
+  success: boolean;
+  error?: string;
+  botName?: string;
+}> {
   const result = await safeNotionFetch({ action: "test_connection" }, "test_connection");
   if (result.success) {
     await markNotionOnline();
@@ -169,7 +192,11 @@ export async function listNotionDatabases(): Promise<{ id: string; title: string
   return (result.data?.databases as { id: string; title: string }[] | undefined) ?? [];
 }
 
-export async function saveNotionDbConfig(databases: { julie_reports?: string; tasks?: string; projects?: string }): Promise<void> {
+export async function saveNotionDbConfig(databases: {
+  julie_reports?: string;
+  tasks?: string;
+  projects?: string;
+}): Promise<void> {
   await safeNotionFetch({ action: "save_db_config", databases }, "save_db_config");
 }
 
@@ -196,13 +223,16 @@ export async function syncFileToDrive(params: {
 
   const driveLocked = await isLocked("drive").catch(() => false);
   if (driveLocked) {
-    return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
+    return {
+      success: false,
+      error: "Drive integration is locked due to repeated failures. Review required before resuming.",
+    };
   }
 
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
-      headers: authHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify({
         action: "sync_file",
         syncLogId: syncLog.id,
@@ -245,16 +275,24 @@ export async function syncTranscriptToDrive(params: {
   sessionKey: string;
   transcript: unknown;
   julieReport?: unknown;
-}): Promise<{ success: boolean; transcriptUrl?: string; reportUrl?: string; error?: string }> {
+}): Promise<{
+  success: boolean;
+  transcriptUrl?: string;
+  reportUrl?: string;
+  error?: string;
+}> {
   const driveLocked = await isLocked("drive").catch(() => false);
   if (driveLocked) {
-    return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
+    return {
+      success: false,
+      error: "Drive integration is locked due to repeated failures. Review required before resuming.",
+    };
   }
 
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
-      headers: authHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify({
         action: "sync_transcript",
         sessionId: params.sessionId,
@@ -300,13 +338,16 @@ export async function syncSideNoteToDrive(params: {
 }): Promise<{ success: boolean; driveUrl?: string; error?: string }> {
   const driveLocked = await isLocked("drive").catch(() => false);
   if (driveLocked) {
-    return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
+    return {
+      success: false,
+      error: "Drive integration is locked due to repeated failures. Review required before resuming.",
+    };
   }
 
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
-      headers: authHeaders(),
+      headers: await authHeaders(),
       body: JSON.stringify({ action: "sync_side_note", ...params }),
     });
 
@@ -360,23 +401,32 @@ export async function queueJulieReportForNotion(params: {
   return log;
 }
 
-export async function pushJulieReportToNotion(syncLogId: string, params: {
-  sessionId: string;
-  sessionKey: string;
-  sessionDate: string;
-  summary: string;
-  decisions: string[];
-  openQuestions: string[];
-  assignedTasks: { task: string; owner: string }[];
-  activeTopics: string[];
-  mentorsInvolved: string[];
-  driveLinks: { transcript?: string; report?: string };
-}): Promise<{ success: boolean; notionPageId?: string; error?: string; queued?: boolean }> {
-  const result = await safeNotionFetch({ action: "sync_julie_report", syncLogId, ...params }, "sync_julie_report");
+export async function pushJulieReportToNotion(
+  syncLogId: string,
+  params: {
+    sessionId: string;
+    sessionKey: string;
+    sessionDate: string;
+    summary: string;
+    decisions: string[];
+    openQuestions: string[];
+    assignedTasks: { task: string; owner: string }[];
+    activeTopics: string[];
+    mentorsInvolved: string[];
+    driveLinks: { transcript?: string; report?: string };
+  }
+): Promise<{ success: boolean; notionPageId?: string; error?: string; queued?: boolean }> {
+  const result = await safeNotionFetch(
+    { action: "sync_julie_report", syncLogId, ...params },
+    "sync_julie_report"
+  );
 
   if (result.success) {
     await markNotionOnline();
-    return { success: true, notionPageId: result.data?.notionPageId as string | undefined };
+    return {
+      success: true,
+      notionPageId: result.data?.notionPageId as string | undefined,
+    };
   }
 
   if (!result.locked) await markNotionFallback(result.error ?? "Push failed");
@@ -408,11 +458,17 @@ export async function pushTaskToNotion(params: {
     // continue without log
   }
 
-  const result = await safeNotionFetch({ action: "sync_task", syncLogId, ...params }, "sync_task");
+  const result = await safeNotionFetch(
+    { action: "sync_task", syncLogId, ...params },
+    "sync_task"
+  );
 
   if (result.success) {
     await markNotionOnline();
-    return { success: true, notionPageId: result.data?.notionPageId as string | undefined };
+    return {
+      success: true,
+      notionPageId: result.data?.notionPageId as string | undefined,
+    };
   }
 
   if (!result.locked) await markNotionFallback(result.error ?? "Push failed");
@@ -444,14 +500,23 @@ export async function pushProjectToNotion(params: {
     // non-critical
   }
 
-  const result = await safeNotionFetch({ action: "sync_project", syncLogId, ...params }, "sync_project");
+  const result = await safeNotionFetch(
+    { action: "sync_project", syncLogId, ...params },
+    "sync_project"
+  );
 
   if (result.success) {
     await markNotionOnline();
     if (syncLogId) {
-      await supabase.from("notion_sync_log").update({ status: "synced", synced_at: new Date().toISOString() }).eq("id", syncLogId);
+      await supabase
+        .from("notion_sync_log")
+        .update({ status: "synced", synced_at: new Date().toISOString() })
+        .eq("id", syncLogId);
     }
-    return { success: true, notionPageId: result.data?.notionPageId as string | undefined };
+    return {
+      success: true,
+      notionPageId: result.data?.notionPageId as string | undefined,
+    };
   }
 
   if (!result.locked) await markNotionFallback(result.error ?? "Push failed");
@@ -460,7 +525,11 @@ export async function pushProjectToNotion(params: {
   return { success: false, error: result.error, queued: true };
 }
 
-export async function retryNotionPendingItems(): Promise<{ retried: number; succeeded: number; stillFailing: number }> {
+export async function retryNotionPendingItems(): Promise<{
+  retried: number;
+  succeeded: number;
+  stillFailing: number;
+}> {
   const { data: pending } = await supabase
     .from("notion_sync_log")
     .select("*")
@@ -468,16 +537,19 @@ export async function retryNotionPendingItems(): Promise<{ retried: number; succ
     .order("created_at", { ascending: true })
     .limit(20);
 
-  if (!pending || pending.length === 0) return { retried: 0, succeeded: 0, stillFailing: 0 };
+  if (!pending || pending.length === 0) {
+    return { retried: 0, succeeded: 0, stillFailing: 0 };
+  }
 
   let succeeded = 0;
   let stillFailing = 0;
 
   for (const item of pending) {
     const payload = item.payload as Record<string, unknown>;
-    const action = item.notion_db === "julie_reports"
-      ? "sync_julie_report"
-      : item.notion_db === "tasks"
+    const action =
+      item.notion_db === "julie_reports"
+        ? "sync_julie_report"
+        : item.notion_db === "tasks"
         ? "sync_task"
         : "sync_project";
 
@@ -486,7 +558,11 @@ export async function retryNotionPendingItems(): Promise<{ retried: number; succ
     if (result.success) {
       await supabase
         .from("notion_sync_log")
-        .update({ status: "synced", synced_at: new Date().toISOString(), error_message: "" })
+        .update({
+          status: "synced",
+          synced_at: new Date().toISOString(),
+          error_message: "",
+        })
         .eq("id", item.id);
       succeeded++;
     } else {
