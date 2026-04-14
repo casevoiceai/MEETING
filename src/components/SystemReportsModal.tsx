@@ -69,7 +69,7 @@ function badgeStyle(label: string) {
   if (upper === "FIXED" || upper === "ARCHIVE AS FIXED") {
     return {
       color: "#00E6A7",
-      border: "1px solid rgba(0,230,167,0.65)",
+      border: "1px solid rgba(0,230,167,0.55)",
       backgroundColor: "rgba(0,230,167,0.08)",
     };
   }
@@ -77,7 +77,7 @@ function badgeStyle(label: string) {
   if (upper === "FAILED" || upper === "ARCHIVE AS FAILED") {
     return {
       color: "#FF5252",
-      border: "1px solid rgba(255,82,82,0.65)",
+      border: "1px solid rgba(255,82,82,0.55)",
       backgroundColor: "rgba(255,82,82,0.08)",
     };
   }
@@ -85,7 +85,7 @@ function badgeStyle(label: string) {
   if (upper === "ABANDONED" || upper === "ARCHIVE AS ABANDONED") {
     return {
       color: "#FFB800",
-      border: "1px solid rgba(255,184,0,0.65)",
+      border: "1px solid rgba(255,184,0,0.55)",
       backgroundColor: "rgba(255,184,0,0.08)",
     };
   }
@@ -93,7 +93,7 @@ function badgeStyle(label: string) {
   if (upper === "SAVED" || upper === "SAVE REPORT TO VAULT") {
     return {
       color: "#2F80FF",
-      border: "1px solid rgba(47,128,255,0.65)",
+      border: "1px solid rgba(47,128,255,0.55)",
       backgroundColor: "rgba(47,128,255,0.08)",
     };
   }
@@ -101,15 +101,15 @@ function badgeStyle(label: string) {
   if (upper === "IN_PROGRESS") {
     return {
       color: "#FFB800",
-      border: "1px solid rgba(255,184,0,0.65)",
+      border: "1px solid rgba(255,184,0,0.55)",
       backgroundColor: "rgba(255,184,0,0.08)",
     };
   }
 
   return {
     color: "#D8E3F0",
-    border: "1px solid rgba(216,227,240,0.35)",
-    backgroundColor: "rgba(216,227,240,0.06)",
+    border: "1px solid rgba(216,227,240,0.28)",
+    backgroundColor: "rgba(216,227,240,0.05)",
   };
 }
 
@@ -137,7 +137,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
   const load = () => {
     const data = readReports();
     setReports(data);
-    setExpandedId((current) => current ?? data[0]?.id ?? null);
+    setExpandedId((current) => current ?? null);
   };
 
   useEffect(() => {
@@ -169,8 +169,6 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
     updateReport(id, { outcome });
   };
 
-  const expandedReport = orderedReports.find((report) => report.id === expandedId) ?? null;
-
   if (!isOpen) return null;
 
   return createPortal(
@@ -179,7 +177,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-[700px] max-w-[92vw] h-[78vh] max-h-[760px] rounded-xl border shadow-2xl flex flex-col overflow-hidden"
+        className="w-[780px] max-w-[94vw] h-[80vh] max-h-[820px] rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
         style={{
           backgroundColor: "#0D1B2E",
           borderColor: "#1B2A4A",
@@ -187,22 +185,22 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="px-4 py-3 border-b flex items-center justify-between"
+          className="px-5 py-4 border-b flex items-start justify-between"
           style={{ backgroundColor: "#111D30", borderColor: "#1B2A4A" }}
         >
           <div>
-            <div className="text-white font-bold text-sm">System Reports</div>
-            <div className="text-[11px] text-[#8A9BB5]">
+            <div className="text-white font-bold text-[34px] leading-none">System Reports</div>
+            <div className="text-[13px] mt-2 text-[#8A9BB5]">
               Active fires, team messages, status tracking, and fix notes.
             </div>
           </div>
 
-          <button onClick={onClose} className="text-white hover:text-red-500 text-lg leading-none">
+          <button onClick={onClose} className="text-white hover:text-red-500 text-[30px] leading-none">
             ✕
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {orderedReports.length === 0 ? (
             <div className="h-full flex items-center justify-center text-[#5A7A9A] text-[11px] uppercase font-bold tracking-[0.18em]">
               No Reports Found
@@ -212,61 +210,78 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
               const isExpanded = expandedId === report.id;
               const typeTone = badgeStyle(typeLabel(report.type));
               const statusTone = badgeStyle(report.status ?? "PENDING");
+              const outcomeTone = report.outcome ? badgeStyle(report.outcome) : null;
 
               return (
                 <div
                   key={report.id}
-                  className="rounded-lg border p-4"
+                  className="rounded-2xl border overflow-hidden"
                   style={{
                     backgroundColor: "#10203A",
-                    borderColor: "#1B2A4A",
+                    borderColor: isExpanded ? "rgba(201,168,76,0.26)" : "#1B2A4A",
                   }}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div
-                      className="flex-1 cursor-pointer"
-                      onClick={() => setExpandedId(isExpanded ? null : report.id)}
-                    >
-                      <div className="flex items-center gap-3 flex-wrap mb-3">
-                        <span className="text-white text-xl font-bold leading-none">
-                          {report.service}
-                        </span>
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : report.id)}
+                    className="w-full px-5 py-4 text-left"
+                    style={{
+                      backgroundColor: isExpanded ? "rgba(201,168,76,0.03)" : "transparent",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="text-white text-[18px] font-bold leading-none">
+                            {report.service}
+                          </span>
 
-                        <span
-                          className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-[0.12em]"
-                          style={typeTone}
-                        >
-                          {typeLabel(report.type)}
-                        </span>
+                          <span
+                            className="px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-[0.12em]"
+                            style={typeTone}
+                          >
+                            {typeLabel(report.type)}
+                          </span>
 
-                        <span
-                          className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-[0.12em]"
-                          style={statusTone}
-                        >
-                          {(report.status ?? "PENDING").replaceAll("_", " ")}
-                        </span>
+                          <span
+                            className="px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-[0.12em]"
+                            style={statusTone}
+                          >
+                            {(report.status ?? "PENDING").replaceAll("_", " ")}
+                          </span>
 
-                        <span className="text-[12px] text-[#A0B2C8]">{report.time}</span>
+                          {outcomeTone && (
+                            <span
+                              className="px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-[0.12em]"
+                              style={outcomeTone}
+                            >
+                              {report.outcome}
+                            </span>
+                          )}
+
+                          <span className="text-[13px] text-[#A0B2C8]">{report.time}</span>
+                        </div>
+
+                        <div className="text-white text-[15px] leading-relaxed mt-3">
+                          {report.message}
+                        </div>
                       </div>
 
-                      <div className="text-white text-[15px] leading-relaxed">
-                        {report.message}
+                      <div
+                        className="text-[#FF5252] text-[28px] leading-none font-light shrink-0"
+                        style={{ minWidth: "24px", textAlign: "center" }}
+                      >
+                        {isExpanded ? "−" : "+"}
                       </div>
                     </div>
-
-                    <button
-                      onClick={() => setExpandedId(isExpanded ? null : report.id)}
-                      className="text-red-500 text-2xl leading-none px-1"
-                      title={isExpanded ? "Collapse" : "Expand"}
-                    >
-                      {isExpanded ? "–" : "×"}
-                    </button>
-                  </div>
+                  </button>
 
                   {isExpanded && (
-                    <div className="mt-5 pt-4 border-t space-y-5" style={{ borderColor: "#1B2A4A" }}>
+                    <div
+                      className="px-5 pb-5 pt-1 border-t space-y-5"
+                      style={{ borderColor: "#1B2A4A" }}
+                    >
                       <div>
-                        <div className="text-[11px] font-bold tracking-[0.18em] uppercase mb-2 text-[#8A9BB5]">
+                        <div className="text-[11px] font-bold tracking-[0.18em] uppercase mb-3 text-[#8A9BB5]">
                           Status
                         </div>
 
@@ -277,10 +292,12 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                               <button
                                 key={status}
                                 onClick={() => updateReport(report.id, { status })}
-                                className="px-4 py-2 rounded text-sm font-semibold"
+                                className="px-4 py-3 rounded-xl text-[15px] font-semibold"
                                 style={tone}
                               >
-                                {status === "IN_PROGRESS" ? "In Progress" : status.charAt(0) + status.slice(1).toLowerCase()}
+                                {status === "IN_PROGRESS"
+                                  ? "In Progress"
+                                  : status.charAt(0) + status.slice(1).toLowerCase()}
                               </button>
                             );
                           })}
@@ -288,7 +305,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                       </div>
 
                       <div>
-                        <div className="text-[11px] font-bold tracking-[0.18em] uppercase mb-2 text-[#8A9BB5]">
+                        <div className="text-[11px] font-bold tracking-[0.18em] uppercase mb-3 text-[#8A9BB5]">
                           Actions
                         </div>
 
@@ -304,7 +321,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                               <button
                                 key={action.label}
                                 onClick={() => archiveReport(report.id, action.outcome)}
-                                className="px-4 py-2 rounded text-sm font-semibold"
+                                className="px-4 py-3 rounded-xl text-[15px] font-semibold"
                                 style={tone}
                               >
                                 {action.label}
@@ -315,7 +332,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                       </div>
 
                       <div>
-                        <div className="text-[11px] font-bold tracking-[0.18em] uppercase mb-2 text-[#8A9BB5]">
+                        <div className="text-[11px] font-bold tracking-[0.18em] uppercase mb-3 text-[#8A9BB5]">
                           What was done to fix
                         </div>
 
@@ -328,7 +345,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                             }))
                           }
                           placeholder="Add update, fix notes, what was changed, and whether it worked."
-                          className="w-full min-h-[124px] rounded-lg p-4 outline-none resize-y text-sm"
+                          className="w-full min-h-[132px] rounded-xl p-4 outline-none resize-y text-sm"
                           style={{
                             backgroundColor: "#0B1C34",
                             border: "1px solid #1B2A4A",
@@ -336,7 +353,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                           }}
                         />
 
-                        <div className="flex items-center justify-between mt-3">
+                        <div className="flex items-center justify-between gap-3 mt-3">
                           <div className="text-[11px] text-[#8A9BB5]">
                             {report.outcome
                               ? `Current folder: ${outcomeFolder(report.outcome)}`
@@ -345,7 +362,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
 
                           <button
                             onClick={() => saveNotes(report.id)}
-                            className="px-4 py-2 rounded text-sm font-semibold"
+                            className="px-4 py-2 rounded-lg text-sm font-semibold"
                             style={{
                               color: "#0D1B2E",
                               backgroundColor: "#C9A84C",
