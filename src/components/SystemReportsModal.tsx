@@ -1,113 +1,60 @@
 import { useState, useEffect } from "react";
-
-type Report = {
-  id: string;
-  time: string;
-  service: string;
-  owner: string;
-  message: string;
-  fixStatus: string;
-  notes: string;
-  type: "TEAM" | "PROMPT" | "AUTO_FIX";
-};
+import { createPortal } from "react-dom";
 
 export default function SystemReportsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const [reports, setReports] = useState<Report[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
 
-  const loadReports = () => {
-    const data = localStorage.getItem("system_health_reports");
-    if (data) {
-      setReports(JSON.parse(data));
-    } else {
-      setReports([]);
-    }
+  const load = () => {
+    const data = JSON.parse(localStorage.getItem("system_health_reports") || "[]");
+    setReports(data);
   };
 
-  // Sync state whenever modal opens or storage event fires
   useEffect(() => {
-    if (isOpen) loadReports();
+    if (isOpen) load();
+    const sync = () => load();
+    window.addEventListener("storage_sync", sync);
+    return () => window.removeEventListener("storage_sync", sync);
   }, [isOpen]);
 
-  useEffect(() => {
-    const handleSync = () => loadReports();
-    window.addEventListener("storage_update", handleSync);
-    window.addEventListener("storage", handleSync);
-    return () => {
-      window.removeEventListener("storage_update", handleSync);
-      window.removeEventListener("storage", handleSync);
-    };
-  }, []);
-
-  const clearReports = () => {
-    localStorage.removeItem("system_health_reports");
+  const clear = () => {
+    localStorage.setItem("system_health_reports", "[]");
     setReports([]);
-    window.dispatchEvent(new Event("storage_update"));
-  };
-
-  const deleteOne = (id: string) => {
-    const updated = reports.filter((r) => r.id !== id);
-    localStorage.setItem("system_health_reports", JSON.stringify(updated));
-    setReports(updated);
-    window.dispatchEvent(new Event("storage_update"));
   };
 
   if (!isOpen) return null;
 
-  return (
-    <div
-      className="fixed inset-0 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.8)", zIndex: 9000 }}
-      onClick={onClose}
-    >
-      <div
-        className="w-[800px] h-[600px] flex flex-col rounded-xl overflow-hidden shadow-2xl"
-        style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
-        onClick={(e) => e.stopPropagation()}
+  return createPortal(
+    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[9500]" onClick={onClose}>
+      <div 
+        className="bg-[#0D1B2E] border border-[#1B2A4A] w-[600px] h-[500px] flex flex-col rounded-xl shadow-2xl"
+        onClick={e => e.stopPropagation()}
       >
         <div className="p-4 border-b border-[#1B2A4A] flex justify-between items-center bg-[#111D30]">
-          <h2 className="text-white font-bold tracking-widest uppercase text-sm">System Health Vault</h2>
-          <div className="flex gap-3">
-            <button onClick={clearReports} className="text-[10px] text-red-400 hover:underline">CLEAR ALL</button>
-            <button onClick={onClose} className="text-white hover:text-gray-300">✕</button>
+          <span className="text-white font-bold text-xs tracking-tighter">INCIDENT_VAULT</span>
+          <div className="flex gap-4">
+            <button onClick={clear} className="text-[10px] text-red-500 font-bold hover:underline">WIPE_ALL</button>
+            <button onClick={onClose} className="text-white hover:text-red-500">✕</button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {reports.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-gray-500 text-xs italic">
-              No reports generated in this session.
-            </div>
+            <div className="h-full flex items-center justify-center text-gray-600 text-[10px] uppercase font-mono">No Records Found</div>
           ) : (
-            reports.map((report) => (
-              <div
-                key={report.id}
-                className="p-3 rounded bg-[#16253A] border border-[#1B2A4A] flex justify-between group"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#C9A84C] font-mono">{report.time}</span>
-                    <span className="text-xs text-white font-bold">{report.service}</span>
-                    <span className={`text-[9px] px-1 rounded ${
-                      report.type === "AUTO_FIX" ? "bg-blue-900 text-blue-200" : 
-                      report.type === "TEAM" ? "bg-green-900 text-green-200" : "bg-purple-900 text-purple-200"
-                    }`}>
-                      {report.type}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-gray-400 max-w-[600px]">{report.message}</div>
-                  <div className="text-[10px] text-gray-500 italic">Owner: {report.owner}</div>
+            reports.map((r: any) => (
+              <div key={r.id} className="p-3 bg-[#16253A] border border-[#1B2A4A] rounded flex flex-col gap-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-white text-xs font-bold">{r.service}</span>
+                  <span className="text-[9px] text-gray-500">{r.time}</span>
                 </div>
-                <button 
-                  onClick={() => deleteOne(report.id)}
-                  className="opacity-0 group-hover:opacity-100 text-red-500 text-xs px-2"
-                >
-                  Delete
-                </button>
+                <div className="text-[10px] text-gray-400 italic">{r.message}</div>
+                <div className="text-[9px] text-[#C9A84C] mt-1 font-mono">TYPE: {r.type}</div>
               </div>
             ))
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
