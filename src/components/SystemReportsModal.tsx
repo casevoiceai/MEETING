@@ -35,7 +35,7 @@ const defaultReports: ReportItem[] = [
     time: "7:51 PM",
     summary: "Diagnose auth, route, env variables.",
     notes: "",
-    tags: ["SYSTEM_REPORT", "OWNER_INTEGRATIONS", "STATUS_PENDING"],
+    tags: ["SYSTEM_REPORT", "OWNER_INTEGRATIONS"],
     custody: [
       {
         title: "Report created",
@@ -46,63 +46,62 @@ const defaultReports: ReportItem[] = [
   },
 ];
 
-function safeLoadReports(): ReportItem[] {
+function loadReports(): ReportItem[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultReports;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return defaultReports;
-    return parsed.length > 0 ? parsed : [];
+    return Array.isArray(parsed) ? parsed : defaultReports;
   } catch {
     return defaultReports;
   }
 }
 
-function formatStatusTag(status: ReportStatus): string {
+function saveReports(reports: ReportItem[]) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function statusTag(status: ReportStatus) {
   return `STATUS_${status.toUpperCase().replace(/\s+/g, "_")}`;
 }
 
 export default function SystemReportsModal({ onClose }: SystemReportsModalProps) {
-  const [reports, setReports] = useState<ReportItem[]>(() => safeLoadReports());
-  const [selectedReport, setSelectedReport] = useState<ReportItem | null>(() => {
-    const initial = safeLoadReports();
-    return initial[0] ?? null;
+  const [reports, setReports] = useState<ReportItem[]>(() => loadReports());
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const initial = loadReports();
+    return initial[0]?.id ?? null;
   });
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
-    } catch {
-      // ignore storage failures
-    }
+    saveReports(reports);
   }, [reports]);
 
   useEffect(() => {
-    if (!selectedReport) return;
-    const stillExists = reports.find((r) => r.id === selectedReport.id);
+    if (!selectedId) return;
+    const stillExists = reports.some((report) => report.id === selectedId);
     if (!stillExists) {
-      setSelectedReport(reports[0] ?? null);
-      return;
+      setSelectedId(reports[0]?.id ?? null);
+      setAdvancedOpen(false);
     }
-    if (stillExists !== selectedReport) {
-      setSelectedReport(stillExists);
-    }
-  }, [reports, selectedReport]);
+  }, [reports, selectedId]);
 
-  const activeCount = reports.length;
+  const selectedReport = useMemo(
+    () => reports.find((report) => report.id === selectedId) ?? null,
+    [reports, selectedId]
+  );
 
   const selectedTags = useMemo(() => {
     if (!selectedReport) return [];
-    const baseTags = selectedReport.tags.filter(
-      (tag) => !tag.startsWith("STATUS_")
-    );
-    return [...baseTags, formatStatusTag(selectedReport.status)];
+    return [...selectedReport.tags, statusTag(selectedReport.status)];
   }, [selectedReport]);
 
-  function updateSelectedReport(patch: Partial<ReportItem>) {
+  function patchSelectedReport(patch: Partial<ReportItem>) {
     if (!selectedReport) return;
-
     setReports((prev) =>
       prev.map((report) =>
         report.id === selectedReport.id ? { ...report, ...patch } : report
@@ -110,106 +109,100 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
     );
   }
 
-  function handleStatusChange(status: ReportStatus) {
-    updateSelectedReport({ status });
-  }
-
-  function handleNotesChange(notes: string) {
-    updateSelectedReport({ notes });
-  }
-
-  function handleDelete() {
+  function appendCustody(title: string, detail: string) {
     if (!selectedReport) return;
-
-    const confirmDelete = window.confirm(
-      `Delete "${selectedReport.title}" from this local reports list?`
+    const now = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    setReports((prev) =>
+      prev.map((report) =>
+        report.id === selectedReport.id
+          ? {
+              ...report,
+              time: now,
+              custody: [...report.custody, { title, time: now, detail }],
+            }
+          : report
+      )
     );
-    if (!confirmDelete) return;
+  }
 
-    setReports((prev) => prev.filter((report) => report.id !== selectedReport.id));
-    setSelectedReport(null);
-    setAdvancedOpen(false);
+  function handleStatusChange(status: ReportStatus) {
+    if (!selectedReport) return;
+    patchSelectedReport({ status });
+    appendCustody("Status changed", `${selectedReport.title} marked ${status}.`);
+  }
+
+  function handleNotesChange(value: string) {
+    patchSelectedReport({ notes: value });
+  }
+
+  function handleSaveNotes() {
+    if (!selectedReport) return;
+    appendCustody("Notes updated", selectedReport.notes?.trim() ? "Notes saved." : "Notes cleared.");
   }
 
   function handleSaveToVault() {
     if (!selectedReport) return;
 
-    const vaultPayload = {
-      id: selectedReport.id,
-      title: selectedReport.title,
-      service: selectedReport.service,
-      owner: selectedReport.owner,
-      status: selectedReport.status,
-      time: selectedReport.time,
-      summary: selectedReport.summary,
-      notes: selectedReport.notes,
-      tags: selectedTags,
-      source: "System Reports",
-      folderPath: "Vault / System Health Reports / Saved",
-      custody: selectedReport.custody,
-    };
-
     window.dispatchEvent(
       new CustomEvent("vault-reports-updated", {
         detail: {
           action: "save",
-          payload: vaultPayload,
+          payload: {
+            id: selectedReport.id,
+            title: selectedReport.title,
+            service: selectedReport.service,
+            owner: selectedReport.owner,
+            status: selectedReport.status,
+            time: selectedReport.time,
+            summary: selectedReport.summary,
+            notes: selectedReport.notes,
+            tags: selectedTags,
+            source: "System Reports",
+            folderPath: "Vault / System Health Reports / Saved",
+            custody: selectedReport.custody,
+          },
         },
       })
     );
+
+    appendCustody("Saved to Vault", `${selectedReport.title} saved to Vault.`);
   }
 
-  function handleArchive(status: Extract<ReportStatus, "Fixed" | "Failed" | "Abandoned">) {
+  function handleArchive(status: "Fixed" | "Failed" | "Abandoned") {
+    if (!selectedReport) return;
+    patchSelectedReport({ status });
+    appendCustody(`Archived ${status}`, `${selectedReport.title} archived as ${status}.`);
+  }
+
+  function handleDelete() {
     if (!selectedReport) return;
 
-    const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-
-    const updated: ReportItem = {
-      ...selectedReport,
-      status,
-      time,
-      custody: [
-        ...selectedReport.custody,
-        {
-          title: `Archived ${status}`,
-          time,
-          detail: `${selectedReport.title} archived as ${status}.`,
-        },
-      ],
-    };
-
-    setReports((prev) =>
-      prev.map((report) => (report.id === selectedReport.id ? updated : report))
+    const okay = window.confirm(
+      `Delete "${selectedReport.title}" from this local reports list?`
     );
+    if (!okay) return;
+
+    setReports((prev) => prev.filter((report) => report.id !== selectedReport.id));
+    setSelectedId(null);
+    setAdvancedOpen(false);
   }
 
-  function statusStyle(status: ReportStatus): React.CSSProperties {
-    switch (status) {
-      case "Pending":
-        return statusPending;
-      case "In Progress":
-        return statusProgress;
-      case "Fixed":
-        return statusFixed;
-      case "Failed":
-        return statusFailed;
-      case "Abandoned":
-        return statusAbandoned;
-      default:
-        return statusPending;
-    }
+  function handleOverlayClick() {
+    onClose();
+  }
+
+  function handleShellClick(event: React.MouseEvent<HTMLDivElement>) {
+    event.stopPropagation();
   }
 
   return (
-    <div style={overlay} onClick={onClose}>
-      <div style={modalShell} onClick={(event) => event.stopPropagation()}>
+    <div style={overlay} onClick={handleOverlayClick}>
+      <div style={modalShell} onClick={handleShellClick}>
         <div style={header}>
           <div>
-            <div style={title}>System Reports</div>
-            <div style={subtitle}>Big picture left. Clean working detail on the right.</div>
+            <div style={titleStyle}>System Reports</div>
+            <div style={subtitleStyle}>Big picture left. Clean working detail on the right.</div>
           </div>
-
           <button type="button" style={closeButton} onClick={onClose}>
             Close
           </button>
@@ -217,32 +210,32 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
 
         <div style={body}>
           <div style={leftColumn}>
-            <div style={leftLabel}>Active reports</div>
-            <div style={leftHelper}>Pick one report to work. Keep the rest simple.</div>
-
-            <div style={countBadge}>{activeCount}</div>
+            <div style={leftHeadingRow}>
+              <div>
+                <div style={leftLabel}>Active reports</div>
+                <div style={leftHelper}>Pick one report to work. Keep the rest simple.</div>
+              </div>
+              <div style={countBadge}>{reports.length}</div>
+            </div>
 
             <div style={reportList}>
-              {reports.length == 0 ? (
-                <div style={emptyState}>No active reports.</div>
+              {reports.length === 0 ? (
+                <div style={emptyCard}>No active reports.</div>
               ) : (
                 reports.map((report) => {
-                  const isSelected = selectedReport?.id == report.id;
-
+                  const active = report.id === selectedId;
                   return (
-                    <button
+                    <div
                       key={report.id}
-                      type="button"
-                      onClick={() => setSelectedReport(report)}
                       style={{
                         ...reportCard,
-                        ...(isSelected ? reportCardSelected : {}),
+                        ...(active ? reportCardActive : {}),
                       }}
+                      onClick={() => setSelectedId(report.id)}
                     >
-                      <div style={reportCardTop}>
-                        <div style={reportCardTitle}>{report.service}</div>
-
-                        <div style={reportCardPills}>
+                      <div style={reportTop}>
+                        <div style={reportService}>{report.service}</div>
+                        <div style={pillRow}>
                           <span style={{ ...pillBase, ...statusStyle(report.status) }}>
                             {report.status}
                           </span>
@@ -252,11 +245,11 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
 
                       <div style={reportSummary}>{report.summary}</div>
 
-                      <div style={reportCardBottom}>
-                        <span style={reportTime}>{report.time}</span>
-                        <span style={openMiniButton}>Open</span>
+                      <div style={reportBottom}>
+                        <div style={reportTime}>{report.time}</div>
+                        <div style={openPill}>Open</div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })
               )}
@@ -268,67 +261,42 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
               <div style={detailCard}>
                 <div style={detailHeader}>
                   <div style={detailTitle}>{selectedReport.service}</div>
-
                   <button type="button" style={deleteButton} onClick={handleDelete}>
                     Delete
                   </button>
                 </div>
 
-                <div style={summaryLabel}>Summary</div>
+                <div style={sectionLabel}>Summary</div>
                 <div style={summaryBox}>{selectedReport.summary}</div>
 
                 <div style={buttonRow}>
-                  <button
-                    type="button"
-                    style={{ ...actionButton, ...statusPending }}
-                    onClick={() => handleStatusChange("Pending")}
-                  >
+                  <button type="button" style={{ ...buttonBase, ...statusPending }} onClick={() => handleStatusChange("Pending")}>
                     Pending
                   </button>
-                  <button
-                    type="button"
-                    style={{ ...actionButton, ...statusProgress }}
-                    onClick={() => handleStatusChange("In Progress")}
-                  >
+                  <button type="button" style={{ ...buttonBase, ...statusProgress }} onClick={() => handleStatusChange("In Progress")}>
                     In Progress
                   </button>
-                  <button
-                    type="button"
-                    style={{ ...actionButton, ...statusFixed }}
-                    onClick={() => handleStatusChange("Fixed")}
-                  >
+                  <button type="button" style={{ ...buttonBase, ...statusFixed }} onClick={() => handleStatusChange("Fixed")}>
                     Fixed
                   </button>
                 </div>
 
                 <div style={buttonRow}>
-                  <button type="button" style={saveButton} onClick={handleSaveToVault}>
+                  <button type="button" style={saveVaultButton} onClick={handleSaveToVault}>
                     Save to Vault
                   </button>
-                  <button
-                    type="button"
-                    style={{ ...actionButton, ...statusFixed }}
-                    onClick={() => handleArchive("Fixed")}
-                  >
+                  <button type="button" style={{ ...buttonBase, ...statusFixed }} onClick={() => handleArchive("Fixed")}>
                     Archive Fixed
                   </button>
-                  <button
-                    type="button"
-                    style={{ ...actionButton, ...statusAbandoned }}
-                    onClick={() => handleArchive("Abandoned")}
-                  >
+                  <button type="button" style={{ ...buttonBase, ...statusAbandoned }} onClick={() => handleArchive("Abandoned")}>
                     Archive Abandoned
                   </button>
-                  <button
-                    type="button"
-                    style={{ ...actionButton, ...statusFailed }}
-                    onClick={() => handleArchive("Failed")}
-                  >
+                  <button type="button" style={{ ...buttonBase, ...statusFailed }} onClick={() => handleArchive("Failed")}>
                     Archive Failed
                   </button>
                 </div>
 
-                <div style={notesLabel}>Notes</div>
+                <div style={sectionLabel}>Notes</div>
                 <textarea
                   value={selectedReport.notes}
                   onChange={(event) => handleNotesChange(event.target.value)}
@@ -336,6 +304,10 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
                   style={notesBox}
                   spellCheck={false}
                 />
+
+                <button type="button" style={saveNotesButton} onClick={handleSaveNotes}>
+                  Save Notes
+                </button>
 
                 <button
                   type="button"
@@ -348,22 +320,22 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
 
                 {advancedOpen ? (
                   <div style={advancedPanel}>
-                    <div style={advancedLabel}>Tags</div>
+                    <div style={sectionLabel}>Tags</div>
                     <div style={tagsWrap}>
                       {selectedTags.map((tag) => (
-                        <span key={tag} style={tagPill} aria-hidden="true">
+                        <span key={tag} style={tagPill}>
                           {tag}
                         </span>
                       ))}
                     </div>
 
-                    <div style={advancedLabel}>Chain of custody</div>
-                    <div style={custodyBox}>
+                    <div style={sectionLabel}>Chain of custody</div>
+                    <div style={custodyWrap}>
                       {selectedReport.custody.map((entry, index) => (
-                        <div key={`${entry.title}-${index}`} style={custodyEntry}>
+                        <div key={`${entry.title}-${index}`} style={custodyCard}>
                           <div style={custodyTop}>
-                            <span style={custodyTitle}>{entry.title}</span>
-                            <span style={custodyTime}>{entry.time}</span>
+                            <div style={custodyTitle}>{entry.title}</div>
+                            <div style={custodyTime}>{entry.time}</div>
                           </div>
                           <div style={custodyDetail}>{entry.detail}</div>
                         </div>
@@ -373,9 +345,7 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
                 ) : null}
               </div>
             ) : (
-              <div style={detailCard}>
-                <div style={emptyState}>Pick a report on the left.</div>
-              </div>
+              <div style={detailCardEmpty}>Pick a report on the left.</div>
             )}
           </div>
         </div>
@@ -384,11 +354,28 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
   );
 }
 
+function statusStyle(status: ReportStatus): React.CSSProperties {
+  switch (status) {
+    case "Pending":
+      return statusPending;
+    case "In Progress":
+      return statusProgress;
+    case "Fixed":
+      return statusFixed;
+    case "Failed":
+      return statusFailed;
+    case "Abandoned":
+      return statusAbandoned;
+    default:
+      return statusPending;
+  }
+}
+
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(1, 8, 20, 0.72)",
   zIndex: 9999,
+  background: "rgba(1, 8, 20, 0.72)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -399,9 +386,9 @@ const modalShell: React.CSSProperties = {
   width: "min(1400px, 96vw)",
   maxHeight: "92vh",
   overflow: "auto",
-  borderRadius: "18px",
-  border: "1px solid rgba(59, 130, 246, 0.18)",
   background: "#081a35",
+  border: "1px solid rgba(59, 130, 246, 0.18)",
+  borderRadius: "18px",
   boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
 };
 
@@ -414,14 +401,14 @@ const header: React.CSSProperties = {
   borderBottom: "1px solid rgba(148, 163, 184, 0.12)",
 };
 
-const title: React.CSSProperties = {
+const titleStyle: React.CSSProperties = {
   fontSize: "38px",
   lineHeight: 1.05,
   fontWeight: 800,
   color: "#f8fafc",
 };
 
-const subtitle: React.CSSProperties = {
+const subtitleStyle: React.CSSProperties = {
   marginTop: "6px",
   fontSize: "14px",
   color: "#93c5fd",
@@ -446,7 +433,6 @@ const body: React.CSSProperties = {
 };
 
 const leftColumn: React.CSSProperties = {
-  position: "relative",
   border: "1px solid rgba(148, 163, 184, 0.12)",
   borderRadius: "16px",
   padding: "18px",
@@ -456,6 +442,14 @@ const leftColumn: React.CSSProperties = {
 
 const rightColumn: React.CSSProperties = {
   minHeight: "560px",
+};
+
+const leftHeadingRow: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "16px",
+  marginBottom: "18px",
 };
 
 const leftLabel: React.CSSProperties = {
@@ -468,13 +462,9 @@ const leftHelper: React.CSSProperties = {
   marginTop: "6px",
   fontSize: "14px",
   color: "#93c5fd",
-  marginBottom: "18px",
 };
 
 const countBadge: React.CSSProperties = {
-  position: "absolute",
-  top: "18px",
-  right: "18px",
   minWidth: "34px",
   height: "34px",
   borderRadius: "999px",
@@ -492,9 +482,19 @@ const reportList: React.CSSProperties = {
   gap: "14px",
 };
 
+const emptyCard: React.CSSProperties = {
+  minHeight: "360px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#93c5fd",
+  fontSize: "20px",
+  textAlign: "center",
+  border: "1px solid rgba(148, 163, 184, 0.12)",
+  borderRadius: "16px",
+};
+
 const reportCard: React.CSSProperties = {
-  width: "100%",
-  textAlign: "left",
   border: "1px solid rgba(96, 165, 250, 0.12)",
   background: "#162a49",
   borderRadius: "16px",
@@ -502,26 +502,26 @@ const reportCard: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const reportCardSelected: React.CSSProperties = {
+const reportCardActive: React.CSSProperties = {
   border: "2px solid #3b82f6",
   boxShadow: "0 0 0 2px rgba(59,130,246,0.12) inset",
 };
 
-const reportCardTop: React.CSSProperties = {
+const reportTop: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "16px",
   alignItems: "flex-start",
+  gap: "16px",
 };
 
-const reportCardTitle: React.CSSProperties = {
+const reportService: React.CSSProperties = {
   fontSize: "34px",
   fontWeight: 800,
   color: "#f8fafc",
   lineHeight: 1.05,
 };
 
-const reportCardPills: React.CSSProperties = {
+const pillRow: React.CSSProperties = {
   display: "flex",
   gap: "8px",
   flexWrap: "wrap",
@@ -535,9 +535,6 @@ const pillBase: React.CSSProperties = {
   fontWeight: 800,
   letterSpacing: "0.03em",
   border: "1px solid currentColor",
-  userSelect: "none",
-  WebkitUserSelect: "none",
-  pointerEvents: "none",
 };
 
 const ownerPill: React.CSSProperties = {
@@ -553,7 +550,7 @@ const reportSummary: React.CSSProperties = {
   color: "#f8fafc",
 };
 
-const reportCardBottom: React.CSSProperties = {
+const reportBottom: React.CSSProperties = {
   marginTop: "16px",
   display: "flex",
   justifyContent: "space-between",
@@ -566,16 +563,13 @@ const reportTime: React.CSSProperties = {
   color: "#f8fafc",
 };
 
-const openMiniButton: React.CSSProperties = {
+const openPill: React.CSSProperties = {
   borderRadius: "10px",
   background: "#0d1f3a",
   color: "#f8fafc",
   padding: "10px 16px",
   fontWeight: 800,
   fontSize: "14px",
-  userSelect: "none",
-  WebkitUserSelect: "none",
-  pointerEvents: "none",
 };
 
 const detailCard: React.CSSProperties = {
@@ -586,11 +580,21 @@ const detailCard: React.CSSProperties = {
   minHeight: "560px",
 };
 
+const detailCardEmpty: React.CSSProperties = {
+  ...detailCard,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#93c5fd",
+  fontSize: "20px",
+  textAlign: "center",
+};
+
 const detailHeader: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: "16px",
   alignItems: "flex-start",
+  gap: "16px",
 };
 
 const detailTitle: React.CSSProperties = {
@@ -611,8 +615,9 @@ const deleteButton: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const summaryLabel: React.CSSProperties = {
-  marginTop: "12px",
+const sectionLabel: React.CSSProperties = {
+  marginTop: "14px",
+  marginBottom: "8px",
   fontSize: "13px",
   fontWeight: 800,
   letterSpacing: "0.18em",
@@ -621,7 +626,6 @@ const summaryLabel: React.CSSProperties = {
 };
 
 const summaryBox: React.CSSProperties = {
-  marginTop: "8px",
   background: "#081529",
   border: "1px solid rgba(96, 165, 250, 0.12)",
   borderRadius: "12px",
@@ -638,7 +642,7 @@ const buttonRow: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const actionButton: React.CSSProperties = {
+const buttonBase: React.CSSProperties = {
   borderRadius: "10px",
   padding: "12px 16px",
   fontWeight: 800,
@@ -647,10 +651,22 @@ const actionButton: React.CSSProperties = {
   border: "1px solid currentColor",
 };
 
-const saveButton: React.CSSProperties = {
-  ...actionButton,
+const saveVaultButton: React.CSSProperties = {
+  ...buttonBase,
   color: "#bfdbfe",
   background: "rgba(59, 130, 246, 0.2)",
+};
+
+const saveNotesButton: React.CSSProperties = {
+  marginTop: "10px",
+  borderRadius: "10px",
+  padding: "12px 16px",
+  fontWeight: 800,
+  fontSize: "15px",
+  cursor: "pointer",
+  border: "1px solid rgba(201,168,76,0.28)",
+  color: "#0D1B2E",
+  background: "#C9A84C",
 };
 
 const statusPending: React.CSSProperties = {
@@ -678,19 +694,9 @@ const statusAbandoned: React.CSSProperties = {
   background: "rgba(217, 119, 6, 0.16)",
 };
 
-const notesLabel: React.CSSProperties = {
-  marginTop: "16px",
-  fontSize: "13px",
-  fontWeight: 800,
-  letterSpacing: "0.18em",
-  textTransform: "uppercase",
-  color: "#bfdbfe",
-};
-
 const notesBox: React.CSSProperties = {
   width: "100%",
   minHeight: "120px",
-  marginTop: "8px",
   resize: "vertical",
   background: "#081529",
   border: "1px solid rgba(96, 165, 250, 0.12)",
@@ -715,8 +721,6 @@ const advancedHeader: React.CSSProperties = {
   fontSize: "18px",
   fontWeight: 800,
   cursor: "pointer",
-  userSelect: "none",
-  WebkitUserSelect: "none",
 };
 
 const advancedPanel: React.CSSProperties = {
@@ -727,22 +731,11 @@ const advancedPanel: React.CSSProperties = {
   padding: "16px",
 };
 
-const advancedLabel: React.CSSProperties = {
-  fontSize: "13px",
-  fontWeight: 800,
-  letterSpacing: "0.18em",
-  textTransform: "uppercase",
-  color: "#bfdbfe",
-  marginBottom: "10px",
-};
-
 const tagsWrap: React.CSSProperties = {
   display: "flex",
   gap: "8px",
   flexWrap: "wrap",
   marginBottom: "18px",
-  userSelect: "none",
-  WebkitUserSelect: "none",
 };
 
 const tagPill: React.CSSProperties = {
@@ -755,15 +748,14 @@ const tagPill: React.CSSProperties = {
   border: "1px solid rgba(96, 165, 250, 0.22)",
   userSelect: "none",
   WebkitUserSelect: "none",
-  pointerEvents: "none",
 };
 
-const custodyBox: React.CSSProperties = {
+const custodyWrap: React.CSSProperties = {
   display: "grid",
   gap: "10px",
 };
 
-const custodyEntry: React.CSSProperties = {
+const custodyCard: React.CSSProperties = {
   border: "1px solid rgba(96, 165, 250, 0.12)",
   borderRadius: "12px",
   background: "#081529",
@@ -794,15 +786,4 @@ const custodyDetail: React.CSSProperties = {
   fontSize: "16px",
   lineHeight: 1.45,
   color: "#f8fafc",
-};
-
-const emptyState: React.CSSProperties = {
-  minHeight: "240px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "#93c5fd",
-  fontSize: "20px",
-  textAlign: "center",
-  padding: "20px",
 };
