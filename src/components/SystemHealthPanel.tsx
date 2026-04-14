@@ -60,7 +60,7 @@ export default function SystemHealthPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>("Google Drive");
 
-  const logToVault = (service: Service, type: string) => {
+  const logReport = (service: Service, type: string) => {
     const existing = JSON.parse(localStorage.getItem("system_health_reports") || "[]");
 
     const newReport = {
@@ -81,7 +81,7 @@ export default function SystemHealthPanel() {
     );
 
     window.dispatchEvent(new Event("storage_sync"));
-    window.dispatchEvent(new Event("open-vault-tab"));
+    window.dispatchEvent(new Event("open-reports-modal"));
   };
 
   return (
@@ -137,7 +137,6 @@ export default function SystemHealthPanel() {
                 {expanded === s.name && (
                   <div className="px-3 pb-3 border-t border-[#1B2A4A] space-y-3">
                     <p className="text-[10px] text-gray-400">{s.error}</p>
-
                     <p className="text-[10px] text-gray-500">{s.explanation}</p>
 
                     {s.status !== "Connected" && (
@@ -158,21 +157,21 @@ export default function SystemHealthPanel() {
 
                         <div className="flex gap-2 pt-2">
                           <button
-                            onClick={() => logToVault(s, "AUTO_FIX")}
+                            onClick={() => logReport(s, "AUTO_FIX")}
                             className="text-[10px] px-2 py-1 border border-blue-500 text-blue-400 rounded"
                           >
                             Auto Fix
                           </button>
 
                           <button
-                            onClick={() => logToVault(s, "FIX_PROMPT")}
+                            onClick={() => logReport(s, "FIX_PROMPT")}
                             className="text-[10px] px-2 py-1 border border-yellow-500 text-yellow-400 rounded"
                           >
                             Fix Prompt
                           </button>
 
                           <button
-                            onClick={() => logToVault(s, "SEND_TO_TEAM")}
+                            onClick={() => logReport(s, "SEND_TO_TEAM")}
                             className="text-[10px] px-2 py-1 border border-green-500 text-green-400 rounded"
                           >
                             Send to Team
