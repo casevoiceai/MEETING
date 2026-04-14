@@ -55,6 +55,8 @@ type VaultBucket = {
 type DisplayRecord = {
   id: string;
   rawId: string | number;
+  sourceKey: string;
+  fingerprint: string;
   title: string;
   service: string;
   owner: string;
@@ -247,6 +249,27 @@ function dedupeStrings(values: Array<string | undefined | null>) {
   return Array.from(new Set(values.map((value) => (value || "").trim()).filter(Boolean)));
 }
 
+function buildFingerprint(record: BaseVaultRecord, bucket: VaultBucket) {
+  return JSON.stringify([
+    bucket.id,
+    record.id ?? "",
+    record.title ?? "",
+    record.service ?? "",
+    record.time ?? "",
+    record.savedAt ?? "",
+    record.archivedAt ?? "",
+    record.updatedAt ?? "",
+    record.timestamp ?? "",
+    record.message ?? "",
+    record.summary ?? "",
+    record.folder ?? "",
+    record.folderPath ?? "",
+    record.fixStatus ?? "",
+    record.status ?? "",
+    record.outcome ?? "",
+  ]);
+}
+
 function buildTitle(record: BaseVaultRecord, bucket: VaultBucket) {
   return (
     record.title ||
@@ -304,7 +327,13 @@ function buildCustodyTrail(record: BaseVaultRecord, folder: string, summary: str
   ];
 }
 
-function normalizeRecord(record: BaseVaultRecord, bucket: VaultBucket, index: number): DisplayRecord {
+function normalizeRecord(
+  record: BaseVaultRecord,
+  bucket: VaultBucket,
+  index: number,
+  sourceKey: string,
+  fingerprint: string
+): DisplayRecord {
   const status = normalizeStatus(record.status || record.fixStatus || record.outcome || record.recordType);
   const folder = buildFolder(record, bucket);
   const summary = buildSummary(record);
@@ -315,8 +344,10 @@ function normalizeRecord(record: BaseVaultRecord, bucket: VaultBucket, index: nu
   const source = record.source || bucket.label;
 
   return {
-    id: `${bucket.id}-${String(record.id ?? `${service}-${index}`)}`,
+    id: `${bucket.id}-${String(record.id ?? `${service}-${index}`)}-${index}`,
     rawId: record.id ?? `${service}-${index}`,
+    sourceKey,
+    fingerprint,
     title: buildTitle(record, bucket),
     service,
     owner,
@@ -339,46 +370,24 @@ function normalizeRecord(record: BaseVaultRecord, bucket: VaultBucket, index: nu
 }
 
 function bucketRecords(bucket: VaultBucket): DisplayRecord[] {
-  const merged = bucket.keys.flatMap((key) => readJsonArray(key));
-  const unique = new Map<string, BaseVaultRecord>();
+  const merged = bucket.keys.flatMap((key) =>
+    readJsonArray(key).map((item) => ({ item, sourceKey: key }))
+  );
+  const unique = new Map<string, { item: BaseVaultRecord; sourceKey: string }>();
 
-  merged.forEach((item, index) => {
-    const stableKey = JSON.stringify([
-      item.id,
-      item.title,
-      item.service,
-      item.time,
-      item.savedAt,
-      item.archivedAt,
-      item.message,
-      item.folder,
-      index,
-    ]);
+  merged.forEach(({ item, sourceKey }) => {
+    const stableKey = buildFingerprint(item, bucket);
 
     if (!unique.has(stableKey)) {
-      unique.set(stableKey, item);
+      unique.set(stableKey, { item, sourceKey });
     }
   });
 
-  return Array.from(unique.values())
-    .map((item, index) => normalizeRecord(item, bucket, index))
+  return Array.from(unique.entries())
+    .map(([fingerprint, value], index) =>
+      normalizeRecord(value.item, bucket, index, value.sourceKey, fingerprint)
+    )
     .sort((a, b) => String(b.time).localeCompare(String(a.time)));
-}
-
-type DetailSectionProps = {
-  label: string;
-  children: React.ReactNode;
-};
-
-function DetailSection({ label, children }: DetailSectionProps) {
-  return (
-    <div className="rounded-2xl p-4 md:p-5" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
-      <div className="text-[11px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  );
 }
 
 export default function VaultView({
@@ -393,8 +402,6 @@ export default function VaultView({
   const [recordsByBucket, setRecordsByBucket] = useState<Record<string, DisplayRecord[]>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
-  const [simpleMode, setSimpleMode] = useState(true);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const refreshRecords = () => {
     const next: Record<string, DisplayRecord[]> = {};
@@ -437,10 +444,6 @@ export default function VaultView({
     }
   }, [filteredRecords, selectedRecord]);
 
-  useEffect(() => {
-    setAdvancedOpen(false);
-  }, [expandedId, simpleMode, activeBucketId]);
-
   const counts = useMemo(() => {
     const total = records.length;
     const open = records.filter((record) => ["ACTIVE", "PENDING", "IN PROGRESS", "WAITING"].includes(normalizeStatus(record.status))).length;
@@ -453,101 +456,85 @@ export default function VaultView({
     const confirmed = window.confirm(`Delete "${record.title}" from this local vault list?`);
     if (!confirmed) return;
 
-    const nextBucketRecords = (recordsByBucket[activeBucket.id] || []).filter((item) => item.id !== record.id);
-    setRecordsByBucket((prev) => ({ ...prev, [activeBucket.id]: nextBucketRecords }));
-    setExpandedId(nextBucketRecords[0]?.id || null);
+    const sourceItems = readJsonArray(record.sourceKey);
+    const nextSourceItems = sourceItems.filter(
+      (item) => buildFingerprint(item, activeBucket) !== record.fingerprint
+    );
+    localStorage.setItem(record.sourceKey, JSON.stringify(nextSourceItems));
+
+    refreshRecords();
+    window.dispatchEvent(new CustomEvent("vault-reports-updated"));
   };
 
   const handleSaveNotes = (record: DisplayRecord) => {
-    setRecordsByBucket((prev) => {
-      const nextBucketRecords = (prev[activeBucket.id] || []).map((item) =>
-        item.id === record.id
-          ? {
-              ...item,
-              notes: notesDrafts[record.id] ?? item.notes,
-              custodyTrail: [
-                {
-                  time: nowLabel(),
-                  action: "Notes updated",
-                  location: item.folder,
-                  details: (notesDrafts[record.id] || "Notes cleared.").trim() || "Notes cleared.",
-                },
-                ...item.custodyTrail,
-              ],
-            }
-          : item
-      );
-      return { ...prev, [activeBucket.id]: nextBucketRecords };
+    const nextNotes = notesDrafts[record.id] ?? record.notes;
+    const sourceItems = readJsonArray(record.sourceKey);
+    const nextSourceItems = sourceItems.map((item) => {
+      if (buildFingerprint(item, activeBucket) !== record.fingerprint) return item;
+
+      const folder = buildFolder(item, activeBucket);
+      const existingTrail = buildCustodyTrail(item, folder, buildSummary(item));
+
+      return {
+        ...item,
+        notes: nextNotes,
+        custodyTrail: [
+          {
+            time: nowLabel(),
+            action: "Notes updated",
+            location: folder,
+            details: nextNotes.trim() || "Notes cleared.",
+          },
+          ...existingTrail,
+        ],
+      };
     });
+
+    localStorage.setItem(record.sourceKey, JSON.stringify(nextSourceItems));
+    refreshRecords();
+    window.dispatchEvent(new CustomEvent("vault-reports-updated"));
   };
 
   return (
-    <div className="min-h-screen px-4 py-5 md:px-6 lg:px-8 lg:py-7" style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF" }}>
-      <div className="max-w-[1560px] mx-auto space-y-5">
+    <div className="min-h-screen px-8 py-7" style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF" }}>
+      <div className="max-w-[1560px] mx-auto space-y-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-4xl">
+          <div>
             <div className="text-[11px] font-bold uppercase tracking-[0.22em]" style={{ color: "#8A9BB5" }}>
               Vault
             </div>
-            <h1 className="text-[30px] leading-tight font-bold mt-2" style={{ color: "#F8FAFC" }}>
+            <h1 className="text-3xl font-bold mt-2" style={{ color: "#F8FAFC" }}>
               Records, folders, and chain of custody
             </h1>
-            <p className="text-[15px] leading-7 mt-3" style={{ color: "#A8B6CC" }}>
-              Same strong tracking underneath, but with a cleaner layout on top. Use Simple Mode for quick review.
-              Open Advanced only when you want tags, custody logs, and the extra technical details.
+            <p className="text-sm mt-3 max-w-3xl" style={{ color: "#A8B6CC" }}>
+              Every vault section uses the same tracking spine: readable records table, clear folder path,
+              status badges, custody trail, and notes that are easy to review later.
             </p>
           </div>
 
-          <div className="flex flex-col items-stretch gap-3 xl:items-end">
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => setSimpleMode(true)}
-                className="px-4 py-3 rounded-xl text-sm font-bold"
-                style={
-                  simpleMode
-                    ? { backgroundColor: "#C9A84C", color: "#0D1B2E" }
-                    : { backgroundColor: "#111D30", color: "#D7E0EC", border: "1px solid #1B2A4A" }
-                }
-              >
-                Simple Mode
-              </button>
-              <button
-                onClick={() => setSimpleMode(false)}
-                className="px-4 py-3 rounded-xl text-sm font-bold"
-                style={
-                  !simpleMode
-                    ? { backgroundColor: "#7C3AED", color: "#F8FAFC" }
-                    : { backgroundColor: "#111D30", color: "#D7E0EC", border: "1px solid #1B2A4A" }
-                }
-              >
-                Advanced View
-              </button>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[360px]">
+            {[
+              { label: "Records", value: counts.total, tone: "neutral" },
+              { label: "Open", value: counts.open, tone: "warning" },
+              { label: "Fixed", value: counts.fixed, tone: "good" },
+              { label: "Failed", value: counts.failed, tone: "bad" },
+            ].map((card) => {
+              const tone =
+                card.tone === "good"
+                  ? { color: "#86EFAC", border: "1px solid rgba(16,185,129,0.28)", background: "rgba(6,95,70,0.18)" }
+                  : card.tone === "bad"
+                    ? { color: "#FCA5A5", border: "1px solid rgba(239,68,68,0.28)", background: "rgba(127,29,29,0.18)" }
+                    : card.tone === "warning"
+                      ? { color: "#FCD34D", border: "1px solid rgba(245,158,11,0.28)", background: "rgba(120,53,15,0.18)" }
+                      : { color: "#C9A84C", border: "1px solid #1B2A4A", background: "#111D30" };
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[320px]">
-              {[
-                { label: "Records", value: counts.total, tone: "neutral" },
-                { label: "Open", value: counts.open, tone: "warning" },
-                { label: "Fixed", value: counts.fixed, tone: "good" },
-                { label: "Failed", value: counts.failed, tone: "bad" },
-              ].map((card) => {
-                const tone =
-                  card.tone === "good"
-                    ? { color: "#86EFAC", border: "1px solid rgba(16,185,129,0.28)", background: "rgba(6,95,70,0.18)" }
-                    : card.tone === "bad"
-                      ? { color: "#FCA5A5", border: "1px solid rgba(239,68,68,0.28)", background: "rgba(127,29,29,0.18)" }
-                      : card.tone === "warning"
-                        ? { color: "#FCD34D", border: "1px solid rgba(245,158,11,0.28)", background: "rgba(120,53,15,0.18)" }
-                        : { color: "#C9A84C", border: "1px solid #1B2A4A", background: "#111D30" };
-
-                return (
-                  <div key={card.label} className="rounded-2xl px-4 py-3" style={tone}>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em]">{card.label}</div>
-                    <div className="text-2xl font-bold mt-2">{card.value}</div>
-                  </div>
-                );
-              })}
-            </div>
+              return (
+                <div key={card.label} className="rounded-2xl px-4 py-3" style={tone}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em]">{card.label}</div>
+                  <div className="text-2xl font-bold mt-2">{card.value}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -592,56 +579,47 @@ export default function VaultView({
           </div>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[1.38fr_1fr] items-start">
+        <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr] items-start">
           <div className="rounded-[24px] overflow-hidden" style={{ backgroundColor: "#0F1E33", border: "1px solid #1B2A4A" }}>
-            <div className="px-5 py-4 border-b flex flex-col gap-4" style={{ borderColor: "#1B2A4A" }}>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="text-[28px] font-bold text-white leading-tight">{activeBucket.label}</div>
-                  <div className="text-[15px] mt-2 leading-7" style={{ color: "#8A9BB5" }}>
-                    {activeBucket.description}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {STATUS_FILTERS.map((item) => {
-                    const active = item === statusFilter;
-                    return (
-                      <button
-                        key={item}
-                        onClick={() => setStatusFilter(item)}
-                        className="px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[0.14em]"
-                        style={
-                          active
-                            ? { backgroundColor: "#C9A84C", color: "#0D1B2E" }
-                            : { backgroundColor: "#111D30", color: "#8A9BB5", border: "1px solid #1B2A4A" }
-                        }
-                      >
-                        {titleCase(item)}
-                      </button>
-                    );
-                  })}
-                </div>
+            <div className="px-5 py-4 border-b flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" style={{ borderColor: "#1B2A4A" }}>
+              <div>
+                <div className="text-xl font-bold text-white">{activeBucket.label}</div>
+                <div className="text-sm mt-1" style={{ color: "#8A9BB5" }}>{activeBucket.description}</div>
               </div>
 
-              <div
-                className={`grid gap-4 px-1 text-[11px] font-bold uppercase tracking-[0.18em] ${
-                  simpleMode ? "grid-cols-[1.25fr_0.9fr_0.85fr_0.55fr]" : "grid-cols-[1.05fr_0.85fr_0.9fr_1.4fr_0.75fr_0.6fr]"
-                }`}
-                style={{ color: "#8A9BB5" }}
-              >
-                <div>Service</div>
-                {!simpleMode && <div>Owner</div>}
-                <div>Status</div>
-                <div>{simpleMode ? "Time" : "Folder"}</div>
-                {!simpleMode && <div>Time</div>}
-                <div className="text-right">View</div>
+              <div className="flex flex-wrap gap-2">
+                {STATUS_FILTERS.map((item) => {
+                  const active = item === statusFilter;
+                  return (
+                    <button
+                      key={item}
+                      onClick={() => setStatusFilter(item)}
+                      className="px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[0.14em]"
+                      style={
+                        active
+                          ? { backgroundColor: "#C9A84C", color: "#0D1B2E" }
+                          : { backgroundColor: "#111D30", color: "#8A9BB5", border: "1px solid #1B2A4A" }
+                      }
+                    >
+                      {titleCase(item)}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="max-h-[760px] overflow-y-auto">
+            <div className="grid grid-cols-[1.05fr_0.85fr_0.9fr_1.55fr_0.75fr_0.6fr] gap-4 px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] border-b" style={{ color: "#8A9BB5", borderColor: "#1B2A4A" }}>
+              <div>Service</div>
+              <div>Owner</div>
+              <div>Status</div>
+              <div>Folder</div>
+              <div>Time</div>
+              <div className="text-right">View</div>
+            </div>
+
+            <div className="max-h-[720px] overflow-y-auto">
               {filteredRecords.length === 0 ? (
-                <div className="px-5 py-10 text-base" style={{ color: "#8A9BB5" }}>
+                <div className="px-5 py-10 text-sm" style={{ color: "#8A9BB5" }}>
                   No records in this section yet.
                 </div>
               ) : (
@@ -653,35 +631,22 @@ export default function VaultView({
                     <div key={record.id} className="border-b" style={{ borderColor: "#1B2A4A" }}>
                       <button
                         onClick={() => setExpandedId(expanded ? null : record.id)}
-                        className={`w-full grid gap-4 px-5 py-5 text-left items-start ${
-                          simpleMode ? "grid-cols-[1.25fr_0.9fr_0.85fr_0.55fr]" : "grid-cols-[1.05fr_0.85fr_0.9fr_1.4fr_0.75fr_0.6fr]"
-                        }`}
-                        style={{ backgroundColor: expanded ? "rgba(201,168,76,0.05)" : "transparent" }}
+                        className="w-full grid grid-cols-[1.05fr_0.85fr_0.9fr_1.55fr_0.75fr_0.6fr] gap-4 px-5 py-4 text-left items-start"
+                        style={{ backgroundColor: expanded ? "rgba(201,168,76,0.04)" : "transparent" }}
                       >
                         <div>
-                          <div className="font-semibold text-white text-[18px] leading-7">{record.service}</div>
-                          <div className="text-[14px] mt-1 leading-6" style={{ color: "#D7E0EC" }}>
-                            {record.title}
-                          </div>
-                          {simpleMode && (
-                            <div className="text-[13px] mt-2 leading-6" style={{ color: "#8A9BB5" }}>
-                              {record.summary}
-                            </div>
-                          )}
+                          <div className="font-semibold text-white text-sm">{record.service}</div>
+                          <div className="text-xs mt-1" style={{ color: "#8A9BB5" }}>{record.title}</div>
                         </div>
-                        {!simpleMode && <div className="text-[15px] leading-7" style={{ color: "#D7E0EC" }}>{record.owner}</div>}
+                        <div className="text-sm" style={{ color: "#D7E0EC" }}>{record.owner}</div>
                         <div>
-                          <span className="inline-flex px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[0.16em]" style={tone}>
+                          <span className="inline-flex px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.16em]" style={tone}>
                             {titleCase(record.status)}
                           </span>
                         </div>
-                        <div className="text-[15px] leading-7" style={{ color: "#D7E0EC" }}>
-                          {simpleMode ? record.time : record.folder}
-                        </div>
-                        {!simpleMode && <div className="text-[15px] leading-7" style={{ color: "#A8B6CC" }}>{record.time}</div>}
-                        <div className="text-right text-[15px] font-bold" style={{ color: "#C9A84C" }}>
-                          {expanded ? "Hide" : "Open"}
-                        </div>
+                        <div className="text-sm leading-6" style={{ color: "#D7E0EC" }}>{record.folder}</div>
+                        <div className="text-sm" style={{ color: "#A8B6CC" }}>{record.time}</div>
+                        <div className="text-right text-sm font-bold" style={{ color: "#C9A84C" }}>{expanded ? "Hide" : "Open"}</div>
                       </button>
                     </div>
                   );
@@ -690,19 +655,17 @@ export default function VaultView({
             </div>
           </div>
 
-          <div className="rounded-[24px] p-5 md:p-6" style={{ backgroundColor: "#0F1E33", border: "1px solid #1B2A4A" }}>
+          <div className="rounded-[24px] p-5" style={{ backgroundColor: "#0F1E33", border: "1px solid #1B2A4A" }}>
             {!selectedRecord ? (
-              <div className="min-h-[560px] flex items-center justify-center text-center text-base px-6 leading-7" style={{ color: "#8A9BB5" }}>
-                Open a record on the left to review its summary, notes, and advanced tracking details.
+              <div className="min-h-[560px] flex items-center justify-center text-center text-sm px-6" style={{ color: "#8A9BB5" }}>
+                Open a record on the left to review its path, tags, custody trail, and notes.
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="max-w-[80%]">
-                    <div className="text-[30px] leading-tight font-bold text-white">{selectedRecord.title}</div>
-                    <div className="text-[15px] mt-2 leading-7" style={{ color: "#A8B6CC" }}>
-                      {selectedRecord.service} • {selectedRecord.category}
-                    </div>
+                  <div>
+                    <div className="text-xl font-bold text-white">{selectedRecord.title}</div>
+                    <div className="text-sm mt-2" style={{ color: "#A8B6CC" }}>{selectedRecord.service} • {selectedRecord.category}</div>
                   </div>
 
                   <button
@@ -714,144 +677,110 @@ export default function VaultView({
                   </button>
                 </div>
 
-                <DetailSection label="What this is">
-                  <div className="text-[18px] leading-8 text-white">{selectedRecord.summary}</div>
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {[selectedRecord.status, selectedRecord.severity].filter(Boolean).map((item) => (
-                      <span
-                        key={item}
-                        className="inline-flex items-center px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[0.16em]"
-                        style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.28)", backgroundColor: "rgba(201,168,76,0.08)" }}
-                      >
-                        {titleCase(item)}
-                      </span>
-                    ))}
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-2" style={{ color: "#8A9BB5" }}>Folder Path</div>
+                  <div className="text-sm leading-6 text-white">{selectedRecord.folder}</div>
+                </div>
+
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[selectedRecord.status, selectedRecord.severity, selectedRecord.source, selectedRecord.recordType]
+                      .filter(Boolean)
+                      .map((item) => (
+                        <span key={item} className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.28)", backgroundColor: "rgba(201,168,76,0.08)" }}>
+                          {titleCase(item)}
+                        </span>
+                      ))}
                     {selectedRecord.requiresFollowUp && (
-                      <span
-                        className="inline-flex items-center px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[0.16em]"
-                        style={{ color: "#FCD34D", border: "1px solid rgba(245,158,11,0.35)", backgroundColor: "rgba(120,53,15,0.18)" }}
-                      >
+                      <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "#FCD34D", border: "1px solid rgba(245,158,11,0.35)", backgroundColor: "rgba(120,53,15,0.18)" }}>
                         Requires Follow Up
                       </span>
                     )}
                   </div>
-                </DetailSection>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-2" style={{ color: "#8A9BB5" }}>Issue Summary</div>
+                  <div className="text-sm leading-6 text-white">{selectedRecord.summary}</div>
+                </div>
 
-                <DetailSection label="Where it lives">
-                  <div className="text-[17px] leading-8 text-white">{selectedRecord.folder}</div>
-                  <div className="text-[14px] mt-3 leading-6" style={{ color: "#8A9BB5" }}>
-                    Last updated by {selectedRecord.lastUpdatedBy} at {selectedRecord.time}
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Tags</div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRecord.tags.length === 0 ? (
+                      <div className="text-sm" style={{ color: "#8A9BB5" }}>No tags yet.</div>
+                    ) : (
+                      selectedRecord.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.14em]"
+                          style={{ color: "#D7E0EC", border: "1px solid #1B2A4A", backgroundColor: "#0D1B2E" }}
+                        >
+                          {titleCase(tag)}
+                        </span>
+                      ))
+                    )}
                   </div>
-                </DetailSection>
+                </div>
 
-                <DetailSection label="Notes">
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Chain of Custody</div>
+                  <div className="space-y-3">
+                    {selectedRecord.custodyTrail.map((entry, index) => (
+                      <div key={`${entry.time}-${index}`} className="rounded-xl p-3" style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}>
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <div className="font-bold" style={{ color: "#C9A84C" }}>{entry.action}</div>
+                          <div style={{ color: "#8A9BB5" }}>{entry.time}</div>
+                        </div>
+                        <div className="text-xs mt-2" style={{ color: "#93A4BD" }}>{entry.location}</div>
+                        <div className="text-sm mt-2 text-white leading-6">{entry.details}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Notes</div>
                   <textarea
                     value={notesDrafts[selectedRecord.id] ?? selectedRecord.notes}
                     onChange={(event) => setNotesDrafts((prev) => ({ ...prev, [selectedRecord.id]: event.target.value }))}
-                    placeholder="Add plain-English notes about what happened, what you tried, or what you need to remember later."
-                    className="w-full min-h-[160px] rounded-xl p-4 text-[16px] leading-7"
+                    placeholder="Add notes, fix details, follow-up instructions, or why this record matters."
+                    className="w-full min-h-[140px] rounded-xl p-4 text-sm"
                     style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A", color: "#FFFFFF", resize: "vertical" }}
                   />
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-                    <div className="text-[14px] leading-6" style={{ color: "#8A9BB5" }}>
-                      Keep this simple. This box is meant to be readable first, technical second.
+                  <div className="flex items-center justify-between gap-3 mt-3">
+                    <div className="text-xs" style={{ color: "#8A9BB5" }}>
+                      Last updated by: {selectedRecord.lastUpdatedBy}
                     </div>
                     <button
                       onClick={() => handleSaveNotes(selectedRecord)}
-                      className="px-4 py-3 rounded-lg text-xs font-bold uppercase tracking-[0.16em]"
+                      className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.16em]"
                       style={{ color: "#0D1B2E", backgroundColor: "#C9A84C" }}
                     >
                       Save Notes
                     </button>
                   </div>
-                </DetailSection>
-
-                <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
-                  <button
-                    onClick={() => setAdvancedOpen((prev) => !prev)}
-                    className="w-full flex items-center justify-between px-4 py-4 text-left"
-                  >
-                    <div>
-                      <div className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: "#8A9BB5" }}>
-                        Advanced
-                      </div>
-                      <div className="text-[17px] font-semibold text-white mt-1">
-                        {advancedOpen ? "Hide extra tracking details" : "Show tags, custody trail, attachments, and technical metadata"}
-                      </div>
-                    </div>
-                    <div className="text-[14px] font-bold" style={{ color: "#C9A84C" }}>
-                      {advancedOpen ? "Hide" : "Open"}
-                    </div>
-                  </button>
-
-                  {advancedOpen && (
-                    <div className="px-4 pb-4 space-y-4">
-                      <DetailSection label="Tags and metadata">
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {selectedRecord.tags.length === 0 ? (
-                            <div className="text-[15px] leading-7" style={{ color: "#8A9BB5" }}>No tags yet.</div>
-                          ) : (
-                            selectedRecord.tags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="inline-flex items-center px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[0.14em]"
-                                style={{ color: "#D7E0EC", border: "1px solid #1B2A4A", backgroundColor: "#0D1B2E" }}
-                              >
-                                {titleCase(tag)}
-                              </span>
-                            ))
-                          )}
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2 text-[15px] leading-7" style={{ color: "#D7E0EC" }}>
-                          <div><span style={{ color: "#8A9BB5" }}>Owner:</span> {selectedRecord.owner}</div>
-                          <div><span style={{ color: "#8A9BB5" }}>Source:</span> {selectedRecord.source}</div>
-                          <div><span style={{ color: "#8A9BB5" }}>Record Type:</span> {titleCase(selectedRecord.recordType)}</div>
-                          <div><span style={{ color: "#8A9BB5" }}>Raw ID:</span> {String(selectedRecord.rawId)}</div>
-                        </div>
-                      </DetailSection>
-
-                      <DetailSection label="Chain of custody">
-                        <div className="space-y-3">
-                          {selectedRecord.custodyTrail.map((entry, index) => (
-                            <div key={`${entry.time}-${index}`} className="rounded-xl p-3 md:p-4" style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}>
-                              <div className="flex flex-wrap items-center justify-between gap-3 text-[13px]">
-                                <div className="font-bold" style={{ color: "#C9A84C" }}>{entry.action}</div>
-                                <div style={{ color: "#8A9BB5" }}>{entry.time}</div>
-                              </div>
-                              <div className="text-[13px] mt-2 leading-6" style={{ color: "#93A4BD" }}>{entry.location}</div>
-                              <div className="text-[15px] mt-2 leading-7 text-white">{entry.details}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </DetailSection>
-
-                      {(selectedRecord.relatedItems.length > 0 || selectedRecord.attachments.length > 0) && (
-                        <div className="grid md:grid-cols-2 gap-4">
-                          <DetailSection label="Related items">
-                            <div className="space-y-2 text-[15px] leading-7 text-white">
-                              {selectedRecord.relatedItems.length === 0 ? (
-                                <div style={{ color: "#8A9BB5" }}>No related items linked yet.</div>
-                              ) : (
-                                selectedRecord.relatedItems.map((item, index) => <div key={`${item}-${index}`}>{item}</div>)
-                              )}
-                            </div>
-                          </DetailSection>
-
-                          <DetailSection label="Attachments">
-                            <div className="space-y-2 text-[15px] leading-7 text-white">
-                              {selectedRecord.attachments.length === 0 ? (
-                                <div style={{ color: "#8A9BB5" }}>No attachments saved yet.</div>
-                              ) : (
-                                selectedRecord.attachments.map((item, index) => <div key={`${item}-${index}`}>{item}</div>)
-                              )}
-                            </div>
-                          </DetailSection>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
+
+                {(selectedRecord.relatedItems.length > 0 || selectedRecord.attachments.length > 0) && (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Related Items</div>
+                      <div className="space-y-2 text-sm text-white">
+                        {selectedRecord.relatedItems.map((item, index) => (
+                          <div key={`${item}-${index}`}>{item}</div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Attachments</div>
+                      <div className="space-y-2 text-sm text-white">
+                        {selectedRecord.attachments.map((item, index) => (
+                          <div key={`${item}-${index}`}>{item}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
