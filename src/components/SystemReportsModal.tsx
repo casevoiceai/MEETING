@@ -133,6 +133,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
+  const [savedIds, setSavedIds] = useState<string[]>([]);
 
   const load = () => {
     const data = readReports();
@@ -161,7 +162,14 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
   };
 
   const saveNotes = (id: string) => {
-    updateReport(id, { notes: notesDraft[id] ?? "" });
+    const nextValue = notesDraft[id] ?? "";
+    updateReport(id, { notes: nextValue });
+
+    setSavedIds((prev) => [...prev.filter((item) => item !== id), id]);
+
+    window.setTimeout(() => {
+      setSavedIds((prev) => prev.filter((item) => item !== id));
+    }, 1600);
   };
 
   const archiveReport = (id: string, outcome: ReportOutcome) => {
@@ -190,6 +198,8 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
       delete copy[id];
       return copy;
     });
+
+    setSavedIds((prev) => prev.filter((item) => item !== id));
 
     writeReports(next);
   };
@@ -233,6 +243,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
           ) : (
             orderedReports.map((report) => {
               const isExpanded = expandedIds.includes(report.id);
+              const isSaved = savedIds.includes(report.id);
               const typeTone = badgeStyle(typeLabel(report.type));
               const statusTone = badgeStyle(report.status ?? "PENDING");
               const outcomeTone = report.outcome ? badgeStyle(report.outcome) : null;
@@ -395,9 +406,11 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
 
                         <div className="flex items-center justify-between gap-3 mt-3">
                           <div className="text-[11px] text-[#8A9BB5]">
-                            {report.outcome
-                              ? `Current folder: ${outcomeFolder(report.outcome)}`
-                              : "Current folder: Vault / System Health Reports / Active"}
+                            {isSaved
+                              ? "Notes saved"
+                              : report.outcome
+                                ? `Current folder: ${outcomeFolder(report.outcome)}`
+                                : "Current folder: Vault / System Health Reports / Active"}
                           </div>
 
                           <button
