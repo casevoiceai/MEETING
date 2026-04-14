@@ -15,6 +15,8 @@ type Service = {
   owner: string;
 };
 
+type ActiveModal = "prompt" | "autofix" | "team" | null;
+
 function getNowLabel() {
   return new Date().toLocaleTimeString([], {
     hour: "numeric",
@@ -50,7 +52,7 @@ function buildServices(): Service[] {
         "Re-authenticate Google Drive connection",
         "Test connection again",
       ],
-      prompt: `Fix Google Drive integration. Diagnose auth, route, env variables.`,
+      prompt: "Fix Google Drive integration. Diagnose auth, route, env variables.",
       severity: "High",
       autoFix: [
         "Reset cached auth state",
@@ -144,12 +146,14 @@ function getPanelStateColor(state: string) {
   return "#10B981";
 }
 
-function logToVault(service: Service) {
+function logToVault(service: Service, type: "TEAM" | "PROMPT" | "AUTO_FIX") {
   const existing = localStorage.getItem("system_health_reports");
   const parsed = existing ? JSON.parse(existing) : [];
 
   const newReport = {
-    id: Date.now(),
+    id: `${service.name}-${type}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 6)}`,
     time: new Date().toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
@@ -159,6 +163,7 @@ function logToVault(service: Service) {
     message: service.prompt,
     fixStatus: "Pending",
     notes: "",
+    type,
   };
 
   const updated = [newReport, ...parsed];
@@ -169,15 +174,106 @@ export default function SystemHealthPanel() {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [services] = useState<Service[]>(buildServices());
-  const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
-  const [autoFixService, setAutoFixService] = useState<Service | null>(null);
-  const [teamMessage, setTeamMessage] = useState<string | null>(null);
+  const [modalType, setModalType] = useState<ActiveModal>(null);
+  const [activeService, setActiveService] = useState<Service | null>(null);
 
   const panelState = getPanelState(services);
   const panelStateColor = getPanelStateColor(panelState);
   const errorCount = services.filter((s) => s.status === "Error").length;
   const warningCount = services.filter((s) => s.status === "Warning").length;
   const lastCheck = getNowLabel();
+
+  function closeModal() {
+    setModalType(null);
+    setActiveService(null);
+  }
+
+  function openPrompt(service: Service, e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    setActiveService(service);
+    setModalType("prompt");
+    logToVault(service, "PROMPT");
+  }
+
+  function openAutoFix(service: Service, e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    setActiveService(service);
+    setModalType("autofix");
+    logToVault(service, "AUTO_FIX");
+  }
+
+  function openTeam(service: Service, e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    setActiveService(service);
+    setModalType("team");
+    logToVault(service, "TEAM");
+  }
+
+  function renderModal() {
+    if (!modalType || !activeService) return null;
+
+    let title = "";
+    let body: React.ReactNode = null;
+
+    if (modalType === "prompt") {
+      title = "Fix Prompt";
+      body = (
+        <div className="text-xs text-gray-300 whitespace-pre-wrap">
+          {activeService.prompt}
+        </div>
+      );
+    }
+
+    if (modalType === "autofix") {
+      title = "Auto Fix Attempt";
+      body = (
+        <div className="space-y-2 text-xs text-gray-300">
+          <div className="text-white mb-2">{activeService.name}</div>
+          {activeService.autoFix.length > 0 ? (
+            activeService.autoFix.map((step, i) => <div key={i}>• {step}</div>)
+          ) : (
+            <div>No auto-fix steps available.</div>
+          )}
+        </div>
+      );
+    }
+
+    if (modalType === "team") {
+      title = "Team Message";
+      body = (
+        <div className="text-xs text-gray-300 whitespace-pre-wrap">
+          {`@${activeService.owner} FIX NEEDED:\n\n${activeService.prompt}`}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className="fixed inset-0 flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}
+        onClick={closeModal}
+      >
+        <div
+          className="w-[520px] p-4 rounded-lg"
+          style={{
+            backgroundColor: "#0D1B2E",
+            border: "1px solid #1B2A4A",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-white mb-3 font-bold">{title}</div>
+          {body}
+          <button
+            onClick={closeModal}
+            className="mt-4 px-3 py-1 text-xs rounded"
+            style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -280,7 +376,7 @@ export default function SystemHealthPanel() {
                     <div className="flex gap-2 mt-3">
                       {s.autoFix.length > 0 && (
                         <button
-                          onClick={() => setAutoFixService(s)}
+                          onClick={(e) => openAutoFix(s, e)}
                           className="px-2 py-1 text-xs rounded"
                           style={{
                             backgroundColor: "#1B2A4A",
@@ -293,7 +389,7 @@ export default function SystemHealthPanel() {
                       )}
 
                       <button
-                        onClick={() => setSelectedPrompt(s.prompt)}
+                        onClick={(e) => openPrompt(s, e)}
                         className="px-2 py-1 text-xs rounded"
                         style={{
                           backgroundColor: "#1B2A4A",
@@ -305,10 +401,7 @@ export default function SystemHealthPanel() {
                       </button>
 
                       <button
-                        onClick={() => {
-                          setTeamMessage(`@${s.owner} FIX NEEDED:\n\n${s.prompt}`);
-                          logToVault(s);
-                        }}
+                        onClick={(e) => openTeam(s, e)}
                         className="px-2 py-1 text-xs rounded"
                         style={{
                           backgroundColor: "#1B2A4A",
@@ -327,82 +420,7 @@ export default function SystemHealthPanel() {
         )}
       </div>
 
-      {selectedPrompt && (
-        <div
-          className="fixed inset-0 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}
-        >
-          <div
-            className="w-[500px] p-4 rounded-lg"
-            style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
-          >
-            <div className="text-white mb-2">Fix Prompt</div>
-            <div className="text-xs text-gray-300 whitespace-pre-wrap mb-3">
-              {selectedPrompt}
-            </div>
-            <button
-              onClick={() => setSelectedPrompt(null)}
-              className="px-3 py-1 text-xs rounded"
-              style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {autoFixService && (
-        <div
-          className="fixed inset-0 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}
-        >
-          <div
-            className="w-[520px] p-4 rounded-lg"
-            style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
-          >
-            <div className="text-white mb-2">Auto Fix Attempt</div>
-            <div className="text-xs text-gray-300 mb-3">{autoFixService.name}</div>
-
-            <div className="space-y-2 text-xs text-gray-300 mb-4">
-              {autoFixService.autoFix.map((step, i) => (
-                <div key={i}>• {step}</div>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setAutoFixService(null)}
-              className="px-3 py-1 text-xs rounded"
-              style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {teamMessage && (
-        <div
-          className="fixed inset-0 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}
-        >
-          <div
-            className="w-[500px] p-4 rounded-lg"
-            style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
-          >
-            <div className="text-white mb-2">Team Message</div>
-            <div className="text-xs text-gray-300 whitespace-pre-wrap mb-3">
-              {teamMessage}
-            </div>
-            <button
-              onClick={() => setTeamMessage(null)}
-              className="px-3 py-1 text-xs rounded"
-              style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {renderModal()}
     </>
   );
 }
