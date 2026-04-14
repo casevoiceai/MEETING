@@ -67,9 +67,11 @@ export default function App() {
     setActiveTab(tab);
   };
 
+  const mainOverflowClass = activeTab === "MEETING" ? "overflow-hidden" : "overflow-y-auto";
+
   return (
     <div
-      className="h-screen flex flex-col overflow-hidden"
+      className="h-screen flex flex-col"
       style={{
         backgroundColor: "#08111F",
         color: "#FFFFFF",
@@ -159,7 +161,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="relative z-0 flex-1 min-h-0 overflow-hidden">
+      <main className={`relative z-0 flex-1 min-h-0 ${mainOverflowClass}`}>
         {activeTab === "MEETING" && (
           <StaffMeetingRoom sessionId={null} sessionKey={null} />
         )}
