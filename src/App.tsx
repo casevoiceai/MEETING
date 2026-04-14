@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import VaultView from "./screens/VaultView";
 import SystemHealthPanel from "./components/SystemHealthPanel";
@@ -29,10 +29,7 @@ const MAIN_TABS: MainTab[] = [
 
 function PlaceholderScreen({ title }: { title: string }) {
   return (
-    <div
-      className="h-full w-full p-8"
-      style={{ backgroundColor: "#08111F" }}
-    >
+    <div className="h-full w-full p-8" style={{ backgroundColor: "#08111F" }}>
       <div
         className="rounded-xl border p-8"
         style={{
@@ -53,6 +50,25 @@ function PlaceholderScreen({ title }: { title: string }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("MEETING");
   const [reportsOpen, setReportsOpen] = useState(false);
+
+  useEffect(() => {
+    const openVault = () => {
+      setActiveTab("VAULT");
+      setReportsOpen(false);
+    };
+
+    const openReports = () => {
+      setReportsOpen(true);
+    };
+
+    window.addEventListener("open-vault-tab", openVault);
+    window.addEventListener("open-reports-modal", openReports);
+
+    return () => {
+      window.removeEventListener("open-vault-tab", openVault);
+      window.removeEventListener("open-reports-modal", openReports);
+    };
+  }, []);
 
   const handleTabChange = (tab: MainTab) => {
     setActiveTab(tab);
