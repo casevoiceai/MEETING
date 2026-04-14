@@ -223,11 +223,11 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
             <div style={countBadge}>{activeCount}</div>
 
             <div style={reportList}>
-              {reports.length === 0 ? (
+              {reports.length == 0 ? (
                 <div style={emptyState}>No active reports.</div>
               ) : (
                 reports.map((report) => {
-                  const isSelected = selectedReport?.id === report.id;
+                  const isSelected = selectedReport?.id == report.id;
 
                   return (
                     <button
@@ -334,6 +334,7 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
                   onChange={(event) => handleNotesChange(event.target.value)}
                   placeholder="Add notes..."
                   style={notesBox}
+                  spellCheck={false}
                 />
 
                 <button
@@ -350,7 +351,7 @@ export default function SystemReportsModal({ onClose }: SystemReportsModalProps)
                     <div style={advancedLabel}>Tags</div>
                     <div style={tagsWrap}>
                       {selectedTags.map((tag) => (
-                        <span key={tag} style={tagPill}>
+                        <span key={tag} style={tagPill} aria-hidden="true">
                           {tag}
                         </span>
                       ))}
@@ -534,6 +535,9 @@ const pillBase: React.CSSProperties = {
   fontWeight: 800,
   letterSpacing: "0.03em",
   border: "1px solid currentColor",
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  pointerEvents: "none",
 };
 
 const ownerPill: React.CSSProperties = {
@@ -569,6 +573,9 @@ const openMiniButton: React.CSSProperties = {
   padding: "10px 16px",
   fontWeight: 800,
   fontSize: "14px",
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  pointerEvents: "none",
 };
 
 const detailCard: React.CSSProperties = {
@@ -708,6 +715,8 @@ const advancedHeader: React.CSSProperties = {
   fontSize: "18px",
   fontWeight: 800,
   cursor: "pointer",
+  userSelect: "none",
+  WebkitUserSelect: "none",
 };
 
 const advancedPanel: React.CSSProperties = {
@@ -732,6 +741,8 @@ const tagsWrap: React.CSSProperties = {
   gap: "8px",
   flexWrap: "wrap",
   marginBottom: "18px",
+  userSelect: "none",
+  WebkitUserSelect: "none",
 };
 
 const tagPill: React.CSSProperties = {
@@ -742,6 +753,9 @@ const tagPill: React.CSSProperties = {
   color: "#bfdbfe",
   background: "rgba(59, 130, 246, 0.12)",
   border: "1px solid rgba(96, 165, 250, 0.22)",
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  pointerEvents: "none",
 };
 
 const custodyBox: React.CSSProperties = {
