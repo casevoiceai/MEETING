@@ -1,191 +1,83 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { testDriveConnection } from "../lib/integrations";
 
-type ServiceStatus = "Connected" | "Error" | "Warning";
-
-type Service = {
-  name: string;
-  status: ServiceStatus;
-  error: string;
-  explanation: string;
-  impact: string;
-  steps: string[];
-  prompt: string;
-  severity: "Low" | "Medium" | "High";
-  owner: string;
-};
-
-const SERVICES: Service[] = [
-  {
-    name: "Database",
-    status: "Connected",
-    error: "None",
-    explanation: "Database is responding normally.",
-    impact: "Core data system is working.",
-    steps: [],
-    prompt: "",
-    severity: "Low",
-    owner: "Backend",
-  },
-  {
-    name: "Google Drive",
-    status: "Error",
-    error: "Failed to fetch",
-    explanation: "The app tried to reach Google Drive but did not get a usable response.",
-    impact: "Drive sync is blocked.",
-    steps: [
-      "Open Vercel project settings",
-      "Check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET",
-      "Confirm redirect URI matches",
-      "Re-authenticate Google Drive connection",
-      "Test connection again",
-    ],
-    prompt: "Fix Google Drive integration. Diagnose auth, route, env variables.",
-    severity: "High",
-    owner: "Integrations",
-  },
-  {
-    name: "Auth",
-    status: "Warning",
-    error: "Token aging",
-    explanation: "Session token is aging.",
-    impact: "May break integrations.",
-    steps: ["Log out", "Log in again"],
-    prompt: "Fix auth token aging issue",
-    severity: "Medium",
-    owner: "Auth",
-  },
-];
+type Status = "loading" | "connected" | "error";
 
 export default function SystemHealthPanel() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>("Google Drive");
+  const [driveStatus, setDriveStatus] = useState<Status>("loading");
+  const [driveError, setDriveError] = useState<string | null>(null);
 
-  const logReport = (service: Service, type: string) => {
-    const existing = JSON.parse(localStorage.getItem("system_health_reports") || "[]");
+  async function runCheck() {
+    setDriveStatus("loading");
 
-    const newReport = {
-      id: crypto.randomUUID(),
-      time: new Date().toLocaleTimeString(),
-      service: service.name,
-      owner: service.owner,
-      message: service.prompt,
-      type,
-      status: "PENDING",
-      outcome: null,
-      notes: "",
-    };
+    const result = await testDriveConnection();
 
-    localStorage.setItem(
-      "system_health_reports",
-      JSON.stringify([newReport, ...existing])
-    );
+    if (result.success) {
+      setDriveStatus("connected");
+      setDriveError(null);
+    } else {
+      setDriveStatus("error");
+      setDriveError(result.error || "Unknown error");
+    }
+  }
 
-    window.dispatchEvent(new Event("storage_sync"));
-    window.dispatchEvent(new Event("open-reports-modal"));
-  };
+  useEffect(() => {
+    runCheck();
+  }, []);
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#111D30] border border-[#1B2A4A] text-[#C9A84C]"
-      >
-        SYSTEM HEALTH
-      </button>
+    <div className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
+      style={{
+        color: "#8A9BB5",
+        backgroundColor: "#0D1B2E",
+        border: "1px solid #1B2A4A",
+      }}
+    >
+      <div className="mb-2">SYSTEM HEALTH</div>
 
-      {isOpen && (
-        <div className="fixed right-0 top-[60px] h-[calc(100vh-60px)] w-[360px] bg-[#0D1B2E] border-l border-[#1B2A4A] z-[1000] overflow-y-auto">
-          <div className="p-4 border-b border-[#1B2A4A]">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-[10px] text-gray-500 uppercase font-bold">SYSTEM STATUS</p>
-                <p className="text-[10px] text-gray-400">Last Check: 4:31 PM</p>
-              </div>
-              <span className="text-[10px] bg-red-900/30 text-red-400 px-2 py-0.5 rounded">
-                Degraded
-              </span>
-            </div>
-
-            <div className="flex gap-4 mt-2 text-[10px] text-gray-400">
-              <span>Services: {SERVICES.length}</span>
-              <span>Errors: {SERVICES.filter((s) => s.status === "Error").length}</span>
-              <span>Warnings: {SERVICES.filter((s) => s.status === "Warning").length}</span>
-            </div>
-          </div>
-
-          <div className="p-3 space-y-2">
-            {SERVICES.map((s) => (
-              <div key={s.name} className="border border-[#1B2A4A] rounded">
-                <div
-                  onClick={() => setExpanded(expanded === s.name ? null : s.name)}
-                  className="p-3 cursor-pointer flex justify-between items-center"
-                >
-                  <span className="text-white text-xs font-bold">{s.name}</span>
-                  <span
-                    className={
-                      s.status === "Error"
-                        ? "text-red-400 text-xs"
-                        : s.status === "Warning"
-                          ? "text-yellow-400 text-xs"
-                          : "text-green-400 text-xs"
-                    }
-                  >
-                    {s.status}
-                  </span>
-                </div>
-
-                {expanded === s.name && (
-                  <div className="px-3 pb-3 border-t border-[#1B2A4A] space-y-3">
-                    <p className="text-[10px] text-gray-400">{s.error}</p>
-                    <p className="text-[10px] text-gray-500">{s.explanation}</p>
-
-                    {s.status !== "Connected" && (
-                      <>
-                        <div className="text-[10px] text-red-400 font-bold">
-                          SEVERITY: {s.severity}
-                        </div>
-
-                        <div className="text-[10px] text-purple-400">
-                          OWNER: {s.owner}
-                        </div>
-
-                        <div className="text-[10px] text-gray-400 space-y-1">
-                          {s.steps.map((step, i) => (
-                            <div key={i}>- {step}</div>
-                          ))}
-                        </div>
-
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            onClick={() => logReport(s, "AUTO_FIX")}
-                            className="text-[10px] px-2 py-1 border border-blue-500 text-blue-400 rounded"
-                          >
-                            Auto Fix
-                          </button>
-
-                          <button
-                            onClick={() => logReport(s, "FIX_PROMPT")}
-                            className="text-[10px] px-2 py-1 border border-yellow-500 text-yellow-400 rounded"
-                          >
-                            Fix Prompt
-                          </button>
-
-                          <button
-                            onClick={() => logReport(s, "SEND_TO_TEAM")}
-                            className="text-[10px] px-2 py-1 border border-green-500 text-green-400 rounded"
-                          >
-                            Send to Team
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+      <div>
+        <div>
+          Database: <span style={{ color: "#00FF9C" }}>Connected</span>
         </div>
-      )}
+
+        <div>
+          Google Drive:{" "}
+          {driveStatus === "loading" && (
+            <span style={{ color: "#FFD166" }}>Checking...</span>
+          )}
+
+          {driveStatus === "connected" && (
+            <span style={{ color: "#00FF9C" }}>Connected</span>
+          )}
+
+          {driveStatus === "error" && (
+            <span style={{ color: "#FF5F5F" }}>
+              Error
+            </span>
+          )}
+        </div>
+
+        {driveStatus === "error" && (
+          <div style={{ fontSize: "10px", color: "#FF5F5F", marginTop: "4px" }}>
+            {driveError}
+          </div>
+        )}
+
+        <button
+          onClick={runCheck}
+          style={{
+            marginTop: "8px",
+            padding: "4px 8px",
+            border: "1px solid #1B2A4A",
+            backgroundColor: "#132845",
+            color: "#F8FAFC",
+            borderRadius: "6px",
+            cursor: "pointer",
+          }}
+        >
+          Test Connection
+        </button>
+      </div>
     </div>
   );
 }
