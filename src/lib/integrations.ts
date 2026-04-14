@@ -13,7 +13,18 @@ function authHeaders() {
   return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    apikey: SUPABASE_ANON_KEY,
   };
+}
+
+async function parseJsonSafe(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { error: text };
+  }
 }
 
 async function safeNotionFetch(
@@ -24,7 +35,11 @@ async function safeNotionFetch(
 
   const locked = await isLocked("notion").catch(() => false);
   if (locked) {
-    return { success: false, error: "Notion integration is locked due to repeated failures. Review required before resuming.", locked: true };
+    return {
+      success: false,
+      error: "Notion integration is locked due to repeated failures. Review required before resuming.",
+      locked: true,
+    };
   }
 
   try {
@@ -33,18 +48,21 @@ async function safeNotionFetch(
       headers: authHeaders(),
       body: JSON.stringify(body),
     });
+
+    const data = await parseJsonSafe(res);
+
     if (!res.ok) {
-      const errorText = await res.text().catch(() => `HTTP ${res.status}`);
-      const errMsg = `HTTP ${res.status}: ${errorText}`;
+      const errMsg = String(data.error ?? `HTTP ${res.status}`);
       recordFailure("notion", errMsg, op).catch(() => {});
       return { success: false, error: errMsg, unavailable: true };
     }
-    const data = await res.json();
+
     if (data.error || data.success === false) {
-      const errMsg = data.error ?? "Notion returned an error";
+      const errMsg = String(data.error ?? "Notion returned an error");
       recordFailure("notion", errMsg, op).catch(() => {});
       return { success: false, error: errMsg, unavailable: false, data };
     }
+
     recordSuccess("notion").catch(() => {});
     return { success: true, data };
   } catch (err) {
@@ -110,13 +128,26 @@ export async function testDriveConnection(): Promise<{ success: boolean; error?:
       headers: authHeaders(),
       body: JSON.stringify({ action: "test_connection" }),
     });
-    const data = await res.json();
+
+    const data = await parseJsonSafe(res);
+
+    if (!res.ok) {
+      const errMsg = String(data.error ?? `HTTP ${res.status}`);
+      recordFailure("drive", errMsg, "test_connection").catch(() => {});
+      return { success: false, error: errMsg };
+    }
+
     if (data.success) {
       recordSuccess("drive").catch(() => {});
-    } else {
-      recordFailure("drive", data.error ?? `HTTP ${res.status}`, "test_connection").catch(() => {});
+      return {
+        success: true,
+        folders: (data.folders as Record<string, string> | undefined) ?? {},
+      };
     }
-    return data;
+
+    const errMsg = String(data.error ?? `HTTP ${res.status}`);
+    recordFailure("drive", errMsg, "test_connection").catch(() => {});
+    return { success: false, error: errMsg };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Network error";
     recordFailure("drive", msg, "test_connection").catch(() => {});
@@ -184,13 +215,26 @@ export async function syncFileToDrive(params: {
         driveFolder: params.driveFolder ?? "files",
       }),
     });
-    const data = await res.json();
+
+    const data = await parseJsonSafe(res);
+
+    if (!res.ok) {
+      const errMsg = String(data.error ?? `HTTP ${res.status}`);
+      recordFailure("drive", errMsg, "sync_file").catch(() => {});
+      return { success: false, error: errMsg };
+    }
+
     if (data.success) {
       recordSuccess("drive").catch(() => {});
-    } else {
-      recordFailure("drive", data.error ?? `HTTP ${res.status}`, "sync_file").catch(() => {});
+      return {
+        success: true,
+        driveUrl: data.driveUrl as string | undefined,
+      };
     }
-    return data;
+
+    const errMsg = String(data.error ?? `HTTP ${res.status}`);
+    recordFailure("drive", errMsg, "sync_file").catch(() => {});
+    return { success: false, error: errMsg };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Network error";
     recordFailure("drive", msg, "sync_file").catch(() => {});
@@ -208,6 +252,7 @@ export async function syncTranscriptToDrive(params: {
   if (driveLocked) {
     return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
   }
+
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
@@ -220,13 +265,27 @@ export async function syncTranscriptToDrive(params: {
         julieReportJson: params.julieReport,
       }),
     });
-    const data = await res.json();
+
+    const data = await parseJsonSafe(res);
+
+    if (!res.ok) {
+      const errMsg = String(data.error ?? `HTTP ${res.status}`);
+      recordFailure("drive", errMsg, "sync_transcript").catch(() => {});
+      return { success: false, error: errMsg };
+    }
+
     if (data.success) {
       recordSuccess("drive").catch(() => {});
-    } else {
-      recordFailure("drive", data.error ?? "sync_transcript failed", "sync_transcript").catch(() => {});
+      return {
+        success: true,
+        transcriptUrl: data.transcriptUrl as string | undefined,
+        reportUrl: data.reportUrl as string | undefined,
+      };
     }
-    return data;
+
+    const errMsg = String(data.error ?? "sync_transcript failed");
+    recordFailure("drive", errMsg, "sync_transcript").catch(() => {});
+    return { success: false, error: errMsg };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Network error";
     recordFailure("drive", msg, "sync_transcript").catch(() => {});
@@ -245,19 +304,33 @@ export async function syncSideNoteToDrive(params: {
   if (driveLocked) {
     return { success: false, error: "Drive integration is locked due to repeated failures. Review required before resuming." };
   }
+
   try {
     const res = await fetch(edgeFn("google-drive-sync"), {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ action: "sync_side_note", ...params }),
     });
-    const data = await res.json();
+
+    const data = await parseJsonSafe(res);
+
+    if (!res.ok) {
+      const errMsg = String(data.error ?? `HTTP ${res.status}`);
+      recordFailure("drive", errMsg, "sync_side_note").catch(() => {});
+      return { success: false, error: errMsg };
+    }
+
     if (data.success) {
       recordSuccess("drive").catch(() => {});
-    } else {
-      recordFailure("drive", data.error ?? "sync_side_note failed", "sync_side_note").catch(() => {});
+      return {
+        success: true,
+        driveUrl: data.driveUrl as string | undefined,
+      };
     }
-    return data;
+
+    const errMsg = String(data.error ?? "sync_side_note failed");
+    recordFailure("drive", errMsg, "sync_side_note").catch(() => {});
+    return { success: false, error: errMsg };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Network error";
     recordFailure("drive", msg, "sync_side_note").catch(() => {});
@@ -404,9 +477,12 @@ export async function retryNotionPendingItems(): Promise<{ retried: number; succ
 
   for (const item of pending) {
     const payload = item.payload as Record<string, unknown>;
-    const action = item.notion_db === "julie_reports" ? "sync_julie_report"
-            : item.notion_db === "tasks" ? "sync_task"
-            : "sync_project";
+    const action = item.notion_db === "julie_reports"
+      ? "sync_julie_report"
+      : item.notion_db === "tasks"
+        ? "sync_task"
+        : "sync_project";
+
     const result = await safeNotionFetch({ action, syncLogId: item.id, ...payload }, action);
 
     if (result.success) {
@@ -436,8 +512,15 @@ export async function getNotionFallbackStatus(): Promise<{
   pendingCount: number;
 }> {
   const [settingsRes, pendingRes] = await Promise.all([
-    supabase.from("integration_settings").select("fallback_mode,last_error,last_error_at").eq("integration_type", "notion").maybeSingle(),
-    supabase.from("notion_sync_log").select("id", { count: "exact", head: true }).in("status", ["notion_sync_pending", "failed"]),
+    supabase
+      .from("integration_settings")
+      .select("fallback_mode,last_error,last_error_at")
+      .eq("integration_type", "notion")
+      .maybeSingle(),
+    supabase
+      .from("notion_sync_log")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["notion_sync_pending", "failed"]),
   ]);
 
   return {
@@ -459,7 +542,12 @@ export async function getSyncStatusForSession(sessionId: string): Promise<{
       .select("*")
       .eq("session_id", sessionId)
       .order("created_at", { ascending: false });
+
     return { drive: [], notion: (data ?? []) as NotionSyncLog[] };
   }
-  return { drive: (result.data?.drive ?? []) as DriveSyncLog[], notion: (result.data?.notion ?? []) as NotionSyncLog[] };
+
+  return {
+    drive: (result.data?.drive ?? []) as DriveSyncLog[],
+    notion: (result.data?.notion ?? []) as NotionSyncLog[],
+  };
 }
