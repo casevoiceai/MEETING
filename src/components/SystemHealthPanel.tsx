@@ -37,7 +37,7 @@ const SERVICES: Service[] = [
       "Check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET",
       "Confirm redirect URI matches",
       "Re-authenticate Google Drive connection",
-      "Test connection again"
+      "Test connection again",
     ],
     prompt: "Fix Google Drive integration. Diagnose auth, route, env variables.",
     severity: "High",
@@ -70,6 +70,9 @@ export default function SystemHealthPanel() {
       owner: service.owner,
       message: service.prompt,
       type,
+      status: "PENDING",
+      outcome: null,
+      notes: "",
     };
 
     localStorage.setItem(
@@ -78,6 +81,7 @@ export default function SystemHealthPanel() {
     );
 
     window.dispatchEvent(new Event("storage_sync"));
+    window.dispatchEvent(new Event("open-vault-tab"));
   };
 
   return (
@@ -91,8 +95,6 @@ export default function SystemHealthPanel() {
 
       {isOpen && (
         <div className="fixed right-0 top-[60px] h-[calc(100vh-60px)] w-[360px] bg-[#0D1B2E] border-l border-[#1B2A4A] z-[1000] overflow-y-auto">
-
-          {/* HEADER */}
           <div className="p-4 border-b border-[#1B2A4A]">
             <div className="flex justify-between items-center">
               <div>
@@ -106,44 +108,37 @@ export default function SystemHealthPanel() {
 
             <div className="flex gap-4 mt-2 text-[10px] text-gray-400">
               <span>Services: {SERVICES.length}</span>
-              <span>Errors: {SERVICES.filter(s => s.status === "Error").length}</span>
-              <span>Warnings: {SERVICES.filter(s => s.status === "Warning").length}</span>
+              <span>Errors: {SERVICES.filter((s) => s.status === "Error").length}</span>
+              <span>Warnings: {SERVICES.filter((s) => s.status === "Warning").length}</span>
             </div>
           </div>
 
-          {/* SERVICES */}
           <div className="p-3 space-y-2">
             {SERVICES.map((s) => (
               <div key={s.name} className="border border-[#1B2A4A] rounded">
-
-                {/* ROW */}
                 <div
                   onClick={() => setExpanded(expanded === s.name ? null : s.name)}
                   className="p-3 cursor-pointer flex justify-between items-center"
                 >
                   <span className="text-white text-xs font-bold">{s.name}</span>
-                  <span className={
-                    s.status === "Error"
-                      ? "text-red-400 text-xs"
-                      : s.status === "Warning"
-                      ? "text-yellow-400 text-xs"
-                      : "text-green-400 text-xs"
-                  }>
+                  <span
+                    className={
+                      s.status === "Error"
+                        ? "text-red-400 text-xs"
+                        : s.status === "Warning"
+                          ? "text-yellow-400 text-xs"
+                          : "text-green-400 text-xs"
+                    }
+                  >
                     {s.status}
                   </span>
                 </div>
 
-                {/* EXPANDED */}
                 {expanded === s.name && (
                   <div className="px-3 pb-3 border-t border-[#1B2A4A] space-y-3">
+                    <p className="text-[10px] text-gray-400">{s.error}</p>
 
-                    <p className="text-[10px] text-gray-400">
-                      {s.error}
-                    </p>
-
-                    <p className="text-[10px] text-gray-500">
-                      {s.explanation}
-                    </p>
+                    <p className="text-[10px] text-gray-500">{s.explanation}</p>
 
                     {s.status !== "Connected" && (
                       <>
@@ -187,7 +182,6 @@ export default function SystemHealthPanel() {
                     )}
                   </div>
                 )}
-
               </div>
             ))}
           </div>
