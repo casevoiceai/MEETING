@@ -173,9 +173,10 @@ export default function App() {
         )}
       </main>
 
-      {reportsOpen && (
-        <SystemReportsModal onClose={() => setReportsOpen(false)} />
-      )}
+      <SystemReportsModal
+        isOpen={reportsOpen}
+        onClose={() => setReportsOpen(false)}
+      />
     </div>
   );
 }
