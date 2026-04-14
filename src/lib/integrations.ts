@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase";
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, ensureSupabaseSession } from "./supabase";
 import {
   createDriveSyncLog,
   createNotionSyncLog,
@@ -12,14 +12,16 @@ function edgeFn(slug: string) {
 }
 
 async function authHeaders() {
-  const session = await supabase.auth.getSession();
-  const accessToken = session.data.session?.access_token;
+  const ensuredSession = await ensureSupabaseSession();
+  const accessToken = ensuredSession?.access_token;
+
+  if (!accessToken) {
+    throw new Error("No valid Supabase session available");
+  }
 
   return {
     "Content-Type": "application/json",
-    Authorization: accessToken
-      ? `Bearer ${accessToken}`
-      : `Bearer ${SUPABASE_ANON_KEY}`,
+    Authorization: `Bearer ${accessToken}`,
     apikey: SUPABASE_ANON_KEY,
   };
 }
