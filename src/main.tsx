@@ -1,27 +1,32 @@
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
-
-import { ensureSupabaseSession } from './lib/supabase';
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
+import { ensureSupabaseSession } from "./lib/supabase";
 
 async function startApp() {
-  try {
-    console.log("Initializing Supabase session...");
+  console.error("[BOOT] main.tsx loaded");
 
+  try {
     const session = await ensureSupabaseSession();
 
-    if (!session) {
-      console.error("FAILED to create Supabase session");
+    if (session?.access_token) {
+      console.error("[BOOT] session ready", session.user?.id ?? "no-user");
     } else {
-      console.log("Supabase session ready");
+      console.error("[BOOT] no session returned");
     }
-
-  } catch (err) {
-    console.error("Startup auth error:", err);
+  } catch (error) {
+    console.error("[BOOT] startup auth crash", error);
   }
 
-  createRoot(document.getElementById('root')!).render(
+  const rootEl = document.getElementById("root");
+
+  if (!rootEl) {
+    console.error("[BOOT] root element missing");
+    return;
+  }
+
+  createRoot(rootEl).render(
     <StrictMode>
       <App />
     </StrictMode>
