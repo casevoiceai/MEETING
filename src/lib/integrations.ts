@@ -1,9 +1,7 @@
-import { supabase } from "./supabase";
+
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase";
 import { createDriveSyncLog, createNotionSyncLog, type DriveSyncLog, type NotionSyncLog } from "./db";
 import { recordFailure, recordSuccess, isLocked } from "./deadManSwitch";
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 function edgeFn(slug: string) {
   return `${SUPABASE_URL}/functions/v1/${slug}`;
