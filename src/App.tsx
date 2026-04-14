@@ -30,17 +30,22 @@ const MAIN_TABS: MainTab[] = [
 function PlaceholderScreen({ title }: { title: string }) {
   return (
     <div
-      className="flex-1 min-h-0 rounded-xl border p-8"
-      style={{
-        backgroundColor: "#0D1B2E",
-        borderColor: "#1B2A4A",
-        color: "#8A9BB5",
-      }}
+      className="h-full w-full p-8"
+      style={{ backgroundColor: "#08111F" }}
     >
-      <div className="text-[11px] font-bold tracking-[0.22em] uppercase mb-3">
-        {title}
+      <div
+        className="rounded-xl border p-8"
+        style={{
+          backgroundColor: "#0D1B2E",
+          borderColor: "#1B2A4A",
+          color: "#8A9BB5",
+        }}
+      >
+        <div className="text-[11px] font-bold tracking-[0.22em] uppercase mb-3">
+          {title}
+        </div>
+        <div className="text-sm">This section is standing by.</div>
       </div>
-      <div className="text-sm">This section is standing by.</div>
     </div>
   );
 }
@@ -49,9 +54,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("MEETING");
   const [reportsOpen, setReportsOpen] = useState(false);
 
+  const handleTabChange = (tab: MainTab) => {
+    setActiveTab(tab);
+    setReportsOpen(false);
+  };
+
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="h-screen flex flex-col overflow-hidden"
       style={{
         backgroundColor: "#08111F",
         color: "#FFFFFF",
@@ -59,23 +69,27 @@ export default function App() {
       }}
     >
       <header
-        className="border-b"
+        className="relative z-[200] flex-shrink-0 border-b"
         style={{ borderColor: "#1B2A4A", backgroundColor: "#08111F" }}
       >
-        <div className="px-5 h-[58px] flex items-center justify-between">
-          <div className="flex items-center gap-8 min-w-0">
-            <div className="text-sm font-bold tracking-wide whitespace-nowrap" style={{ color: "#C9A84C" }}>
+        <div className="px-5 h-[58px] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6 min-w-0 flex-1 overflow-hidden">
+            <div
+              className="text-sm font-bold tracking-wide whitespace-nowrap flex-shrink-0"
+              style={{ color: "#C9A84C" }}
+            >
               MYSTATEMENT_AI
             </div>
 
-            <nav className="flex items-center gap-2 overflow-x-auto">
+            <nav className="flex items-center gap-2 min-w-0 overflow-x-auto pb-1">
               {MAIN_TABS.map((tab) => {
                 const active = activeTab === tab;
+
                 return (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all"
+                    onClick={() => handleTabChange(tab)}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all flex-shrink-0"
                     style={
                       active
                         ? {
@@ -97,7 +111,7 @@ export default function App() {
             </nav>
           </div>
 
-          <div className="flex items-center gap-2 pl-4">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
               style={{
@@ -137,7 +151,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 min-h-0">
+      <main className="relative z-0 flex-1 min-h-0 overflow-hidden">
         {activeTab === "MEETING" && (
           <StaffMeetingRoom sessionId={null} sessionKey={null} />
         )}
@@ -149,7 +163,7 @@ export default function App() {
         {activeTab === "TAGS" && <PlaceholderScreen title="Tags" />}
         {activeTab === "PROJECTS" && <PlaceholderScreen title="Projects" />}
         {activeTab === "INTEGRATIONS" && <PlaceholderScreen title="Integrations" />}
-        {activeTab === "SOURCE OF TRUTH" && <PlaceholderScreen title="Source of Truth" />}
+        {activeTab === "SOURCE OF TRUTH" && <PlaceholderScreen title="Source Of Truth" />}
         {activeTab === "RECOVERY" && <PlaceholderScreen title="Recovery" />}
       </main>
 
