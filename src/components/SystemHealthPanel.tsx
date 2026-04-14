@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { createPortal } from "react-dom";
 
 type ServiceStatus = "Connected" | "Error" | "Warning";
 
@@ -12,11 +11,8 @@ type Service = {
   steps: string[];
   prompt: string;
   severity: "Low" | "Medium" | "High";
-  autoFix: string[];
   owner: string;
 };
-
-type ActiveModal = "prompt" | "autofix" | "team" | null;
 
 const SERVICES: Service[] = [
   {
@@ -25,10 +21,9 @@ const SERVICES: Service[] = [
     error: "None",
     explanation: "Database is responding normally.",
     impact: "Core data system is working.",
-    steps: ["No action needed"],
-    prompt: "Database OK",
+    steps: [],
+    prompt: "",
     severity: "Low",
-    autoFix: [],
     owner: "Backend",
   },
   {
@@ -37,34 +32,37 @@ const SERVICES: Service[] = [
     error: "Failed to fetch",
     explanation: "The app tried to reach Google Drive but did not get a usable response.",
     impact: "Drive sync is blocked.",
-    steps: ["Check GOOGLE_CLIENT_ID", "Re-authenticate connection"],
+    steps: [
+      "Open Vercel project settings",
+      "Check GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET",
+      "Confirm redirect URI matches",
+      "Re-authenticate Google Drive connection",
+      "Test connection again"
+    ],
     prompt: "Fix Google Drive integration. Diagnose auth, route, env variables.",
     severity: "High",
-    autoFix: ["Reset cached auth", "Retry integration route"],
     owner: "Integrations",
   },
   {
     name: "Auth",
     status: "Warning",
     error: "Token aging",
-    explanation: "Session aging.",
+    explanation: "Session token is aging.",
     impact: "May break integrations.",
     steps: ["Log out", "Log in again"],
     prompt: "Fix auth token aging issue",
     severity: "Medium",
-    autoFix: ["Refresh session token"],
     owner: "Auth",
   },
 ];
 
 export default function SystemHealthPanel() {
   const [isOpen, setIsOpen] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [modalType, setModalType] = useState<ActiveModal>(null);
-  const [activeService, setActiveService] = useState<Service | null>(null);
+  const [expanded, setExpanded] = useState<string | null>("Google Drive");
 
   const logToVault = (service: Service, type: string) => {
     const existing = JSON.parse(localStorage.getItem("system_health_reports") || "[]");
+
     const newReport = {
       id: crypto.randomUUID(),
       time: new Date().toLocaleTimeString(),
@@ -73,16 +71,13 @@ export default function SystemHealthPanel() {
       message: service.prompt,
       type,
     };
-    localStorage.setItem("system_health_reports", JSON.stringify([newReport, ...existing]));
-    window.dispatchEvent(new Event("storage_sync"));
-  };
 
-  const handleAction = (e: React.MouseEvent, service: Service, type: ActiveModal) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setActiveService(service);
-    setModalType(type);
-    logToVault(service, type?.toUpperCase() || "");
+    localStorage.setItem(
+      "system_health_reports",
+      JSON.stringify([newReport, ...existing])
+    );
+
+    window.dispatchEvent(new Event("storage_sync"));
   };
 
   return (
@@ -95,68 +90,108 @@ export default function SystemHealthPanel() {
       </button>
 
       {isOpen && (
-        <div 
-          className="fixed top-[70px] right-6 w-[400px] bg-[#0D1B2E] border border-[#1B2A4A] rounded-xl p-4 shadow-2xl z-[1000] overflow-y-auto max-h-[70vh]"
-        >
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-[10px] text-gray-500 font-bold uppercase">Health Overview</span>
-            <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-white">✕</button>
+        <div className="fixed right-0 top-[60px] h-[calc(100vh-60px)] w-[360px] bg-[#0D1B2E] border-l border-[#1B2A4A] z-[1000] overflow-y-auto">
+
+          {/* HEADER */}
+          <div className="p-4 border-b border-[#1B2A4A]">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-[10px] text-gray-500 uppercase font-bold">SYSTEM STATUS</p>
+                <p className="text-[10px] text-gray-400">Last Check: 4:31 PM</p>
+              </div>
+              <span className="text-[10px] bg-red-900/30 text-red-400 px-2 py-0.5 rounded">
+                Degraded
+              </span>
+            </div>
+
+            <div className="flex gap-4 mt-2 text-[10px] text-gray-400">
+              <span>Services: {SERVICES.length}</span>
+              <span>Errors: {SERVICES.filter(s => s.status === "Error").length}</span>
+              <span>Warnings: {SERVICES.filter(s => s.status === "Warning").length}</span>
+            </div>
           </div>
 
-          <div className="space-y-2">
+          {/* SERVICES */}
+          <div className="p-3 space-y-2">
             {SERVICES.map((s) => (
-              <div key={s.name} className="border border-[#1B2A4A] rounded p-2 bg-[#0a1424]">
-                <div 
-                  className="flex justify-between items-center cursor-pointer"
+              <div key={s.name} className="border border-[#1B2A4A] rounded">
+
+                {/* ROW */}
+                <div
                   onClick={() => setExpanded(expanded === s.name ? null : s.name)}
+                  className="p-3 cursor-pointer flex justify-between items-center"
                 >
                   <span className="text-white text-xs font-bold">{s.name}</span>
-                  <span className={`text-[10px] ${s.status === 'Error' ? 'text-red-500' : 'text-green-500'}`}>{s.status}</span>
+                  <span className={
+                    s.status === "Error"
+                      ? "text-red-400 text-xs"
+                      : s.status === "Warning"
+                      ? "text-yellow-400 text-xs"
+                      : "text-green-400 text-xs"
+                  }>
+                    {s.status}
+                  </span>
                 </div>
 
+                {/* EXPANDED */}
                 {expanded === s.name && (
-                  <div className="mt-2 pt-2 border-t border-[#1B2A4A] space-y-3">
-                    <p className="text-[10px] text-gray-400">{s.explanation}</p>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={(e) => handleAction(e, s, "autofix")}
-                        className="flex-1 py-1 text-[10px] bg-blue-900/30 border border-blue-500 text-blue-400 rounded"
-                      >
-                        Auto Fix
-                      </button>
-                      <button 
-                        onClick={(e) => handleAction(e, s, "prompt")}
-                        className="flex-1 py-1 text-[10px] bg-yellow-900/30 border border-yellow-500 text-yellow-400 rounded"
-                      >
-                        Fix Prompt
-                      </button>
-                    </div>
+                  <div className="px-3 pb-3 border-t border-[#1B2A4A] space-y-3">
+
+                    <p className="text-[10px] text-gray-400">
+                      {s.error}
+                    </p>
+
+                    <p className="text-[10px] text-gray-500">
+                      {s.explanation}
+                    </p>
+
+                    {s.status !== "Connected" && (
+                      <>
+                        <div className="text-[10px] text-red-400 font-bold">
+                          SEVERITY: {s.severity}
+                        </div>
+
+                        <div className="text-[10px] text-purple-400">
+                          OWNER: {s.owner}
+                        </div>
+
+                        <div className="text-[10px] text-gray-400 space-y-1">
+                          {s.steps.map((step, i) => (
+                            <div key={i}>- {step}</div>
+                          ))}
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            onClick={() => logToVault(s, "AUTO_FIX")}
+                            className="text-[10px] px-2 py-1 border border-blue-500 text-blue-400 rounded"
+                          >
+                            Auto Fix
+                          </button>
+
+                          <button
+                            onClick={() => logToVault(s, "FIX_PROMPT")}
+                            className="text-[10px] px-2 py-1 border border-yellow-500 text-yellow-400 rounded"
+                          >
+                            Fix Prompt
+                          </button>
+
+                          <button
+                            onClick={() => logToVault(s, "SEND_TO_TEAM")}
+                            className="text-[10px] px-2 py-1 border border-green-500 text-green-400 rounded"
+                          >
+                            Send to Team
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
+
               </div>
             ))}
           </div>
         </div>
-      )}
-
-      {modalType && activeService && createPortal(
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999]">
-          <div className="bg-[#0D1B2E] border border-[#1B2A4A] p-6 rounded-lg w-[450px]">
-            <h3 className="text-white font-bold mb-4 uppercase tracking-widest text-sm border-b border-[#1B2A4A] pb-2">
-              {modalType.replace('u', 'U')}
-            </h3>
-            <div className="text-xs text-gray-300 mb-6 leading-relaxed">
-              {modalType === "prompt" ? activeService.prompt : `Initiating Auto-fix for ${activeService.name}...`}
-            </div>
-            <button 
-              onClick={() => { setModalType(null); setActiveService(null); }}
-              className="w-full py-2 bg-[#1B2A4A] text-[#C9A84C] text-xs font-bold rounded"
-            >
-              ACKNOWLEDGE
-            </button>
-          </div>
-        </div>,
-        document.body
       )}
     </div>
   );
