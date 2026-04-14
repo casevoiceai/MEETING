@@ -53,6 +53,7 @@ type VaultBucket = {
 };
 
 type DisplayRecord = {
+  uiKey?: string;
   id: string;
   rawId: string | number;
   sourceKey: string;
@@ -400,7 +401,7 @@ export default function VaultView({
   const [activeBucketId, setActiveBucketId] = useState(BUCKETS[0].id);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [recordsByBucket, setRecordsByBucket] = useState<Record<string, DisplayRecord[]>>({});
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedUiKey, setExpandedUiKey] = useState<string | null>(null);
   const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
 
   const refreshRecords = () => {
@@ -432,17 +433,24 @@ export default function VaultView({
     return records.filter((record) => normalizeStatus(record.status) === statusFilter);
   }, [records, statusFilter]);
 
-  const selectedRecord = filteredRecords.find((record) => record.id === expandedId) || null;
+  const visibleRecords = useMemo(() =>
+    filteredRecords.map((record, index) => ({
+      ...record,
+      uiKey: `${record.id}::${record.fingerprint}::${index}`,
+    })),
+  [filteredRecords]);
+
+  const selectedRecord = visibleRecords.find((record) => record.uiKey === expandedUiKey) || null;
 
   useEffect(() => {
-    if (!selectedRecord && filteredRecords.length > 0) {
-      setExpandedId(filteredRecords[0].id);
+    if (!selectedRecord && visibleRecords.length > 0) {
+      setExpandedUiKey(visibleRecords[0].uiKey || null);
     }
 
-    if (filteredRecords.length === 0) {
-      setExpandedId(null);
+    if (visibleRecords.length === 0) {
+      setExpandedUiKey(null);
     }
-  }, [filteredRecords, selectedRecord]);
+  }, [visibleRecords, selectedRecord]);
 
   const counts = useMemo(() => {
     const total = records.length;
@@ -618,19 +626,19 @@ export default function VaultView({
             </div>
 
             <div className="max-h-[720px] overflow-y-auto">
-              {filteredRecords.length === 0 ? (
+              {visibleRecords.length === 0 ? (
                 <div className="px-5 py-10 text-sm" style={{ color: "#8A9BB5" }}>
                   No records in this section yet.
                 </div>
               ) : (
-                filteredRecords.map((record) => {
-                  const expanded = record.id === expandedId;
+                visibleRecords.map((record) => {
+                  const expanded = record.uiKey === expandedUiKey;
                   const tone = statusTone(record.status);
 
                   return (
-                    <div key={record.id} className="border-b" style={{ borderColor: "#1B2A4A" }}>
+                    <div key={record.uiKey || record.id} className="border-b" style={{ borderColor: "#1B2A4A" }}>
                       <button
-                        onClick={() => setExpandedId(expanded ? null : record.id)}
+                        onClick={() => setExpandedUiKey(expanded ? null : (record.uiKey || null))}
                         className="w-full grid grid-cols-[1.05fr_0.85fr_0.9fr_1.55fr_0.75fr_0.6fr] gap-4 px-5 py-4 text-left items-start"
                         style={{ backgroundColor: expanded ? "rgba(201,168,76,0.04)" : "transparent" }}
                       >
