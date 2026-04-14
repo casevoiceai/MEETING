@@ -1,15 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 type ReportStatus = "Pending" | "In Progress" | "Fixed" | "Failed" | "Abandoned";
 
 type ReportItem = {
   id: string;
+  title: string;
   service: string;
   owner: string;
   status: ReportStatus;
   time: string;
   summary: string;
-  notes?: string;
+  notes: string;
   tags: string[];
   custody: {
     title: string;
@@ -22,9 +23,12 @@ type SystemReportsModalProps = {
   onClose: () => void;
 };
 
-const initialReports: ReportItem[] = [
+const STORAGE_KEY = "meeting-system-reports";
+
+const defaultReports: ReportItem[] = [
   {
     id: "google-drive-1",
+    title: "Google Drive",
     service: "Google Drive",
     owner: "INTEGRATIONS",
     status: "Pending",
@@ -42,92 +46,145 @@ const initialReports: ReportItem[] = [
   },
 ];
 
-export default function SystemReportsModal({
-  onClose,
-}: SystemReportsModalProps) {
-  const [reports, setReports] = useState<ReportItem[]>(initialReports);
-  const [selectedId, setSelectedId] = useState<string>(
-    initialReports[0]?.id ?? ""
-  );
-  const [advancedOpen, setAdvancedOpen] = useState<boolean>(false);
+function safeLoadReports(): ReportItem[] {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultReports;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return defaultReports;
+    return parsed.length > 0 ? parsed : [];
+  } catch {
+    return defaultReports;
+  }
+}
 
-  const selected = useMemo(
-    () => reports.find((report) => report.id === selectedId) ?? null,
-    [reports, selectedId]
-  );
+function formatStatusTag(status: ReportStatus): string {
+  return `STATUS_${status.toUpperCase().replace(/\s+/g, "_")}`;
+}
 
-  const updateSelectedStatus = (status: ReportStatus) => {
-    setReports((current) =>
-      current.map((report) =>
-        report.id === selectedId
-          ? {
-              ...report,
-              status,
-            }
-          : report
-      )
-    );
-  };
+export default function SystemReportsModal({ onClose }: SystemReportsModalProps) {
+  const [reports, setReports] = useState<ReportItem[]>(() => safeLoadReports());
+  const [selectedReport, setSelectedReport] = useState<ReportItem | null>(() => {
+    const initial = safeLoadReports();
+    return initial[0] ?? null;
+  });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const updateSelectedNotes = (notes: string) => {
-    setReports((current) =>
-      current.map((report) =>
-        report.id === selectedId
-          ? {
-              ...report,
-              notes,
-            }
-          : report
-      )
-    );
-  };
-
-  const deleteSelected = () => {
-    if (!selected) return;
-
-    const confirmed = window.confirm(
-      `Delete "${selected.service}" from this local reports list?`
-    );
-    if (!confirmed) return;
-
-    setReports((current) => current.filter((report) => report.id !== selected.id));
-
-    if (selectedId === selected.id) {
-      const remaining = reports.filter((report) => report.id !== selected.id);
-      setSelectedId(remaining[0]?.id ?? "");
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+    } catch {
+      // ignore storage failures
     }
-  };
+  }, [reports]);
 
-  const archiveSelected = (status: Extract<ReportStatus, "Fixed" | "Failed" | "Abandoned">) => {
-    updateSelectedStatus(status);
-  };
+  useEffect(() => {
+    if (!selectedReport) return;
+    const stillExists = reports.find((r) => r.id === selectedReport.id);
+    if (!stillExists) {
+      setSelectedReport(reports[0] ?? null);
+      return;
+    }
+    if (stillExists !== selectedReport) {
+      setSelectedReport(stillExists);
+    }
+  }, [reports, selectedReport]);
 
-  const saveToVault = () => {
-    if (!selected) return;
+  const activeCount = reports.length;
+
+  const selectedTags = useMemo(() => {
+    if (!selectedReport) return [];
+    const baseTags = selectedReport.tags.filter(
+      (tag) => !tag.startsWith("STATUS_")
+    );
+    return [...baseTags, formatStatusTag(selectedReport.status)];
+  }, [selectedReport]);
+
+  function updateSelectedReport(patch: Partial<ReportItem>) {
+    if (!selectedReport) return;
+
+    setReports((prev) =>
+      prev.map((report) =>
+        report.id === selectedReport.id ? { ...report, ...patch } : report
+      )
+    );
+  }
+
+  function handleStatusChange(status: ReportStatus) {
+    updateSelectedReport({ status });
+  }
+
+  function handleNotesChange(notes: string) {
+    updateSelectedReport({ notes });
+  }
+
+  function handleDelete() {
+    if (!selectedReport) return;
+
+    const confirmDelete = window.confirm(
+      `Delete "${selectedReport.title}" from this local reports list?`
+    );
+    if (!confirmDelete) return;
+
+    setReports((prev) => prev.filter((report) => report.id !== selectedReport.id));
+    setSelectedReport(null);
+    setAdvancedOpen(false);
+  }
+
+  function handleSaveToVault() {
+    if (!selectedReport) return;
+
+    const vaultPayload = {
+      id: selectedReport.id,
+      title: selectedReport.title,
+      service: selectedReport.service,
+      owner: selectedReport.owner,
+      status: selectedReport.status,
+      time: selectedReport.time,
+      summary: selectedReport.summary,
+      notes: selectedReport.notes,
+      tags: selectedTags,
+      source: "System Reports",
+      folderPath: "Vault / System Health Reports / Saved",
+      custody: selectedReport.custody,
+    };
 
     window.dispatchEvent(
       new CustomEvent("vault-reports-updated", {
         detail: {
           action: "save",
-          payload: {
-            id: selected.id,
-            service: selected.service,
-            owner: selected.owner,
-            status: selected.status,
-            time: selected.time,
-            summary: selected.summary,
-            notes: selected.notes ?? "",
-            tags: selected.tags,
-            source: "System Reports",
-            folderPath: "Vault / System Health Reports / Saved",
-            custody: selected.custody,
-          },
+          payload: vaultPayload,
         },
       })
     );
-  };
+  }
 
-  const statusStyle = (status: ReportStatus): React.CSSProperties => {
+  function handleArchive(status: Extract<ReportStatus, "Fixed" | "Failed" | "Abandoned">) {
+    if (!selectedReport) return;
+
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+    const updated: ReportItem = {
+      ...selectedReport,
+      status,
+      time,
+      custody: [
+        ...selectedReport.custody,
+        {
+          title: `Archived ${status}`,
+          time,
+          detail: `${selectedReport.title} archived as ${status}.`,
+        },
+      ],
+    };
+
+    setReports((prev) =>
+      prev.map((report) => (report.id === selectedReport.id ? updated : report))
+    );
+  }
+
+  function statusStyle(status: ReportStatus): React.CSSProperties {
     switch (status) {
       case "Pending":
         return statusPending;
@@ -142,7 +199,7 @@ export default function SystemReportsModal({
       default:
         return statusPending;
     }
-  };
+  }
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -150,9 +207,7 @@ export default function SystemReportsModal({
         <div style={header}>
           <div>
             <div style={title}>System Reports</div>
-            <div style={subtitle}>
-              Big picture left. Clean working detail on the right.
-            </div>
+            <div style={subtitle}>Big picture left. Clean working detail on the right.</div>
           </div>
 
           <button type="button" style={closeButton} onClick={onClose}>
@@ -163,23 +218,22 @@ export default function SystemReportsModal({
         <div style={body}>
           <div style={leftColumn}>
             <div style={leftLabel}>Active reports</div>
-            <div style={leftHelper}>
-              Pick one report to work. Keep the rest simple.
-            </div>
+            <div style={leftHelper}>Pick one report to work. Keep the rest simple.</div>
 
-            <div style={countBadge}>{reports.length}</div>
+            <div style={countBadge}>{activeCount}</div>
 
             <div style={reportList}>
               {reports.length === 0 ? (
                 <div style={emptyState}>No active reports.</div>
               ) : (
                 reports.map((report) => {
-                  const isSelected = report.id === selectedId;
+                  const isSelected = selectedReport?.id === report.id;
+
                   return (
                     <button
                       key={report.id}
                       type="button"
-                      onClick={() => setSelectedId(report.id)}
+                      onClick={() => setSelectedReport(report)}
                       style={{
                         ...reportCard,
                         ...(isSelected ? reportCardSelected : {}),
@@ -187,6 +241,7 @@ export default function SystemReportsModal({
                     >
                       <div style={reportCardTop}>
                         <div style={reportCardTitle}>{report.service}</div>
+
                         <div style={reportCardPills}>
                           <span style={{ ...pillBase, ...statusStyle(report.status) }}>
                             {report.status}
@@ -209,64 +264,65 @@ export default function SystemReportsModal({
           </div>
 
           <div style={rightColumn}>
-            {selected ? (
+            {selectedReport ? (
               <div style={detailCard}>
                 <div style={detailHeader}>
-                  <div style={detailTitle}>{selected.service}</div>
-                  <button type="button" style={deleteButton} onClick={deleteSelected}>
+                  <div style={detailTitle}>{selectedReport.service}</div>
+
+                  <button type="button" style={deleteButton} onClick={handleDelete}>
                     Delete
                   </button>
                 </div>
 
                 <div style={summaryLabel}>Summary</div>
-                <div style={summaryBox}>{selected.summary}</div>
+                <div style={summaryBox}>{selectedReport.summary}</div>
 
                 <div style={buttonRow}>
                   <button
                     type="button"
                     style={{ ...actionButton, ...statusPending }}
-                    onClick={() => updateSelectedStatus("Pending")}
+                    onClick={() => handleStatusChange("Pending")}
                   >
                     Pending
                   </button>
                   <button
                     type="button"
                     style={{ ...actionButton, ...statusProgress }}
-                    onClick={() => updateSelectedStatus("In Progress")}
+                    onClick={() => handleStatusChange("In Progress")}
                   >
                     In Progress
                   </button>
                   <button
                     type="button"
                     style={{ ...actionButton, ...statusFixed }}
-                    onClick={() => updateSelectedStatus("Fixed")}
+                    onClick={() => handleStatusChange("Fixed")}
                   >
                     Fixed
                   </button>
                 </div>
 
                 <div style={buttonRow}>
-                  <button type="button" style={saveButton} onClick={saveToVault}>
+                  <button type="button" style={saveButton} onClick={handleSaveToVault}>
                     Save to Vault
                   </button>
                   <button
                     type="button"
                     style={{ ...actionButton, ...statusFixed }}
-                    onClick={() => archiveSelected("Fixed")}
+                    onClick={() => handleArchive("Fixed")}
                   >
                     Archive Fixed
                   </button>
                   <button
                     type="button"
                     style={{ ...actionButton, ...statusAbandoned }}
-                    onClick={() => archiveSelected("Abandoned")}
+                    onClick={() => handleArchive("Abandoned")}
                   >
                     Archive Abandoned
                   </button>
                   <button
                     type="button"
                     style={{ ...actionButton, ...statusFailed }}
-                    onClick={() => archiveSelected("Failed")}
+                    onClick={() => handleArchive("Failed")}
                   >
                     Archive Failed
                   </button>
@@ -274,8 +330,8 @@ export default function SystemReportsModal({
 
                 <div style={notesLabel}>Notes</div>
                 <textarea
-                  value={selected.notes ?? ""}
-                  onChange={(event) => updateSelectedNotes(event.target.value)}
+                  value={selectedReport.notes}
+                  onChange={(event) => handleNotesChange(event.target.value)}
                   placeholder="Add notes..."
                   style={notesBox}
                 />
@@ -293,7 +349,7 @@ export default function SystemReportsModal({
                   <div style={advancedPanel}>
                     <div style={advancedLabel}>Tags</div>
                     <div style={tagsWrap}>
-                      {selected.tags.map((tag) => (
+                      {selectedTags.map((tag) => (
                         <span key={tag} style={tagPill}>
                           {tag}
                         </span>
@@ -302,7 +358,7 @@ export default function SystemReportsModal({
 
                     <div style={advancedLabel}>Chain of custody</div>
                     <div style={custodyBox}>
-                      {selected.custody.map((entry, index) => (
+                      {selectedReport.custody.map((entry, index) => (
                         <div key={`${entry.title}-${index}`} style={custodyEntry}>
                           <div style={custodyTop}>
                             <span style={custodyTitle}>{entry.title}</span>
