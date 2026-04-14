@@ -72,7 +72,7 @@ export default function App() {
 
   return (
     <div
-      className="h-screen flex flex-col overflow-hidden"
+      className="h-screen flex flex-col"
       style={{
         backgroundColor: "#08111F",
         color: "#FFFFFF",
@@ -80,7 +80,7 @@ export default function App() {
       }}
     >
       <header
-        className="relative z-[1000] flex-shrink-0 border-b"
+        className="relative z-[200] flex-shrink-0 border-b"
         style={{ borderColor: "#1B2A4A", backgroundColor: "#08111F" }}
       >
         <div className="px-5 h-[58px] flex items-center justify-between gap-4">
@@ -162,21 +162,11 @@ export default function App() {
         </div>
       </header>
 
-      <main
-        className={`relative z-0 flex-1 min-h-0 ${mainOverflowClass}`}
-        style={{ isolation: "isolate" }}
-      >
+      <main className={`flex-1 ${mainOverflowClass}`}>
         {activeTab === "MEETING" && (
-          <div className="relative z-0 h-full min-h-0">
-            <StaffMeetingRoom sessionId={null} sessionKey={null} />
-          </div>
+          <StaffMeetingRoom sessionId={null} sessionKey={null} />
         )}
-
-        {activeTab === "VAULT" && (
-          <div className="relative z-0 h-full min-h-0">
-            <VaultView />
-          </div>
-        )}
+        {activeTab === "VAULT" && <VaultView />}
 
         {!["MEETING", "VAULT"].includes(activeTab) && (
           <PlaceholderScreen title={activeTab} />
@@ -184,9 +174,7 @@ export default function App() {
       </main>
 
       {reportsOpen && (
-        <div className="fixed inset-0 z-[2000]">
-          <SystemReportsModal onClose={() => setReportsOpen(false)} />
-        </div>
+        <SystemReportsModal onClose={() => setReportsOpen(false)} />
       )}
     </div>
   );
