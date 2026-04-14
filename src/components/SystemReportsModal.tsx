@@ -131,13 +131,12 @@ function outcomeFolder(outcome: ReportOutcome) {
 
 export default function SystemReportsModal({ isOpen, onClose }: Props) {
   const [reports, setReports] = useState<ReportRecord[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
 
   const load = () => {
     const data = readReports();
     setReports(data);
-    setExpandedId((current) => current ?? null);
   };
 
   useEffect(() => {
@@ -167,6 +166,32 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
 
   const archiveReport = (id: string, outcome: ReportOutcome) => {
     updateReport(id, { outcome });
+  };
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const deleteReport = (id: string) => {
+    const target = reports.find((report) => report.id === id);
+    const confirmed = window.confirm(
+      `Delete this report?\n\n${target?.service ?? "Report"}\n${target?.message ?? ""}`
+    );
+    if (!confirmed) return;
+
+    const next = reports.filter((report) => report.id !== id);
+    setReports(next);
+    setExpandedIds((prev) => prev.filter((item) => item !== id));
+
+    setNotesDraft((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+
+    writeReports(next);
   };
 
   if (!isOpen) return null;
@@ -207,7 +232,7 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
             </div>
           ) : (
             orderedReports.map((report) => {
-              const isExpanded = expandedId === report.id;
+              const isExpanded = expandedIds.includes(report.id);
               const typeTone = badgeStyle(typeLabel(report.type));
               const statusTone = badgeStyle(report.status ?? "PENDING");
               const outcomeTone = report.outcome ? badgeStyle(report.outcome) : null;
@@ -221,15 +246,17 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                     borderColor: isExpanded ? "rgba(201,168,76,0.26)" : "#1B2A4A",
                   }}
                 >
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : report.id)}
-                    className="w-full px-5 py-4 text-left"
+                  <div
+                    className="w-full px-5 py-4"
                     style={{
                       backgroundColor: isExpanded ? "rgba(201,168,76,0.03)" : "transparent",
                     }}
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0 flex-1">
+                      <button
+                        onClick={() => toggleExpanded(report.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
                         <div className="flex items-center gap-3 flex-wrap">
                           <span className="text-white text-[18px] font-bold leading-none">
                             {report.service}
@@ -264,16 +291,29 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
                         <div className="text-white text-[15px] leading-relaxed mt-3">
                           {report.message}
                         </div>
-                      </div>
+                      </button>
 
-                      <div
-                        className="text-[#FF5252] text-[28px] leading-none font-light shrink-0"
-                        style={{ minWidth: "24px", textAlign: "center" }}
-                      >
-                        {isExpanded ? "−" : "+"}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={() => toggleExpanded(report.id)}
+                          className="text-[#FF5252] text-[28px] leading-none font-light"
+                          style={{ minWidth: "24px", textAlign: "center" }}
+                          title={isExpanded ? "Collapse report" : "Expand report"}
+                        >
+                          {isExpanded ? "−" : "+"}
+                        </button>
+
+                        <button
+                          onClick={() => deleteReport(report.id)}
+                          className="text-[#FF5252] text-[28px] leading-none font-light"
+                          style={{ minWidth: "24px", textAlign: "center" }}
+                          title="Delete report"
+                        >
+                          ×
+                        </button>
                       </div>
                     </div>
-                  </button>
+                  </div>
 
                   {isExpanded && (
                     <div
