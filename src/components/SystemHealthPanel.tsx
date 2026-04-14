@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type ServiceStatus = "Connected" | "Error" | "Warning";
 
@@ -42,8 +42,7 @@ function buildServices(): Service[] {
       name: "Google Drive",
       status: "Error",
       error: "Failed to fetch",
-      explanation:
-        "The app tried to reach Google Drive but did not get a usable response.",
+      explanation: "The app tried to reach Google Drive but did not get a usable response.",
       impact: "Drive sync is blocked.",
       steps: [
         "Open Vercel project settings",
@@ -151,13 +150,8 @@ function logToVault(service: Service, type: "TEAM" | "PROMPT" | "AUTO_FIX") {
   const parsed = existing ? JSON.parse(existing) : [];
 
   const newReport = {
-    id: `${service.name}-${type}-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 6)}`,
-    time: new Date().toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    }),
+    id: `${service.name}-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    time: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
     service: service.name,
     owner: service.owner,
     message: service.prompt,
@@ -168,6 +162,8 @@ function logToVault(service: Service, type: "TEAM" | "PROMPT" | "AUTO_FIX") {
 
   const updated = [newReport, ...parsed];
   localStorage.setItem("system_health_reports", JSON.stringify(updated));
+  // Dispatch event so other components know storage changed
+  window.dispatchEvent(new Event("storage_update"));
 }
 
 export default function SystemHealthPanel() {
@@ -181,103 +177,37 @@ export default function SystemHealthPanel() {
   const panelStateColor = getPanelStateColor(panelState);
   const errorCount = services.filter((s) => s.status === "Error").length;
   const warningCount = services.filter((s) => s.status === "Warning").length;
-  const lastCheck = getNowLabel();
+  const [lastCheck] = useState(getNowLabel());
 
   function closeModal() {
     setModalType(null);
     setActiveService(null);
   }
 
-  function openPrompt(service: Service, e: React.MouseEvent<HTMLButtonElement>) {
+  function openPrompt(service: Service, e: React.MouseEvent) {
     e.stopPropagation();
     setActiveService(service);
     setModalType("prompt");
     logToVault(service, "PROMPT");
   }
 
-  function openAutoFix(service: Service, e: React.MouseEvent<HTMLButtonElement>) {
+  function openAutoFix(service: Service, e: React.MouseEvent) {
     e.stopPropagation();
     setActiveService(service);
     setModalType("autofix");
     logToVault(service, "AUTO_FIX");
   }
 
-  function openTeam(service: Service, e: React.MouseEvent<HTMLButtonElement>) {
+  function openTeam(service: Service, e: React.MouseEvent) {
     e.stopPropagation();
     setActiveService(service);
     setModalType("team");
     logToVault(service, "TEAM");
   }
 
-  function renderModal() {
-    if (!modalType || !activeService) return null;
-
-    let title = "";
-    let body: React.ReactNode = null;
-
-    if (modalType === "prompt") {
-      title = "Fix Prompt";
-      body = (
-        <div className="text-xs text-gray-300 whitespace-pre-wrap">
-          {activeService.prompt}
-        </div>
-      );
-    }
-
-    if (modalType === "autofix") {
-      title = "Auto Fix Attempt";
-      body = (
-        <div className="space-y-2 text-xs text-gray-300">
-          <div className="text-white mb-2">{activeService.name}</div>
-          {activeService.autoFix.length > 0 ? (
-            activeService.autoFix.map((step, i) => <div key={i}>• {step}</div>)
-          ) : (
-            <div>No auto-fix steps available.</div>
-          )}
-        </div>
-      );
-    }
-
-    if (modalType === "team") {
-      title = "Team Message";
-      body = (
-        <div className="text-xs text-gray-300 whitespace-pre-wrap">
-          {`@${activeService.owner} FIX NEEDED:\n\n${activeService.prompt}`}
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="fixed inset-0 flex items-center justify-center"
-        style={{ background: "rgba(0,0,0,0.7)", zIndex: 2000 }}
-        onClick={closeModal}
-      >
-        <div
-          className="w-[520px] p-4 rounded-lg"
-          style={{
-            backgroundColor: "#0D1B2E",
-            border: "1px solid #1B2A4A",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="text-white mb-3 font-bold">{title}</div>
-          {body}
-          <button
-            onClick={closeModal}
-            className="mt-4 px-3 py-1 text-xs rounded"
-            style={{ backgroundColor: "#1B2A4A", color: "#C9A84C" }}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
-      <div className="relative">
+      <div className="relative inline-block">
         <button
           onClick={() => setOpen((v) => !v)}
           className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest"
@@ -317,7 +247,7 @@ export default function SystemHealthPanel() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="grid grid-cols-3 gap-2 text-xs text-gray-400">
               <div>Services: {services.length}</div>
               <div>Errors: {errorCount}</div>
               <div>Warnings: {warningCount}</div>
@@ -334,17 +264,17 @@ export default function SystemHealthPanel() {
                   onClick={() => setExpanded(expanded === s.name ? null : s.name)}
                 >
                   <div>
-                    <div className="text-white">{s.name}</div>
+                    <div className="text-white font-medium">{s.name}</div>
                     <div style={{ color: getStatusColor(s.status) }}>{s.status}</div>
                   </div>
-                  <div>{expanded === s.name ? "▲" : "▼"}</div>
+                  <div className="text-gray-500">{expanded === s.name ? "▲" : "▼"}</div>
                 </div>
 
                 {expanded === s.name && (
                   <div className="mt-2 text-xs text-gray-300 space-y-2">
-                    <div>{s.error}</div>
+                    <div className="text-red-400">{s.error}</div>
                     <div>{s.explanation}</div>
-                    <div>{s.impact}</div>
+                    <div className="italic">{s.impact}</div>
 
                     <div className="flex gap-2 flex-wrap">
                       <div
@@ -354,7 +284,7 @@ export default function SystemHealthPanel() {
                           color: getSeverityColor(s.severity),
                         }}
                       >
-                        Severity: {s.severity}
+                        {s.severity}
                       </div>
 
                       <div
@@ -364,50 +294,33 @@ export default function SystemHealthPanel() {
                           color: getOwnerColor(s.owner),
                         }}
                       >
-                        Owner: {s.owner}
+                        {s.owner}
                       </div>
                     </div>
 
-                    <div className="text-yellow-300 font-bold">FIX STEPS:</div>
+                    <div className="text-yellow-300 font-bold pt-1">FIX STEPS:</div>
                     {s.steps.map((step, i) => (
-                      <div key={i}>• {step}</div>
+                      <div key={i} className="pl-2">• {step}</div>
                     ))}
 
                     <div className="flex gap-2 mt-3">
                       {s.autoFix.length > 0 && (
                         <button
                           onClick={(e) => openAutoFix(s, e)}
-                          className="px-2 py-1 text-xs rounded"
-                          style={{
-                            backgroundColor: "#1B2A4A",
-                            color: "#60A5FA",
-                            border: "1px solid #60A5FA",
-                          }}
+                          className="px-2 py-1 text-xs rounded border border-[#60A5FA] bg-[#1B2A4A] text-[#60A5FA]"
                         >
                           Auto Fix
                         </button>
                       )}
-
                       <button
                         onClick={(e) => openPrompt(s, e)}
-                        className="px-2 py-1 text-xs rounded"
-                        style={{
-                          backgroundColor: "#1B2A4A",
-                          color: "#C9A84C",
-                          border: "1px solid #C9A84C",
-                        }}
+                        className="px-2 py-1 text-xs rounded border border-[#C9A84C] bg-[#1B2A4A] text-[#C9A84C]"
                       >
                         Fix Prompt
                       </button>
-
                       <button
                         onClick={(e) => openTeam(s, e)}
-                        className="px-2 py-1 text-xs rounded"
-                        style={{
-                          backgroundColor: "#1B2A4A",
-                          color: "#34D399",
-                          border: "1px solid #34D399",
-                        }}
+                        className="px-2 py-1 text-xs rounded border border-[#34D399] bg-[#1B2A4A] text-[#34D399]"
                       >
                         Send to Team
                       </button>
@@ -420,7 +333,43 @@ export default function SystemHealthPanel() {
         )}
       </div>
 
-      {renderModal()}
+      {modalType && activeService && (
+        <div
+          className="fixed inset-0 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.85)", zIndex: 9999 }}
+          onClick={closeModal}
+        >
+          <div
+            className="w-[520px] p-6 rounded-lg shadow-2xl"
+            style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-xl text-white mb-4 font-bold border-b border-[#1B2A4A] pb-2">
+              {modalType === "prompt" ? "Fix Prompt" : modalType === "autofix" ? "Auto Fix Attempt" : "Team Message"}
+            </div>
+            
+            <div className="text-sm text-gray-300 leading-relaxed">
+              {modalType === "prompt" && activeService.prompt}
+              {modalType === "autofix" && (
+                <div className="space-y-2">
+                  <div className="text-white font-bold">{activeService.name}</div>
+                  {activeService.autoFix.map((step, i) => <div key={i}>• {step}</div>)}
+                </div>
+              )}
+              {modalType === "team" && `@${activeService.owner} FIX NEEDED:\n\n${activeService.prompt}`}
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={closeModal}
+                className="px-4 py-2 text-sm font-bold rounded bg-[#1B2A4A] text-[#C9A84C]"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
