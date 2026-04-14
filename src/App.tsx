@@ -67,7 +67,8 @@ export default function App() {
     setActiveTab(tab);
   };
 
-  const mainOverflowClass = activeTab === "MEETING" ? "overflow-hidden" : "overflow-y-auto";
+  const mainOverflowClass =
+    activeTab === "MEETING" ? "overflow-hidden" : "overflow-y-auto";
 
   return (
     <div
@@ -161,26 +162,18 @@ export default function App() {
         </div>
       </header>
 
-      <main className={`relative z-0 flex-1 min-h-0 ${mainOverflowClass}`}>
-        {activeTab === "MEETING" && (
-          <StaffMeetingRoom sessionId={null} sessionKey={null} />
-        )}
-
+      <main className={`flex-1 ${mainOverflowClass}`}>
+        {activeTab === "MEETING" && <StaffMeetingRoom />}
         {activeTab === "VAULT" && <VaultView />}
 
-        {activeTab === "SESSIONS" && <PlaceholderScreen title="Sessions" />}
-        {activeTab === "EMAIL" && <PlaceholderScreen title="Email" />}
-        {activeTab === "TAGS" && <PlaceholderScreen title="Tags" />}
-        {activeTab === "PROJECTS" && <PlaceholderScreen title="Projects" />}
-        {activeTab === "INTEGRATIONS" && <PlaceholderScreen title="Integrations" />}
-        {activeTab === "SOURCE OF TRUTH" && <PlaceholderScreen title="Source Of Truth" />}
-        {activeTab === "RECOVERY" && <PlaceholderScreen title="Recovery" />}
+        {!["MEETING", "VAULT"].includes(activeTab) && (
+          <PlaceholderScreen title={activeTab} />
+        )}
       </main>
 
-      <SystemReportsModal
-        isOpen={reportsOpen}
-        onClose={() => setReportsOpen(false)}
-      />
+      {reportsOpen && (
+        <SystemReportsModal onClose={() => setReportsOpen(false)} />
+      )}
     </div>
   );
 }
