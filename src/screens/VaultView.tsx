@@ -557,7 +557,7 @@ export default function VaultView({
                   key={bucket.id}
                   onClick={() => {
                     setActiveBucketId(bucket.id);
-                    setExpandedId(null);
+                    setExpandedUiKey(null);
                   }}
                   className="px-4 py-3 rounded-xl text-left min-w-[190px] transition-all"
                   style={
