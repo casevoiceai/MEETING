@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type ReportStatus = "PENDING" | "IN_PROGRESS" | "FIXED";
@@ -134,6 +134,16 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [position, setPosition] = useState({ x: 140, y: 90 });
+  const dragRef = useRef<{
+    dragging: boolean;
+    offsetX: number;
+    offsetY: number;
+  }>({
+    dragging: false,
+    offsetX: 0,
+    offsetY: 0,
+  });
 
   const load = () => {
     const data = readReports();
@@ -150,6 +160,32 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
       window.removeEventListener("storage_sync", sync);
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    const handleMove = (event: MouseEvent) => {
+      if (!dragRef.current.dragging) return;
+
+      const nextX = Math.max(16, event.clientX - dragRef.current.offsetX);
+      const nextY = Math.max(16, event.clientY - dragRef.current.offsetY);
+
+      setPosition({
+        x: nextX,
+        y: nextY,
+      });
+    };
+
+    const handleUp = () => {
+      dragRef.current.dragging = false;
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, []);
 
   const orderedReports = useMemo(() => reports, [reports]);
 
@@ -204,24 +240,29 @@ export default function SystemReportsModal({ isOpen, onClose }: Props) {
     writeReports(next);
   };
 
+  const startDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+    dragRef.current.dragging = true;
+    dragRef.current.offsetX = event.clientX - position.x;
+    dragRef.current.offsetY = event.clientY - position.y;
+  };
+
   if (!isOpen) return null;
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-[9500] flex items-center justify-center bg-black/80"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-[9500] pointer-events-none">
       <div
-        className="w-[780px] max-w-[94vw] h-[80vh] max-h-[820px] rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
+        className="pointer-events-auto w-[780px] max-w-[94vw] h-[80vh] max-h-[820px] rounded-2xl border shadow-2xl flex flex-col overflow-hidden fixed"
         style={{
           backgroundColor: "#0D1B2E",
           borderColor: "#1B2A4A",
+          left: `${position.x}px`,
+          top: `${position.y}px`,
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="px-5 py-4 border-b flex items-start justify-between"
+          className="px-5 py-4 border-b flex items-start justify-between cursor-move select-none"
           style={{ backgroundColor: "#111D30", borderColor: "#1B2A4A" }}
+          onMouseDown={startDrag}
         >
           <div>
             <div className="text-white font-bold text-[34px] leading-none">System Reports</div>
