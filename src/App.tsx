@@ -1,53 +1,161 @@
 import { useState } from "react";
+import StaffMeetingRoom from "./screens/StaffMeetingRoom";
+import VaultView from "./screens/VaultView";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import SystemReportsModal from "./components/SystemReportsModal";
 
+type MainTab =
+  | "MEETING"
+  | "SESSIONS"
+  | "EMAIL"
+  | "VAULT"
+  | "TAGS"
+  | "PROJECTS"
+  | "INTEGRATIONS"
+  | "SOURCE OF TRUTH"
+  | "RECOVERY";
+
+const MAIN_TABS: MainTab[] = [
+  "MEETING",
+  "SESSIONS",
+  "EMAIL",
+  "VAULT",
+  "TAGS",
+  "PROJECTS",
+  "INTEGRATIONS",
+  "SOURCE OF TRUTH",
+  "RECOVERY",
+];
+
+function PlaceholderScreen({ title }: { title: string }) {
+  return (
+    <div
+      className="flex-1 min-h-0 rounded-xl border p-8"
+      style={{
+        backgroundColor: "#0D1B2E",
+        borderColor: "#1B2A4A",
+        color: "#8A9BB5",
+      }}
+    >
+      <div className="text-[11px] font-bold tracking-[0.22em] uppercase mb-3">
+        {title}
+      </div>
+      <div className="text-sm">This section is standing by.</div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState<MainTab>("MEETING");
   const [reportsOpen, setReportsOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#050B14] p-8 font-sans text-gray-200 overflow-x-hidden">
-      <nav className="flex justify-between items-center mb-12 border-b border-[#1B2A4A] pb-6">
-        <div>
-          <h1 className="text-2xl font-black tracking-tighter text-white">CORE_SYSTEM_OS</h1>
-          <p className="text-[10px] text-[#C9A84C] font-mono uppercase">Status: Operational</p>
-        </div>
-        
-        <div className="flex gap-4">
-          <button
-            onClick={() => setReportsOpen(true)}
-            className="px-4 py-1.5 rounded-lg text-xs font-bold border border-[#1B2A4A] hover:bg-[#1B2A4A] transition-colors"
-          >
-            VIEW REPORTS
-          </button>
-          <SystemHealthPanel />
-        </div>
-      </nav>
-
-      <main className="grid grid-cols-12 gap-6">
-        <section className="col-span-12 lg:col-span-8 bg-[#0D1B2E] border border-[#1B2A4A] rounded-xl p-8 min-h-[400px]">
-          <h2 className="text-lg font-bold text-white mb-4">Main Dashboard</h2>
-          <p className="text-sm text-gray-400 leading-relaxed max-w-2xl">
-            Welcome to the central monitoring interface. Use the "System Health" utility 
-            to diagnose integration failures or service degradation. Reports generated 
-            will appear in the Incident Vault.
-          </p>
-        </section>
-
-        <aside className="col-span-12 lg:col-span-4 space-y-6">
-          <div className="bg-[#111D30] border border-[#1B2A4A] p-4 rounded-xl">
-            <h3 className="text-xs font-bold text-gray-500 uppercase mb-3">Quick Actions</h3>
-            <div className="grid grid-cols-1 gap-2">
-               <button className="text-left px-3 py-2 text-[10px] font-bold rounded bg-[#1B2A4A] text-white hover:bg-white hover:text-black transition-all">Flush Cache</button>
-               <button className="text-left px-3 py-2 text-[10px] font-bold rounded bg-[#1B2A4A] text-white hover:bg-white hover:text-black transition-all">Restart API Node</button>
+    <div
+      className="min-h-screen flex flex-col"
+      style={{
+        backgroundColor: "#08111F",
+        color: "#FFFFFF",
+        fontFamily: "'Inter', sans-serif",
+      }}
+    >
+      <header
+        className="border-b"
+        style={{ borderColor: "#1B2A4A", backgroundColor: "#08111F" }}
+      >
+        <div className="px-5 h-[58px] flex items-center justify-between">
+          <div className="flex items-center gap-8 min-w-0">
+            <div className="text-sm font-bold tracking-wide whitespace-nowrap" style={{ color: "#C9A84C" }}>
+              MYSTATEMENT_AI
             </div>
+
+            <nav className="flex items-center gap-2 overflow-x-auto">
+              {MAIN_TABS.map((tab) => {
+                const active = activeTab === tab;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all"
+                    style={
+                      active
+                        ? {
+                            backgroundColor: "#132845",
+                            color: "#F8FAFC",
+                            border: "1px solid rgba(201,168,76,0.25)",
+                          }
+                        : {
+                            backgroundColor: "transparent",
+                            color: "#8A9BB5",
+                            border: "1px solid transparent",
+                          }
+                    }
+                  >
+                    {tab}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
-        </aside>
+
+          <div className="flex items-center gap-2 pl-4">
+            <button
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
+              style={{
+                color: "#C9A84C",
+                backgroundColor: "rgba(201,168,76,0.06)",
+                border: "1px solid rgba(201,168,76,0.22)",
+              }}
+            >
+              APPROVAL REQUIRED
+            </button>
+
+            <button
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
+              style={{
+                color: "#C9A84C",
+                backgroundColor: "#0D1B2E",
+                border: "1px solid #1B2A4A",
+              }}
+            >
+              BACKUP
+            </button>
+
+            <button
+              onClick={() => setReportsOpen(true)}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
+              style={{
+                color: "#FF5F5F",
+                backgroundColor: "#0D1B2E",
+                border: "1px solid rgba(255,95,95,0.28)",
+              }}
+            >
+              REPORTS
+            </button>
+
+            <SystemHealthPanel />
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 min-h-0">
+        {activeTab === "MEETING" && (
+          <StaffMeetingRoom sessionId={null} sessionKey={null} />
+        )}
+
+        {activeTab === "VAULT" && <VaultView />}
+
+        {activeTab === "SESSIONS" && <PlaceholderScreen title="Sessions" />}
+        {activeTab === "EMAIL" && <PlaceholderScreen title="Email" />}
+        {activeTab === "TAGS" && <PlaceholderScreen title="Tags" />}
+        {activeTab === "PROJECTS" && <PlaceholderScreen title="Projects" />}
+        {activeTab === "INTEGRATIONS" && <PlaceholderScreen title="Integrations" />}
+        {activeTab === "SOURCE OF TRUTH" && <PlaceholderScreen title="Source of Truth" />}
+        {activeTab === "RECOVERY" && <PlaceholderScreen title="Recovery" />}
       </main>
 
-      <SystemReportsModal 
-        isOpen={reportsOpen} 
-        onClose={() => setReportsOpen(false)} 
+      <SystemReportsModal
+        isOpen={reportsOpen}
+        onClose={() => setReportsOpen(false)}
       />
     </div>
   );
