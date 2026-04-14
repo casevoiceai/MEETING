@@ -1,83 +1,798 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { LinkableType } from "../lib/db";
 
-type RecordItem = {
+type LinkedTarget = {
+  type: LinkableType;
   id: string;
-  service: string;
-  time: string;
-  message: string;
-  status: string;
-  type?: string;
 };
 
-export default function VaultView() {
-  const [records, setRecords] = useState<RecordItem[]>([]);
-  const [openIds, setOpenIds] = useState<string[]>([]);
+type CustodyEntry = {
+  time: string;
+  action: string;
+  location: string;
+  details: string;
+};
 
-  const load = () => {
-    const data = JSON.parse(localStorage.getItem("system_health_reports") || "[]");
-    setRecords(data.reverse());
+type BaseVaultRecord = {
+  id: string | number;
+  title?: string;
+  service?: string;
+  owner?: string;
+  status?: string;
+  folder?: string;
+  folderPath?: string;
+  time?: string;
+  timestamp?: string;
+  savedAt?: string;
+  archivedAt?: string;
+  updatedAt?: string;
+  description?: string;
+  message?: string;
+  summary?: string;
+  notes?: string;
+  fixStatus?: string;
+  severity?: string;
+  source?: string;
+  category?: string;
+  custodyTags?: string[];
+  custodyTrail?: CustodyEntry[];
+  recordType?: string;
+  outcome?: string;
+  relatedItems?: string[];
+  attachments?: string[];
+  requiresFollowUp?: boolean;
+  lastUpdatedBy?: string;
+};
+
+type VaultBucket = {
+  id: string;
+  label: string;
+  description: string;
+  keys: string[];
+  fallbackCategory: string;
+};
+
+type DisplayRecord = {
+  uiKey?: string;
+  id: string;
+  rawId: string | number;
+  sourceKey: string;
+  fingerprint: string;
+  title: string;
+  service: string;
+  owner: string;
+  status: string;
+  folder: string;
+  time: string;
+  summary: string;
+  notes: string;
+  severity: string;
+  source: string;
+  category: string;
+  tags: string[];
+  custodyTrail: CustodyEntry[];
+  relatedItems: string[];
+  attachments: string[];
+  requiresFollowUp: boolean;
+  lastUpdatedBy: string;
+  recordType: string;
+};
+
+const BUCKETS: VaultBucket[] = [
+  {
+    id: "system-health",
+    label: "System Health Reports",
+    description: "Tracked reports, saved fixes, and archived outcomes from the System Reports flow.",
+    keys: [
+      "vault_system_health_reports",
+      "system_health_reports_history",
+      "system_health_reports",
+      "systemReports",
+      "system_reports",
+      "systemHealthReports",
+      "system_health_reports",
+      "vaultSystemHealthRecords",
+      "meetingRoomSystemReports",
+    ],
+    fallbackCategory: "System Health Reports",
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    description: "Integration records and sync issues that need follow-up or review.",
+    keys: [
+      "integration_reports",
+      "integration_sync_reports",
+      "integration_health_records",
+      "vault_integrations",
+      "integration_failure_log",
+      "drive_sync_log",
+      "notion_sync_log",
+    ],
+    fallbackCategory: "Integrations",
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    description: "Project-level records, milestones, and stored change notes.",
+    keys: ["vault_projects", "project_records", "project_notes", "project_activity_log"],
+    fallbackCategory: "Projects",
+  },
+  {
+    id: "email",
+    label: "Email",
+    description: "Email exports, tracked messages, and action notes.",
+    keys: ["vault_email", "email_records", "email_activity_log"],
+    fallbackCategory: "Email",
+  },
+  {
+    id: "tags",
+    label: "Tags",
+    description: "Saved tag decisions, label groupings, and classification notes.",
+    keys: ["vault_tags", "tag_records", "tag_activity_log"],
+    fallbackCategory: "Tags",
+  },
+  {
+    id: "source-of-truth",
+    label: "Source of Truth",
+    description: "Canonical references, trust decisions, and linked evidence.",
+    keys: ["source_of_truth_records", "vault_source_of_truth", "canonical_records"],
+    fallbackCategory: "Source of Truth",
+  },
+  {
+    id: "recovery",
+    label: "Recovery",
+    description: "Rollback notes, backup references, and critical recovery actions.",
+    keys: ["backup_logs", "recovery_records", "critical_path_records", "dead_man_switch_records"],
+    fallbackCategory: "Recovery",
+  },
+];
+
+const STATUS_FILTERS = [
+  "ALL",
+  "ACTIVE",
+  "PENDING",
+  "IN PROGRESS",
+  "FIXED",
+  "FAILED",
+  "ABANDONED",
+  "WAITING",
+  "QUARANTINE",
+  "ARCHIVED",
+];
+
+function nowLabel() {
+  return new Date().toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function readJsonArray(key: string): BaseVaultRecord[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function titleCase(value: string) {
+  return value
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function normalizeStatus(value?: string) {
+  if (!value) return "ACTIVE";
+
+  const upper = value.trim().toUpperCase();
+  if (upper === "SAVED") return "SAVED";
+  if (upper === "FIXED") return "FIXED";
+  if (upper === "FAILED") return "FAILED";
+  if (upper === "ABANDONED") return "ABANDONED";
+  if (upper === "WAITING") return "WAITING";
+  if (upper === "QUARANTINE") return "QUARANTINE";
+  if (upper === "IN PROGRESS") return "IN PROGRESS";
+  if (upper === "PENDING") return "PENDING";
+  if (upper === "ARCHIVED") return "ARCHIVED";
+  return upper;
+}
+
+function statusTone(status: string) {
+  const upper = normalizeStatus(status);
+
+  if (upper === "FIXED") {
+    return {
+      color: "#86EFAC",
+      border: "1px solid rgba(16,185,129,0.35)",
+      background: "rgba(6,95,70,0.18)",
+    };
+  }
+
+  if (upper === "FAILED" || upper === "QUARANTINE") {
+    return {
+      color: "#FCA5A5",
+      border: "1px solid rgba(239,68,68,0.35)",
+      background: "rgba(127,29,29,0.18)",
+    };
+  }
+
+  if (upper === "IN PROGRESS" || upper === "WAITING" || upper === "ABANDONED") {
+    return {
+      color: "#FCD34D",
+      border: "1px solid rgba(245,158,11,0.35)",
+      background: "rgba(120,53,15,0.18)",
+    };
+  }
+
+  if (upper === "ARCHIVED") {
+    return {
+      color: "#93C5FD",
+      border: "1px solid rgba(59,130,246,0.35)",
+      background: "rgba(30,64,175,0.18)",
+    };
+  }
+
+  return {
+    color: "#CBD5E1",
+    border: "1px solid rgba(148,163,184,0.35)",
+    background: "rgba(51,65,85,0.18)",
+  };
+}
+
+function dedupeStrings(values: Array<string | undefined | null>) {
+  return Array.from(new Set(values.map((value) => (value || "").trim()).filter(Boolean)));
+}
+
+function buildFingerprint(record: BaseVaultRecord, bucket: VaultBucket) {
+  return JSON.stringify([
+    bucket.id,
+    record.id ?? "",
+    record.title ?? "",
+    record.service ?? "",
+    record.time ?? "",
+    record.savedAt ?? "",
+    record.archivedAt ?? "",
+    record.updatedAt ?? "",
+    record.timestamp ?? "",
+    record.message ?? "",
+    record.summary ?? "",
+    record.folder ?? "",
+    record.folderPath ?? "",
+    record.fixStatus ?? "",
+    record.status ?? "",
+    record.outcome ?? "",
+  ]);
+}
+
+function buildTitle(record: BaseVaultRecord, bucket: VaultBucket) {
+  return (
+    record.title ||
+    record.service ||
+    record.summary ||
+    record.message ||
+    `${bucket.label} Record`
+  );
+}
+
+function buildSummary(record: BaseVaultRecord) {
+  return record.summary || record.description || record.message || "No summary captured yet.";
+}
+
+function buildFolder(record: BaseVaultRecord, bucket: VaultBucket) {
+  return record.folderPath || record.folder || `Vault / ${bucket.label}`;
+}
+
+function buildTime(record: BaseVaultRecord) {
+  return (
+    record.archivedAt ||
+    record.savedAt ||
+    record.updatedAt ||
+    record.timestamp ||
+    record.time ||
+    nowLabel()
+  );
+}
+
+function buildTags(record: BaseVaultRecord, bucket: VaultBucket, status: string) {
+  return dedupeStrings([
+    ...(record.custodyTags || []),
+    record.category,
+    record.source,
+    record.severity,
+    record.owner ? `OWNER_${record.owner.toUpperCase().replace(/\s+/g, "_")}` : undefined,
+    `STATUS_${status.replace(/\s+/g, "_")}`,
+    bucket.label.toUpperCase().replace(/\s+/g, "_"),
+    record.recordType ? `TYPE_${record.recordType.toUpperCase()}` : undefined,
+  ]);
+}
+
+function buildCustodyTrail(record: BaseVaultRecord, folder: string, summary: string): CustodyEntry[] {
+  if (Array.isArray(record.custodyTrail) && record.custodyTrail.length > 0) {
+    return record.custodyTrail;
+  }
+
+  return [
+    {
+      time: buildTime(record),
+      action: "Record captured",
+      location: folder,
+      details: summary,
+    },
+  ];
+}
+
+function normalizeRecord(
+  record: BaseVaultRecord,
+  bucket: VaultBucket,
+  index: number,
+  sourceKey: string,
+  fingerprint: string
+): DisplayRecord {
+  const status = normalizeStatus(record.status || record.fixStatus || record.outcome || record.recordType);
+  const folder = buildFolder(record, bucket);
+  const summary = buildSummary(record);
+  const time = buildTime(record);
+  const service = record.service || bucket.label;
+  const owner = record.owner || record.lastUpdatedBy || "Unassigned";
+  const category = record.category || bucket.fallbackCategory;
+  const source = record.source || bucket.label;
+
+  return {
+    id: `${bucket.id}-${String(record.id ?? `${service}-${index}`)}-${index}`,
+    rawId: record.id ?? `${service}-${index}`,
+    sourceKey,
+    fingerprint,
+    title: buildTitle(record, bucket),
+    service,
+    owner,
+    status,
+    folder,
+    time,
+    summary,
+    notes: record.notes || "",
+    severity: record.severity || "Standard",
+    source,
+    category,
+    tags: buildTags(record, bucket, status),
+    custodyTrail: buildCustodyTrail(record, folder, summary),
+    relatedItems: record.relatedItems || [],
+    attachments: record.attachments || [],
+    requiresFollowUp: Boolean(record.requiresFollowUp),
+    lastUpdatedBy: record.lastUpdatedBy || owner,
+    recordType: record.recordType || "tracked",
+  };
+}
+
+function bucketRecords(bucket: VaultBucket): DisplayRecord[] {
+  const merged = bucket.keys.flatMap((key) =>
+    readJsonArray(key).map((item) => ({ item, sourceKey: key }))
+  );
+  const unique = new Map<string, { item: BaseVaultRecord; sourceKey: string }>();
+
+  merged.forEach(({ item, sourceKey }) => {
+    const stableKey = buildFingerprint(item, bucket);
+
+    if (!unique.has(stableKey)) {
+      unique.set(stableKey, { item, sourceKey });
+    }
+  });
+
+  return Array.from(unique.entries())
+    .map(([fingerprint, value], index) =>
+      normalizeRecord(value.item, bucket, index, value.sourceKey, fingerprint)
+    )
+    .sort((a, b) => String(b.time).localeCompare(String(a.time)));
+}
+
+export default function VaultView({
+  onNavigateLinked: _onNavigateLinked,
+  linkedTarget: _linkedTarget,
+}: {
+  onNavigateLinked?: (type: LinkableType, id: string) => void;
+  linkedTarget?: LinkedTarget;
+}) {
+  const [activeBucketId, setActiveBucketId] = useState(BUCKETS[0].id);
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [recordsByBucket, setRecordsByBucket] = useState<Record<string, DisplayRecord[]>>({});
+  const [expandedUiKey, setExpandedUiKey] = useState<string | null>(null);
+  const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
+
+  const refreshRecords = () => {
+    const next: Record<string, DisplayRecord[]> = {};
+    BUCKETS.forEach((bucket) => {
+      next[bucket.id] = bucketRecords(bucket);
+    });
+    setRecordsByBucket(next);
   };
 
   useEffect(() => {
-    load();
-    const sync = () => load();
-    window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
+    refreshRecords();
+
+    const handleRefresh = () => refreshRecords();
+    window.addEventListener("storage", handleRefresh);
+    window.addEventListener("vault-reports-updated", handleRefresh as EventListener);
+
+    return () => {
+      window.removeEventListener("storage", handleRefresh);
+      window.removeEventListener("vault-reports-updated", handleRefresh as EventListener);
+    };
   }, []);
 
-  const toggle = (id: string) => {
-    setOpenIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+  const activeBucket = BUCKETS.find((bucket) => bucket.id === activeBucketId) || BUCKETS[0];
+  const records = recordsByBucket[activeBucket.id] || [];
+
+  const filteredRecords = useMemo(() => {
+    if (statusFilter === "ALL") return records;
+    return records.filter((record) => normalizeStatus(record.status) === statusFilter);
+  }, [records, statusFilter]);
+
+  const visibleRecords = useMemo(() =>
+    filteredRecords.map((record, index) => ({
+      ...record,
+      uiKey: `${record.id}::${record.fingerprint}::${index}`,
+    })),
+  [filteredRecords]);
+
+  const selectedRecord = visibleRecords.find((record) => record.uiKey === expandedUiKey) || null;
+
+  useEffect(() => {
+    if (!selectedRecord && visibleRecords.length > 0) {
+      setExpandedUiKey(visibleRecords[0].uiKey || null);
+    }
+
+    if (visibleRecords.length === 0) {
+      setExpandedUiKey(null);
+    }
+  }, [visibleRecords, selectedRecord]);
+
+  const counts = useMemo(() => {
+    const total = records.length;
+    const open = records.filter((record) => ["ACTIVE", "PENDING", "IN PROGRESS", "WAITING"].includes(normalizeStatus(record.status))).length;
+    const fixed = records.filter((record) => normalizeStatus(record.status) === "FIXED").length;
+    const failed = records.filter((record) => ["FAILED", "QUARANTINE", "ABANDONED"].includes(normalizeStatus(record.status))).length;
+    return { total, open, fixed, failed };
+  }, [records]);
+
+  const handleDelete = (record: DisplayRecord) => {
+    const confirmed = window.confirm(`Delete "${record.title}" from this local vault list?`);
+    if (!confirmed) return;
+
+    const sourceItems = readJsonArray(record.sourceKey);
+    const nextSourceItems = sourceItems.filter(
+      (item) => buildFingerprint(item, activeBucket) !== record.fingerprint
     );
+    localStorage.setItem(record.sourceKey, JSON.stringify(nextSourceItems));
+
+    refreshRecords();
+    window.dispatchEvent(new CustomEvent("vault-reports-updated"));
+  };
+
+  const handleSaveNotes = (record: DisplayRecord) => {
+    const nextNotes = notesDrafts[record.id] ?? record.notes;
+    const sourceItems = readJsonArray(record.sourceKey);
+    const nextSourceItems = sourceItems.map((item) => {
+      if (buildFingerprint(item, activeBucket) !== record.fingerprint) return item;
+
+      const folder = buildFolder(item, activeBucket);
+      const existingTrail = buildCustodyTrail(item, folder, buildSummary(item));
+
+      return {
+        ...item,
+        notes: nextNotes,
+        custodyTrail: [
+          {
+            time: nowLabel(),
+            action: "Notes updated",
+            location: folder,
+            details: nextNotes.trim() || "Notes cleared.",
+          },
+          ...existingTrail,
+        ],
+      };
+    });
+
+    localStorage.setItem(record.sourceKey, JSON.stringify(nextSourceItems));
+    refreshRecords();
+    window.dispatchEvent(new CustomEvent("vault-reports-updated"));
   };
 
   return (
-    <div className="p-6 text-white space-y-6">
-      <h1 className="text-2xl font-semibold">System Health Reports</h1>
+    <div className="min-h-screen px-8 py-7" style={{ backgroundColor: "#0D1B2E", color: "#FFFFFF" }}>
+      <div className="max-w-[1560px] mx-auto space-y-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.22em]" style={{ color: "#8A9BB5" }}>
+              Vault
+            </div>
+            <h1 className="text-3xl font-bold mt-2" style={{ color: "#F8FAFC" }}>
+              Records, folders, and chain of custody
+            </h1>
+            <p className="text-sm mt-3 max-w-3xl" style={{ color: "#A8B6CC" }}>
+              Every vault section uses the same tracking spine: readable records table, clear folder path,
+              status badges, custody trail, and notes that are easy to review later.
+            </p>
+          </div>
 
-      <div className="space-y-3">
-        {records.map((r) => {
-          const isOpen = openIds.includes(r.id);
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 min-w-[360px]">
+            {[
+              { label: "Records", value: counts.total, tone: "neutral" },
+              { label: "Open", value: counts.open, tone: "warning" },
+              { label: "Fixed", value: counts.fixed, tone: "good" },
+              { label: "Failed", value: counts.failed, tone: "bad" },
+            ].map((card) => {
+              const tone =
+                card.tone === "good"
+                  ? { color: "#86EFAC", border: "1px solid rgba(16,185,129,0.28)", background: "rgba(6,95,70,0.18)" }
+                  : card.tone === "bad"
+                    ? { color: "#FCA5A5", border: "1px solid rgba(239,68,68,0.28)", background: "rgba(127,29,29,0.18)" }
+                    : card.tone === "warning"
+                      ? { color: "#FCD34D", border: "1px solid rgba(245,158,11,0.28)", background: "rgba(120,53,15,0.18)" }
+                      : { color: "#C9A84C", border: "1px solid #1B2A4A", background: "#111D30" };
 
-          return (
-            <div
-              key={r.id}
-              className="bg-[#0f1b2d] border border-[#1e2e4a] rounded-xl overflow-hidden"
-            >
-              {/* HEADER */}
-              <div
-                onClick={() => toggle(r.id)}
-                className="flex justify-between items-center p-4 cursor-pointer hover:bg-[#16243a] transition"
-              >
-                <div>
-                  <div className="font-medium">{r.service}</div>
-                  <div className="text-sm text-gray-400">{r.time}</div>
+              return (
+                <div key={card.label} className="rounded-2xl px-4 py-3" style={tone}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em]">{card.label}</div>
+                  <div className="text-2xl font-bold mt-2">{card.value}</div>
                 </div>
+              );
+            })}
+          </div>
+        </div>
 
-                <div className="text-sm text-yellow-400">
-                  {isOpen ? "Hide" : "Open"}
-                </div>
+        <div className="rounded-[24px] p-4" style={{ backgroundColor: "#0F1E33", border: "1px solid #1B2A4A" }}>
+          <div className="flex flex-wrap gap-3">
+            {BUCKETS.map((bucket) => {
+              const active = bucket.id === activeBucket.id;
+              const count = (recordsByBucket[bucket.id] || []).length;
+
+              return (
+                <button
+                  key={bucket.id}
+                  onClick={() => {
+                    setActiveBucketId(bucket.id);
+                    setExpandedUiKey(null);
+                  }}
+                  className="px-4 py-3 rounded-xl text-left min-w-[190px] transition-all"
+                  style={
+                    active
+                      ? {
+                          backgroundColor: "#111D30",
+                          border: "1px solid rgba(201,168,76,0.32)",
+                          color: "#F8FAFC",
+                        }
+                      : {
+                          backgroundColor: "rgba(17,29,48,0.55)",
+                          border: "1px solid #1B2A4A",
+                          color: "#A8B6CC",
+                        }
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-bold">{bucket.label}</div>
+                    <div className="text-[11px] font-bold px-2 py-1 rounded-lg" style={{ backgroundColor: "#0D1B2E", color: "#C9A84C" }}>
+                      {count}
+                    </div>
+                  </div>
+                  <div className="text-xs mt-2 leading-5">{bucket.description}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr] items-start">
+          <div className="rounded-[24px] overflow-hidden" style={{ backgroundColor: "#0F1E33", border: "1px solid #1B2A4A" }}>
+            <div className="px-5 py-4 border-b flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between" style={{ borderColor: "#1B2A4A" }}>
+              <div>
+                <div className="text-xl font-bold text-white">{activeBucket.label}</div>
+                <div className="text-sm mt-1" style={{ color: "#8A9BB5" }}>{activeBucket.description}</div>
               </div>
 
-              {/* EXPANDED CONTENT */}
-              {isOpen && (
-                <div className="px-4 pb-4 border-t border-[#1e2e4a] bg-[#16243a]">
-                  <div className="mt-3 text-sm">{r.message}</div>
+              <div className="flex flex-wrap gap-2">
+                {STATUS_FILTERS.map((item) => {
+                  const active = item === statusFilter;
+                  return (
+                    <button
+                      key={item}
+                      onClick={() => setStatusFilter(item)}
+                      className="px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-[0.14em]"
+                      style={
+                        active
+                          ? { backgroundColor: "#C9A84C", color: "#0D1B2E" }
+                          : { backgroundColor: "#111D30", color: "#8A9BB5", border: "1px solid #1B2A4A" }
+                      }
+                    >
+                      {titleCase(item)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                  {r.type && (
-                    <div className="text-xs text-yellow-400 mt-2">
-                      TYPE: {r.type}
-                    </div>
-                  )}
+            <div className="grid grid-cols-[1.05fr_0.85fr_0.9fr_1.55fr_0.75fr_0.6fr] gap-4 px-5 py-3 text-[11px] font-bold uppercase tracking-[0.18em] border-b" style={{ color: "#8A9BB5", borderColor: "#1B2A4A" }}>
+              <div>Service</div>
+              <div>Owner</div>
+              <div>Status</div>
+              <div>Folder</div>
+              <div>Time</div>
+              <div className="text-right">View</div>
+            </div>
 
-                  <div className="text-xs text-gray-400 mt-1">
-                    STATUS: {r.status}
-                  </div>
+            <div className="max-h-[720px] overflow-y-auto">
+              {visibleRecords.length === 0 ? (
+                <div className="px-5 py-10 text-sm" style={{ color: "#8A9BB5" }}>
+                  No records in this section yet.
                 </div>
+              ) : (
+                visibleRecords.map((record) => {
+                  const expanded = record.uiKey === expandedUiKey;
+                  const tone = statusTone(record.status);
+
+                  return (
+                    <div key={record.uiKey || record.id} className="border-b" style={{ borderColor: "#1B2A4A" }}>
+                      <button
+                        onClick={() => setExpandedUiKey(expanded ? null : (record.uiKey || null))}
+                        className="w-full grid grid-cols-[1.05fr_0.85fr_0.9fr_1.55fr_0.75fr_0.6fr] gap-4 px-5 py-4 text-left items-start"
+                        style={{ backgroundColor: expanded ? "rgba(201,168,76,0.04)" : "transparent" }}
+                      >
+                        <div>
+                          <div className="font-semibold text-white text-sm">{record.service}</div>
+                          <div className="text-xs mt-1" style={{ color: "#8A9BB5" }}>{record.title}</div>
+                        </div>
+                        <div className="text-sm" style={{ color: "#D7E0EC" }}>{record.owner}</div>
+                        <div>
+                          <span className="inline-flex px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.16em]" style={tone}>
+                            {titleCase(record.status)}
+                          </span>
+                        </div>
+                        <div className="text-sm leading-6" style={{ color: "#D7E0EC" }}>{record.folder}</div>
+                        <div className="text-sm" style={{ color: "#A8B6CC" }}>{record.time}</div>
+                        <div className="text-right text-sm font-bold" style={{ color: "#C9A84C" }}>{expanded ? "Hide" : "Open"}</div>
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
-          );
-        })}
+          </div>
+
+          <div className="rounded-[24px] p-5" style={{ backgroundColor: "#0F1E33", border: "1px solid #1B2A4A" }}>
+            {!selectedRecord ? (
+              <div className="min-h-[560px] flex items-center justify-center text-center text-sm px-6" style={{ color: "#8A9BB5" }}>
+                Open a record on the left to review its path, tags, custody trail, and notes.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xl font-bold text-white">{selectedRecord.title}</div>
+                    <div className="text-sm mt-2" style={{ color: "#A8B6CC" }}>{selectedRecord.service} • {selectedRecord.category}</div>
+                  </div>
+
+                  <button
+                    onClick={() => handleDelete(selectedRecord)}
+                    className="px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.16em]"
+                    style={{ color: "#FCA5A5", border: "1px solid rgba(239,68,68,0.35)", backgroundColor: "rgba(127,29,29,0.18)" }}
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-2" style={{ color: "#8A9BB5" }}>Folder Path</div>
+                  <div className="text-sm leading-6 text-white">{selectedRecord.folder}</div>
+                </div>
+
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[selectedRecord.status, selectedRecord.severity, selectedRecord.source, selectedRecord.recordType]
+                      .filter(Boolean)
+                      .map((item) => (
+                        <span key={item} className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.28)", backgroundColor: "rgba(201,168,76,0.08)" }}>
+                          {titleCase(item)}
+                        </span>
+                      ))}
+                    {selectedRecord.requiresFollowUp && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "#FCD34D", border: "1px solid rgba(245,158,11,0.35)", backgroundColor: "rgba(120,53,15,0.18)" }}>
+                        Requires Follow Up
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-2" style={{ color: "#8A9BB5" }}>Issue Summary</div>
+                  <div className="text-sm leading-6 text-white">{selectedRecord.summary}</div>
+                </div>
+
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Tags</div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRecord.tags.length === 0 ? (
+                      <div className="text-sm" style={{ color: "#8A9BB5" }}>No tags yet.</div>
+                    ) : (
+                      selectedRecord.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-[0.14em]"
+                          style={{ color: "#D7E0EC", border: "1px solid #1B2A4A", backgroundColor: "#0D1B2E" }}
+                        >
+                          {titleCase(tag)}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Chain of Custody</div>
+                  <div className="space-y-3">
+                    {selectedRecord.custodyTrail.map((entry, index) => (
+                      <div key={`${entry.time}-${index}`} className="rounded-xl p-3" style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}>
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <div className="font-bold" style={{ color: "#C9A84C" }}>{entry.action}</div>
+                          <div style={{ color: "#8A9BB5" }}>{entry.time}</div>
+                        </div>
+                        <div className="text-xs mt-2" style={{ color: "#93A4BD" }}>{entry.location}</div>
+                        <div className="text-sm mt-2 text-white leading-6">{entry.details}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Notes</div>
+                  <textarea
+                    value={notesDrafts[selectedRecord.id] ?? selectedRecord.notes}
+                    onChange={(event) => setNotesDrafts((prev) => ({ ...prev, [selectedRecord.id]: event.target.value }))}
+                    placeholder="Add notes, fix details, follow-up instructions, or why this record matters."
+                    className="w-full min-h-[140px] rounded-xl p-4 text-sm"
+                    style={{ backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A", color: "#FFFFFF", resize: "vertical" }}
+                  />
+
+                  <div className="flex items-center justify-between gap-3 mt-3">
+                    <div className="text-xs" style={{ color: "#8A9BB5" }}>
+                      Last updated by: {selectedRecord.lastUpdatedBy}
+                    </div>
+                    <button
+                      onClick={() => handleSaveNotes(selectedRecord)}
+                      className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.16em]"
+                      style={{ color: "#0D1B2E", backgroundColor: "#C9A84C" }}
+                    >
+                      Save Notes
+                    </button>
+                  </div>
+                </div>
+
+                {(selectedRecord.relatedItems.length > 0 || selectedRecord.attachments.length > 0) && (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Related Items</div>
+                      <div className="space-y-2 text-sm text-white">
+                        {selectedRecord.relatedItems.map((item, index) => (
+                          <div key={`${item}-${index}`}>{item}</div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl p-4" style={{ backgroundColor: "#111D30", border: "1px solid #1B2A4A" }}>
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: "#8A9BB5" }}>Attachments</div>
+                      <div className="space-y-2 text-sm text-white">
+                        {selectedRecord.attachments.map((item, index) => (
+                          <div key={`${item}-${index}`}>{item}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
