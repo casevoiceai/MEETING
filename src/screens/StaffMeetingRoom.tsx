@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { saveMeetingToDrive } from "../lib/integrations";
+import { ensureSupabaseSession } from "../lib/supabase";
 
 export default function StaffMeetingRoom() {
   const [status, setStatus] = useState<string>("Idle");
@@ -29,17 +30,37 @@ export default function StaffMeetingRoom() {
 
         <button
           onClick={async () => {
+            console.log("[Meeting] Save clicked");
+
+            setStatus("Authenticating...");
+
+            const session = await ensureSupabaseSession();
+
+            if (!session?.access_token) {
+              console.error("[Meeting] No Supabase session");
+              setStatus("Auth failed");
+              return;
+            }
+
+            console.log("[Meeting] Session OK:", session.user?.id);
+
             setStatus("Saving...");
-            console.log("Saving meeting to Drive...");
 
-            const result = await saveMeetingToDrive();
+            try {
+              console.log("[Meeting] Calling Drive save");
 
-            console.log("Result:", result);
+              const result = await saveMeetingToDrive();
 
-            if (result?.success) {
-              setStatus("Saved successfully");
-            } else {
-              setStatus("Failed to save");
+              console.log("[Meeting] Result:", result);
+
+              if (result?.success) {
+                setStatus("Saved successfully");
+              } else {
+                setStatus("Failed to save");
+              }
+            } catch (err) {
+              console.error("[Meeting] Save failed:", err);
+              setStatus("Save failed");
             }
           }}
           style={{
@@ -65,18 +86,10 @@ export default function StaffMeetingRoom() {
       >
         <h2 style={{ marginBottom: "10px" }}>Fake Meeting Data</h2>
 
-        <p>
-          Julie: What are we building?
-        </p>
-        <p>
-          Founder: A founder operating system.
-        </p>
-        <p>
-          Scout: What competitors exist?
-        </p>
-        <p>
-          (no answer yet)
-        </p>
+        <p>Julie: What are we building?</p>
+        <p>Founder: A founder operating system.</p>
+        <p>Scout: What competitors exist?</p>
+        <p>(no answer yet)</p>
       </div>
     </div>
   );
