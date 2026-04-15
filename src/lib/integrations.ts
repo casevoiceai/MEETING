@@ -17,7 +17,7 @@ export async function testDriveConnection() {
 
     console.log("[Integrations] Drive test session OK:", session.user?.id);
 
-    const response = await fetch("/api/google-drive/save-meeting", {
+    const response = await fetch("/api/save-meeting", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -66,7 +66,7 @@ export async function saveMeetingToDrive() {
 
     console.log("[Integrations] Session OK:", session.user?.id);
 
-    const response = await fetch("/api/google-drive/save-meeting", {
+    const response = await fetch("/api/save-meeting", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
