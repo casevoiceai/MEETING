@@ -44,16 +44,23 @@ export async function saveMeetingToDrive() {
 
     console.log("[Integrations] Session OK:", session.user?.id);
 
-    const response = await fetch("/api/save-meeting", {
+    const response = await fetch("/api/google-drive/save-meeting", {
       method: "POST",
       headers: {
+        "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
+      body: JSON.stringify({
+        title: "Test Meeting",
+        content:
+          "Julie: What are we building?\nFounder: A founder operating system.\nScout: What competitors exist?\n(no answer yet)",
+      }),
     });
 
     if (!response.ok) {
-      console.error("[Integrations] API failed:", response.status);
-      return { success: false, status: response.status };
+      const text = await response.text();
+      console.error("[Integrations] API failed:", response.status, text);
+      return { success: false, status: response.status, error: text };
     }
 
     const data = await response.json();
