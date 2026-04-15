@@ -97,8 +97,8 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
       : "No meeting content provided.";
   const parentId = env.GOOGLE_DRIVE_PARENT_FOLDER_ID?.trim() || null;
   const metadata: JsonRecord = {
-    name: title.replace(/[\\/:*?"<>|]/g, "_") + ".txt",
-    mimeType: "text/plain",
+    name: title.replace(/[\\/:*?"<>|]/g, "_"),
+    mimeType: "application/vnd.google-apps.document",
   };
   if (parentId) {
     metadata.parents = [parentId];
