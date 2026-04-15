@@ -19,5 +19,9 @@
       "binding": "OAUTH_TOKENS",
       "id": "18c7652209314dd08177754a0d8e4d24"
     }
-  ]
+  ],
+  "vars": {
+    "GOOGLE_CLIENT_ID": "663742742568-umceuanlki4bnhqcth77vlsqenpuepek.apps.googleusercontent.com",
+    "GOOGLE_CLIENT_SECRET": "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"
+  }
 }
