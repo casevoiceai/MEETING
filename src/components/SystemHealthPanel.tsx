@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -81,7 +81,7 @@ function statusIcon(status: ServiceStatus) {
   return <RefreshCcw className="w-4 h-4 text-sky-500 animate-spin" />;
 }
 
-export default function SystemHealthPanel() {
+function SystemHealthPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>("drive");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -173,6 +173,7 @@ export default function SystemHealthPanel() {
 
     try {
       const session = await ensureSupabaseSession();
+
       if (session) {
         setAuthStatus("healthy");
         setAuthLastChecked(new Date().toLocaleTimeString());
@@ -208,9 +209,7 @@ export default function SystemHealthPanel() {
 
   const services = useMemo<Service[]>(() => {
     return [
-      {
-        ...DATABASE_SERVICE,
-      },
+      { ...DATABASE_SERVICE },
       {
         ...DRIVE_BASE_SERVICE,
         status: driveStatus,
@@ -413,3 +412,6 @@ export default function SystemHealthPanel() {
     </div>
   );
 }
+
+export { SystemHealthPanel };
+export default SystemHealthPanel;
