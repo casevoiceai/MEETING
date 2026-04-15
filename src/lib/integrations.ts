@@ -24,7 +24,7 @@ export async function testDriveConnection() {
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
-        action: "test_connection",
+        action: "check_auth",
       }),
     });
 
