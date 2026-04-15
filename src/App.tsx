@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import VaultView from "./screens/VaultView";
+import BoysQueuePanel from "./components/BoysQueuePanel";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import SystemReportsModal from "./components/SystemReportsModal";
 
 type MainTab =
   | "MEETING"
+  | "QUEUE"
   | "SESSIONS"
   | "EMAIL"
   | "VAULT"
@@ -17,6 +19,7 @@ type MainTab =
 
 const MAIN_TABS: MainTab[] = [
   "MEETING",
+  "QUEUE",
   "SESSIONS",
   "EMAIL",
   "VAULT",
@@ -50,22 +53,13 @@ function PlaceholderScreen({ title }: { title: string }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("MEETING");
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    const openReports = () => {
-      setReportsOpen(true);
-    };
-
+    const openReports = () => setReportsOpen(true);
     window.addEventListener("open-reports-modal", openReports);
-
-    return () => {
-      window.removeEventListener("open-reports-modal", openReports);
-    };
+    return () => window.removeEventListener("open-reports-modal", openReports);
   }, []);
-
-  const handleTabChange = (tab: MainTab) => {
-    setActiveTab(tab);
-  };
 
   const mainOverflowClass =
     activeTab === "MEETING" ? "overflow-hidden" : "overflow-y-auto";
@@ -95,12 +89,13 @@ export default function App() {
             <nav className="flex items-center gap-2 min-w-0 overflow-x-auto pb-1">
               {MAIN_TABS.map((tab) => {
                 const active = activeTab === tab;
+                const isQueue = tab === "QUEUE";
 
                 return (
                   <button
                     key={tab}
-                    onClick={() => handleTabChange(tab)}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all flex-shrink-0"
+                    onClick={() => setActiveTab(tab)}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all flex-shrink-0 flex items-center gap-2"
                     style={
                       active
                         ? {
@@ -110,73 +105,3 @@ export default function App() {
                           }
                         : {
                             backgroundColor: "transparent",
-                            color: "#8A9BB5",
-                            border: "1px solid transparent",
-                          }
-                    }
-                  >
-                    {tab}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
-              style={{
-                color: "#C9A84C",
-                backgroundColor: "rgba(201,168,76,0.06)",
-                border: "1px solid rgba(201,168,76,0.22)",
-              }}
-            >
-              APPROVAL REQUIRED
-            </button>
-
-            <button
-              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
-              style={{
-                color: "#C9A84C",
-                backgroundColor: "#0D1B2E",
-                border: "1px solid #1B2A4A",
-              }}
-            >
-              BACKUP
-            </button>
-
-            <button
-              onClick={() => setReportsOpen(true)}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
-              style={{
-                color: "#FF5F5F",
-                backgroundColor: "#0D1B2E",
-                border: "1px solid rgba(255,95,95,0.28)",
-              }}
-            >
-              REPORTS
-            </button>
-
-            <SystemHealthPanel />
-          </div>
-        </div>
-      </header>
-
-      <main className={`flex-1 ${mainOverflowClass}`}>
-        {activeTab === "MEETING" && (
-          <StaffMeetingRoom sessionId={null} sessionKey={null} />
-        )}
-        {activeTab === "VAULT" && <VaultView />}
-
-        {!["MEETING", "VAULT"].includes(activeTab) && (
-          <PlaceholderScreen title={activeTab} />
-        )}
-      </main>
-
-      <SystemReportsModal
-        isOpen={reportsOpen}
-        onClose={() => setReportsOpen(false)}
-      />
-    </div>
-  );
-}
