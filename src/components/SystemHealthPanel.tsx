@@ -28,7 +28,7 @@ const DATABASE_SERVICE: Service = {
   detail: "Database is responding normally.",
 };
 
-const AUTH_SERVICE: Service = {
+const CREDENTIALS_SERVICE: Service = {   id: "credentials",   name: "Credentials",   status: "healthy",   lastChecked: new Date().toLocaleTimeString(),   detail: "Cloudflare credential check has not run yet.", };  const AUTH_SERVICE: Service = {
   id: "auth",
   name: "Auth",
   status: "healthy",
