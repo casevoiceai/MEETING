@@ -152,6 +152,13 @@ function SystemHealthPanel() {
           return "warning";
         }
 
+        if (res.status === 405) {
+          setDriveExplanation(
+            "The Edge Function rejected the request method."
+          );
+          return "error";
+        }
+
         setDriveExplanation(`The live Google Drive check failed with HTTP ${res.status}.`);
         return "error";
       }
@@ -413,5 +420,4 @@ function SystemHealthPanel() {
   );
 }
 
-export { SystemHealthPanel };
 export default SystemHealthPanel;
