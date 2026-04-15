@@ -100,7 +100,7 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
   const title =
     typeof body.title === "string" && body.title.trim()
       ? body.title.trim()
-      : `Meeting_${new Date().toISOString()}`;
+      : "Meeting_" + new Date().toISOString();
 
   const content =
     typeof body.content === "string" && body.content.trim()
@@ -110,7 +110,7 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
   const parentId = env.GOOGLE_DRIVE_PARENT_FOLDER_ID?.trim() || null;
 
   const metadata: JsonRecord = {
-    name: `${title.replace(/[\\/:*?"<>|]/g, "_")}.txt`,
+    name: title.replace(/[\\/:*?"<>|]/g, "_") + ".txt",
     mimeType: "text/plain",
   };
 
@@ -118,24 +118,24 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
     metadata.parents = [parentId];
   }
 
-  const boundary = `casevoice-boundary-${crypto.randomUUID()}`;
+  const boundary = "casevoice-boundary-" + crypto.randomUUID();
 
   const multipartBody =
-    `--${boundary}\r\n` +
-    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-    `${JSON.stringify(metadata)}\r\n` +
-    `--${boundary}\r\n` +
-    `Content-Type: text/plain\r\n\r\n` +
-    `${content}\r\n` +
-    `--${boundary}--`;
+    "--" + boundary + "\r\n" +
+    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+    JSON.stringify(metadata) + "\r\n" +
+    "--" + boundary + "\r\n" +
+    "Content-Type: text/plain\r\n\r\n" +
+    content + "\r\n" +
+    "--" + boundary + "--";
 
   const uploadRes = await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": `multipart/related; boundary=${boundary}`,
+        Authorization: "Bearer " + token,
+        "Content-Type": "multipart/related; boundary=" + boundary,
       },
       body: multipartBody,
     }
@@ -153,7 +153,7 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
         error: "Google Drive token expired. Visit /oauth/start to reconnect.",
       };
     }
-    throw new Error(`Google Drive save failed: ${JSON.stringify(uploadData)}`);
+    throw new Error("Google Drive save failed: " + JSON.stringify(uploadData));
   }
 
   return {
@@ -222,7 +222,7 @@ export default {
         prompt: "consent",
       });
       return Response.redirect(
-        `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+        "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString(),
         302
       );
     }
@@ -232,4 +232,56 @@ export default {
       const error = url.searchParams.get("error");
 
       if (error || !code) {
-        return new Response(`OAuth
+        return new Response("OAuth error: " + (error || "No code received"), { status: 400 });
+      }
+
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: env.GOOGLE_CLIENT_ID,
+          client_secret: env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: REDIRECT_URI,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      const tokenData = (await tokenRes.json()) as Record<string, unknown>;
+
+      if (!tokenRes.ok) {
+        return new Response(
+          "Token exchange failed: " + JSON.stringify(tokenData),
+          { status: 500 }
+        );
+      }
+
+      const accessToken = tokenData.access_token as string;
+      const refreshToken = tokenData.refresh_token as string | undefined;
+      const expiresIn = (tokenData.expires_in as number) || 3600;
+
+      await env.OAUTH_TOKENS.put(
+        TOKEN_KEY,
+        JSON.stringify({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_at: Date.now() + expiresIn * 1000,
+        })
+      );
+
+      return Response.redirect(
+        "https://foundercrm.casevoice-ai.workers.dev/?drive=connected",
+        302
+      );
+    }
+
+    if (
+      url.pathname === "/api/save-meeting" ||
+      url.pathname === "/api/google-drive/save-meeting"
+    ) {
+      return handleApi(request, env);
+    }
+
+    return env.ASSETS.fetch(request);
+  },
+};
