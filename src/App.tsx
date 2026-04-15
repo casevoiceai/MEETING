@@ -85,12 +85,10 @@ export default function App() {
             >
               MYSTATEMENT_AI
             </div>
-
             <nav className="flex items-center gap-2 min-w-0 overflow-x-auto pb-1">
               {MAIN_TABS.map((tab) => {
                 const active = activeTab === tab;
                 const isQueue = tab === "QUEUE";
-
                 return (
                   <button
                     key={tab}
@@ -105,3 +103,80 @@ export default function App() {
                           }
                         : {
                             backgroundColor: "transparent",
+                            color: "#8A9BB5",
+                            border: "1px solid transparent",
+                          }
+                    }
+                  >
+                    {tab}
+                    {isQueue && pendingCount > 0 && (
+                      <span
+                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(245,158,11,0.25)",
+                          color: "#F59E0B",
+                        }}
+                      >
+                        {pendingCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
+              style={{
+                color: "#C9A84C",
+                backgroundColor: "rgba(201,168,76,0.06)",
+                border: "1px solid rgba(201,168,76,0.22)",
+              }}
+            >
+              APPROVAL REQUIRED
+            </button>
+            <button
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
+              style={{
+                color: "#C9A84C",
+                backgroundColor: "#0D1B2E",
+                border: "1px solid #1B2A4A",
+              }}
+            >
+              BACKUP
+            </button>
+            <button
+              onClick={() => setReportsOpen(true)}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
+              style={{
+                color: "#FF5F5F",
+                backgroundColor: "#0D1B2E",
+                border: "1px solid rgba(255,95,95,0.28)",
+              }}
+            >
+              REPORTS
+            </button>
+            <SystemHealthPanel />
+          </div>
+        </div>
+      </header>
+      <main className={`flex-1 ${mainOverflowClass}`}>
+        {activeTab === "MEETING" && (
+          <StaffMeetingRoom sessionId={null} sessionKey={null} />
+        )}
+        {activeTab === "QUEUE" && (
+          <BoysQueuePanel onPendingCountChange={setPendingCount} />
+        )}
+        {activeTab === "VAULT" && <VaultView />}
+        {!["MEETING", "QUEUE", "VAULT"].includes(activeTab) && (
+          <PlaceholderScreen title={activeTab} />
+        )}
+      </main>
+      <SystemReportsModal
+        isOpen={reportsOpen}
+        onClose={() => setReportsOpen(false)}
+      />
+    </div>
+  );
+}
