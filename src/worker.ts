@@ -28,20 +28,17 @@ async function getStoredToken(env: Env): Promise<string | null> {
   try {
     const stored = await env.OAUTH_TOKENS.get(TOKEN_KEY);
     if (!stored) return null;
-
     const tokenData = JSON.parse(stored) as {
       access_token: string;
       expires_at: number;
       refresh_token?: string;
     };
-
     if (Date.now() > tokenData.expires_at - 300000) {
       if (tokenData.refresh_token) {
         return await refreshAccessToken(env, tokenData.refresh_token);
       }
       return null;
     }
-
     return tokenData.access_token;
   } catch {
     return null;
@@ -60,16 +57,12 @@ async function refreshAccessToken(env: Env, refreshToken: string): Promise<strin
         grant_type: "refresh_token",
       }),
     });
-
     const data = (await res.json()) as Record<string, unknown>;
     if (!res.ok) return null;
-
     const accessToken = data.access_token as string;
     const expiresIn = (data.expires_in as number) || 3600;
-
     const existing = await env.OAUTH_TOKENS.get(TOKEN_KEY);
     const existingData = existing ? JSON.parse(existing) : {};
-
     await env.OAUTH_TOKENS.put(
       TOKEN_KEY,
       JSON.stringify({
@@ -78,7 +71,6 @@ async function refreshAccessToken(env: Env, refreshToken: string): Promise<strin
         expires_at: Date.now() + expiresIn * 1000,
       })
     );
-
     return accessToken;
   } catch {
     return null;
@@ -87,7 +79,6 @@ async function refreshAccessToken(env: Env, refreshToken: string): Promise<strin
 
 async function saveMeetingToDrive(env: Env, body: JsonRecord) {
   const token = await getStoredToken(env);
-
   if (!token) {
     return {
       success: false,
@@ -96,30 +87,23 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
       error: "Not connected to Google Drive. Visit /oauth/start to connect.",
     };
   }
-
   const title =
     typeof body.title === "string" && body.title.trim()
       ? body.title.trim()
       : "Meeting_" + new Date().toISOString();
-
   const content =
     typeof body.content === "string" && body.content.trim()
       ? body.content
       : "No meeting content provided.";
-
   const parentId = env.GOOGLE_DRIVE_PARENT_FOLDER_ID?.trim() || null;
-
   const metadata: JsonRecord = {
     name: title.replace(/[\\/:*?"<>|]/g, "_") + ".txt",
     mimeType: "text/plain",
   };
-
   if (parentId) {
     metadata.parents = [parentId];
   }
-
   const boundary = "casevoice-boundary-" + crypto.randomUUID();
-
   const multipartBody =
     "--" + boundary + "\r\n" +
     "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
@@ -128,7 +112,6 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
     "Content-Type: text/plain\r\n\r\n" +
     content + "\r\n" +
     "--" + boundary + "--";
-
   const uploadRes = await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
     {
@@ -140,9 +123,7 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
       body: multipartBody,
     }
   );
-
   const uploadData = (await uploadRes.json()) as Record<string, unknown>;
-
   if (!uploadRes.ok) {
     if (uploadRes.status === 401) {
       await env.OAUTH_TOKENS.delete(TOKEN_KEY);
@@ -155,7 +136,6 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
     }
     throw new Error("Google Drive save failed: " + JSON.stringify(uploadData));
   }
-
   return {
     success: true,
     saved: true,
@@ -168,43 +148,27 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
 }
 
 async function handleApi(request: Request, env: Env) {
-  if (request.method === "OPTIONS") {
-    return json({ ok: true }, 200);
-  }
-
-  if (request.method !== "POST") {
-    return json({ success: false, error: "Method not allowed" }, 405);
-  }
-
+  if (request.method === "OPTIONS") return json({ ok: true }, 200);
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
   let body: JsonRecord = {};
   try {
     body = (await request.json()) as JsonRecord;
   } catch {
     return json({ success: false, error: "Invalid JSON body" }, 400);
   }
-
   const action = typeof body.action === "string" ? body.action : "";
-
   try {
     if (action === "save_meeting") {
       const result = await saveMeetingToDrive(env, body);
       return json(result, 200);
     }
-
     if (action === "check_auth") {
       const token = await getStoredToken(env);
       return json({ success: true, connected: !!token }, 200);
     }
-
-    return json({ success: false, error: "Invalid action", received: body }, 400);
+    return json({ success: false, error: "Invalid action" }, 400);
   } catch (error) {
-    return json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      500
-    );
+    return json({ success: false, error: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
 }
 
@@ -230,11 +194,9 @@ export default {
     if (url.pathname === "/oauth/callback") {
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
-
       if (error || !code) {
         return new Response("OAuth error: " + (error || "No code received"), { status: 400 });
       }
-
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -246,42 +208,32 @@ export default {
           grant_type: "authorization_code",
         }),
       });
-
       const tokenData = (await tokenRes.json()) as Record<string, unknown>;
-
       if (!tokenRes.ok) {
-        return new Response(
-          "Token exchange failed: " + JSON.stringify(tokenData),
-          { status: 500 }
-        );
+        return new Response("Token exchange failed: " + JSON.stringify(tokenData), { status: 500 });
       }
-
-      const accessToken = tokenData.access_token as string;
-      const refreshToken = tokenData.refresh_token as string | undefined;
-      const expiresIn = (tokenData.expires_in as number) || 3600;
-
       await env.OAUTH_TOKENS.put(
         TOKEN_KEY,
         JSON.stringify({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_at: Date.now() + expiresIn * 1000,
+          access_token: tokenData.access_token as string,
+          refresh_token: tokenData.refresh_token as string | undefined,
+          expires_at: Date.now() + ((tokenData.expires_in as number) || 3600) * 1000,
         })
       );
-
       return Response.redirect(
         "https://foundercrm.casevoice-ai.workers.dev/?drive=connected",
         302
       );
     }
 
-    if (
-      url.pathname === "/api/save-meeting" ||
-      url.pathname === "/api/google-drive/save-meeting"
-    ) {
+    if (url.pathname === "/api/save-meeting" || url.pathname === "/api/google-drive/save-meeting") {
       return handleApi(request, env);
     }
 
-    return env.ASSETS.fetch(request);
+    const assetRes = await env.ASSETS.fetch(request);
+    if (assetRes.status === 404) {
+      return env.ASSETS.fetch(new Request(new URL("/", request.url).toString()));
+    }
+    return assetRes;
   },
 };
