@@ -17,10 +17,32 @@ export async function testDriveConnection() {
 
     console.log("[Integrations] Drive test session OK:", session.user?.id);
 
-    return {
-      success: true,
-      connected: true,
-    };
+    const response = await fetch("/api/google-drive/save-meeting", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        action: "test_connection",
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("[Integrations] Drive test API failed:", response.status, text);
+      return {
+        success: false,
+        connected: false,
+        error: text,
+      };
+    }
+
+    const data = await response.json();
+
+    console.log("[Integrations] Drive test API success:", data);
+
+    return data;
   } catch (err) {
     console.error("[Integrations] Drive test failed:", err);
     return {
@@ -51,6 +73,7 @@ export async function saveMeetingToDrive() {
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
+        action: "save_meeting",
         title: "Test Meeting",
         content:
           "Julie: What are we building?\nFounder: A founder operating system.\nScout: What competitors exist?\n(no answer yet)",
