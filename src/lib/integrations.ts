@@ -1,5 +1,36 @@
 import { ensureSupabaseSession } from "./supabase";
 
+export async function testDriveConnection() {
+  try {
+    console.log("[Integrations] Starting testDriveConnection");
+
+    const session = await ensureSupabaseSession();
+
+    if (!session?.access_token) {
+      console.error("[Integrations] No Supabase session for drive test");
+      return {
+        success: false,
+        connected: false,
+        error: "No Supabase session",
+      };
+    }
+
+    console.log("[Integrations] Drive test session OK:", session.user?.id);
+
+    return {
+      success: true,
+      connected: true,
+    };
+  } catch (err) {
+    console.error("[Integrations] Drive test failed:", err);
+    return {
+      success: false,
+      connected: false,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
 export async function saveMeetingToDrive() {
   try {
     console.log("[Integrations] Starting saveMeetingToDrive");
@@ -22,7 +53,7 @@ export async function saveMeetingToDrive() {
 
     if (!response.ok) {
       console.error("[Integrations] API failed:", response.status);
-      return { success: false };
+      return { success: false, status: response.status };
     }
 
     const data = await response.json();
