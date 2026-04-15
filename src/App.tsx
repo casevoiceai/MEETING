@@ -83,7 +83,7 @@ export default function App() {
               className="text-sm font-bold tracking-wide whitespace-nowrap flex-shrink-0"
               style={{ color: "#C9A84C" }}
             >
-              MYSTATEMENT_AI
+             FOUNDER CRM
             </div>
             <nav className="flex items-center gap-2 min-w-0 overflow-x-auto pb-1">
               {MAIN_TABS.map((tab) => {
