@@ -1,3 +1,5 @@
+console.error("FORCE REBUILD v3");
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
