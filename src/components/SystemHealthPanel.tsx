@@ -28,7 +28,7 @@ const DATABASE_SERVICE: Service = {
   detail: "Database is responding normally.",
 };
 
-const CREDENTIALS_SERVICE: Service = {   id: "credentials",   name: "Credentials",   status: "healthy",   lastChecked: new Date().toLocaleTimeString(),   detail: "Cloudflare credential check has not run yet.", };  const AUTH_SERVICE: Service = {
+const AUTH_SERVICE: Service = {
   id: "auth",
   name: "Auth",
   status: "healthy",
@@ -37,15 +37,9 @@ const CREDENTIALS_SERVICE: Service = {   id: "credentials",   name: "Credentials
 };
 
 function getStatusIcon(status: ServiceStatus) {
-  if (status === "healthy") {
-    return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
-  }
-  if (status === "warning") {
-    return <AlertCircle className="w-4 h-4 text-amber-500" />;
-  }
-  if (status === "error") {
-    return <AlertCircle className="w-4 h-4 text-rose-500" />;
-  }
+  if (status === "healthy") return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+  if (status === "warning") return <AlertCircle className="w-4 h-4 text-amber-500" />;
+  if (status === "error") return <AlertCircle className="w-4 h-4 text-rose-500" />;
   return <RefreshCcw className="w-4 h-4 text-sky-500 animate-spin" />;
 }
 
@@ -58,35 +52,54 @@ function getStatusLabel(status: ServiceStatus) {
 
 export default function SystemHealthPanel() {
   const [isOpen, setIsOpen] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>("drive");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [driveStatus, setDriveStatus] = useState<ServiceStatus>("loading");
   const [driveLastChecked, setDriveLastChecked] = useState("Pending");
   const [driveDetail, setDriveDetail] = useState("Drive check has not run yet.");
 
+  const [credStatus, setCredStatus] = useState<ServiceStatus>("loading");
+  const [credLastChecked, setCredLastChecked] = useState("Pending");
+  const [credDetail, setCredDetail] = useState("Credential check has not run yet.");
+
+  const runCredentialsCheck = async () => {
+    setCredStatus("loading");
+    setCredDetail("Checking Cloudflare credentials...");
+    try {
+      const response = await fetch("/api/save-meeting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "check_credentials" }),
+      });
+      const data = await response.json();
+      if (data.client_id_set && data.client_secret_set) {
+        setCredStatus("healthy");
+        setCredDetail("Google Client ID and Secret are set in Cloudflare. OAuth token present: " + (data.oauth_token_present ? "yes" : "no") + ".");
+      } else {
+        setCredStatus("error");
+        setCredDetail(data.error ?? "One or more credentials are missing from Cloudflare.");
+      }
+    } catch {
+      setCredStatus("error");
+      setCredDetail("Could not reach the worker to check credentials.");
+    } finally {
+      setCredLastChecked(new Date().toLocaleTimeString());
+    }
+  };
+
   const runDriveCheck = async () => {
     setIsRefreshing(true);
     setDriveStatus("loading");
     setDriveDetail("Running live Google Drive check...");
-
     try {
       const result = await testDriveConnection();
-
       if (result.success) {
         setDriveStatus("healthy");
         setDriveDetail("Google Drive connection is working.");
       } else {
         const message = result.error || "Google Drive check failed.";
-
-        if (message.includes("401")) {
-          setDriveStatus("warning");
-        } else if (message.includes("405")) {
-          setDriveStatus("error");
-        } else {
-          setDriveStatus("error");
-        }
-
+        setDriveStatus(message.includes("401") ? "warning" : "error");
         setDriveDetail(message);
       }
     } catch (error) {
@@ -98,32 +111,39 @@ export default function SystemHealthPanel() {
     }
   };
 
+  const runAllChecks = async () => {
+    setIsRefreshing(true);
+    await Promise.all([runDriveCheck(), runCredentialsCheck()]);
+    setIsRefreshing(false);
+  };
+
   useEffect(() => {
     if (!isOpen) return;
-
-    const timer = setTimeout(() => {
-      runDriveCheck();
-    }, 250);
-
+    const timer = setTimeout(() => { runAllChecks(); }, 250);
     return () => clearTimeout(timer);
   }, [isOpen]);
 
-  const services = useMemo<Service[]>(() => {
-    return [
-      DATABASE_SERVICE,
-      {
-        id: "drive",
-        name: "Google Drive",
-        status: driveStatus,
-        lastChecked: driveLastChecked,
-        detail: driveDetail,
-      },
-      AUTH_SERVICE,
-    ];
-  }, [driveDetail, driveLastChecked, driveStatus]);
+  const services = useMemo<Service[]>(() => [
+    DATABASE_SERVICE,
+    {
+      id: "credentials",
+      name: "Credentials",
+      status: credStatus,
+      lastChecked: credLastChecked,
+      detail: credDetail,
+    },
+    {
+      id: "drive",
+      name: "Google Drive",
+      status: driveStatus,
+      lastChecked: driveLastChecked,
+      detail: driveDetail,
+    },
+    AUTH_SERVICE,
+  ], [credStatus, credLastChecked, credDetail, driveDetail, driveLastChecked, driveStatus]);
 
   const degraded = services.some(
-    (service) => service.status === "warning" || service.status === "error"
+    (s) => s.status === "warning" || s.status === "error"
   );
 
   return (
@@ -131,11 +151,7 @@ export default function SystemHealthPanel() {
       <button
         onClick={() => setIsOpen(true)}
         className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
-        style={{
-          color: "#C9A84C",
-          backgroundColor: "#0D1B2E",
-          border: "1px solid #1B2A4A",
-        }}
+        style={{ color: "#C9A84C", backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
       >
         SYSTEM HEALTH
       </button>
@@ -146,36 +162,21 @@ export default function SystemHealthPanel() {
             <div className="flex items-center gap-2">
               <Activity className="w-5 h-5 text-[#C9A84C]" />
               <div>
-                <div className="text-[11px] font-bold tracking-[0.18em] uppercase text-white">
-                  System Health
-                </div>
-                <div className="text-[10px] text-[#8A9BB5]">
-                  Last Check: {new Date().toLocaleTimeString()}
-                </div>
+                <div className="text-[11px] font-bold tracking-[0.18em] uppercase text-white">System Health</div>
+                <div className="text-[10px] text-[#8A9BB5]">Last Check: {new Date().toLocaleTimeString()}</div>
               </div>
             </div>
-
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1 rounded hover:bg-[#132845] text-[#8A9BB5] hover:text-white"
-            >
+            <button onClick={() => setIsOpen(false)} className="p-1 rounded hover:bg-[#132845] text-[#8A9BB5] hover:text-white">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="p-4 border-b border-[#1B2A4A] flex justify-between items-center">
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded ${
-                degraded
-                  ? "bg-red-900/30 text-red-400"
-                  : "bg-green-900/30 text-green-400"
-              }`}
-            >
+            <span className={`text-[10px] px-2 py-0.5 rounded ${degraded ? "bg-red-900/30 text-red-400" : "bg-green-900/30 text-green-400"}`}>
               {degraded ? "Degraded" : "Healthy"}
             </span>
-
             <button
-              onClick={runDriveCheck}
+              onClick={runAllChecks}
               disabled={isRefreshing}
               className="flex items-center gap-1.5 text-[10px] font-bold text-[#C9A84C] hover:text-[#E6C76A] disabled:opacity-50"
             >
@@ -188,55 +189,46 @@ export default function SystemHealthPanel() {
             {services.map((service) => (
               <div key={service.id} className="border border-[#1B2A4A] rounded overflow-hidden">
                 <div
-                  onClick={() =>
-                    setExpandedId(expandedId === service.id ? null : service.id)
-                  }
+                  onClick={() => setExpandedId(expandedId === service.id ? null : service.id)}
                   className="p-3 cursor-pointer flex justify-between items-center bg-[#0F172A]"
                 >
                   <div className="flex items-center gap-3">
                     {getStatusIcon(service.status)}
                     <div>
                       <div className="text-white text-xs font-bold">{service.name}</div>
-                      <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide mt-0.5">
-                        {service.lastChecked}
-                      </div>
+                      <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide mt-0.5">{service.lastChecked}</div>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-3">
-                    <span
-                      className={
-                        service.status === "error"
-                          ? "text-red-400 text-xs"
-                          : service.status === "warning"
-                          ? "text-yellow-400 text-xs"
-                          : service.status === "healthy"
-                          ? "text-green-400 text-xs"
-                          : "text-sky-400 text-xs"
-                      }
-                    >
+                    <span className={
+                      service.status === "error" ? "text-red-400 text-xs" :
+                      service.status === "warning" ? "text-yellow-400 text-xs" :
+                      service.status === "healthy" ? "text-green-400 text-xs" :
+                      "text-sky-400 text-xs"
+                    }>
                       {getStatusLabel(service.status)}
                     </span>
-
-                    {expandedId === service.id ? (
-                      <ChevronUp className="w-4 h-4 text-[#8A9BB5]" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-[#8A9BB5]" />
-                    )}
+                    {expandedId === service.id
+                      ? <ChevronUp className="w-4 h-4 text-[#8A9BB5]" />
+                      : <ChevronDown className="w-4 h-4 text-[#8A9BB5]" />
+                    }
                   </div>
                 </div>
 
                 {expandedId === service.id && (
                   <div className="px-3 py-3 border-t border-[#1B2A4A] bg-[#0D1B2E]">
                     <p className="text-[10px] text-[#D0DFEE]">{service.detail}</p>
-
                     {service.id === "drive" && (
                       <div className="pt-3">
-                        <button
-                          onClick={runDriveCheck}
-                          className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded"
-                        >
+                        <button onClick={runDriveCheck} className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded">
                           Test connection again
+                        </button>
+                      </div>
+                    )}
+                    {service.id === "credentials" && (
+                      <div className="pt-3">
+                        <button onClick={runCredentialsCheck} className="text-[10px] px-3 py-1.5 border border-yellow-500 text-yellow-400 rounded">
+                          Re-check credentials
                         </button>
                       </div>
                     )}
