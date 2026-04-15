@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Check, CornerDownLeft, Clock, ChevronDown } from "lucide-react";
+import { RefreshCw, Check, CornerDownLeft, Clock, ChevronDown, Play } from "lucide-react";
 import {
   listPendingQueueItems,
   listAllQueueItems,
@@ -8,6 +8,7 @@ import {
   type BoysQueueItem,
   type QueueStatus,
 } from "../lib/boysQueue";
+import { supabase } from "../lib/supabase";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -195,6 +196,8 @@ export default function BoysQueuePanel({ onPendingCountChange }: BoysQueuePanelP
   const [history, setHistory] = useState<BoysQueueItem[]>([]);
   const [tab, setTab] = useState<"pending" | "history">("pending");
   const [loading, setLoading] = useState(true);
+  const [runningScout, setRunningScout] = useState(false);
+  const [scoutMessage, setScoutMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -206,6 +209,30 @@ export default function BoysQueuePanel({ onPendingCountChange }: BoysQueuePanelP
   }, [onPendingCountChange]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function handleRunScout() {
+    setRunningScout(true);
+    setScoutMessage(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("run-scout", {
+        body: { context: "Current sprint: build the Team Queue autonomous loop. CASEVOICE go-to-market targeting Carbondale PD as first pilot." },
+      });
+      if (error) {
+        setScoutMessage("Scout failed: " + error.message);
+      } else if (data?.success) {
+        setScoutMessage("Scout dropped a new item in the queue.");
+        await load();
+        setTab("pending");
+      } else {
+        setScoutMessage("Scout returned no item: " + (data?.error ?? "unknown error"));
+      }
+    } catch (err) {
+      setScoutMessage("Scout failed: " + (err instanceof Error ? err.message : "unknown error"));
+    } finally {
+      setRunningScout(false);
+      setTimeout(() => setScoutMessage(null), 5000);
+    }
+  }
 
   function handleApprove(id: string) {
     const item = pending.find((i) => i.id === id);
@@ -228,7 +255,7 @@ export default function BoysQueuePanel({ onPendingCountChange }: BoysQueuePanelP
         style={{ borderColor: BORDER }}
       >
         <span className="text-xs font-bold tracking-widest uppercase" style={{ color: GOLD }}>
-          Boys Queue
+          Team Queue
         </span>
         {pending.length > 0 && (
           <span
@@ -238,14 +265,46 @@ export default function BoysQueuePanel({ onPendingCountChange }: BoysQueuePanelP
             {pending.length} pending
           </span>
         )}
-        <button
-          onClick={load}
-          className="ml-auto p-1 rounded opacity-50 hover:opacity-80 transition-opacity"
-          title="Refresh"
-        >
-          <RefreshCw size={11} style={{ color: MUTED }} />
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={handleRunScout}
+            disabled={runningScout}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            style={{
+              backgroundColor: "rgba(201,168,76,0.08)",
+              color: GOLD,
+              border: "1px solid rgba(201,168,76,0.25)",
+            }}
+          >
+            {runningScout
+              ? <><RefreshCw size={10} className="animate-spin" /> Running...</>
+              : <><Play size={10} /> Run Scout</>
+            }
+          </button>
+          <button
+            onClick={load}
+            className="p-1 rounded opacity-50 hover:opacity-80 transition-opacity"
+            title="Refresh"
+          >
+            <RefreshCw size={11} style={{ color: MUTED }} />
+          </button>
+        </div>
       </div>
+
+      {scoutMessage && (
+        <div
+          className="px-5 py-2 text-[11px] font-semibold border-b"
+          style={{
+            color: scoutMessage.startsWith("Scout dropped") ? "#4ADE80" : "#F87171",
+            backgroundColor: scoutMessage.startsWith("Scout dropped")
+              ? "rgba(74,222,128,0.06)"
+              : "rgba(248,113,113,0.06)",
+            borderColor: BORDER,
+          }}
+        >
+          {scoutMessage}
+        </div>
+      )}
 
       <div className="flex border-b flex-shrink-0" style={{ borderColor: BORDER }}>
         <button
@@ -288,7 +347,7 @@ export default function BoysQueuePanel({ onPendingCountChange }: BoysQueuePanelP
                   <Clock size={18} style={{ color: "#4ADE80", opacity: 0.6 }} />
                 </div>
                 <p className="text-sm font-semibold" style={{ color: MUTED }}>Queue is clear</p>
-                <p className="text-[11px]" style={{ color: DIM }}>The Boys have nothing waiting for your review.</p>
+                <p className="text-[11px]" style={{ color: DIM }}>Hit Run Scout to have her check in.</p>
               </div>
             ) : (
               pending.map((item) => (
