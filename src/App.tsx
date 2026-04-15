@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import VaultView from "./screens/VaultView";
 import BoysQueuePanel from "./components/BoysQueuePanel";
@@ -30,23 +30,169 @@ const MAIN_TABS: MainTab[] = [
   "RECOVERY",
 ];
 
-function PlaceholderScreen({ title }: { title: string }) {
+function StandbyScreen({
+  title,
+  subtitle,
+  items,
+}: {
+  title: string;
+  subtitle: string;
+  items: { label: string; value: string }[];
+}) {
   return (
-    <div className="h-full w-full p-8" style={{ backgroundColor: "#08111F" }}>
+    <div className="h-full w-full p-6 md:p-8" style={{ backgroundColor: "#08111F" }}>
       <div
-        className="rounded-xl border p-8"
+        className="rounded-2xl border p-6 md:p-8"
         style={{
           backgroundColor: "#0D1B2E",
           borderColor: "#1B2A4A",
-          color: "#8A9BB5",
+          color: "#F8FAFC",
         }}
       >
-        <div className="text-[11px] font-bold tracking-[0.22em] uppercase mb-3">
-          {title}
+        <div className="mb-6">
+          <div
+            className="text-[12px] font-bold tracking-[0.22em] uppercase mb-3"
+            style={{ color: "#C9A84C" }}
+          >
+            {title}
+          </div>
+          <div className="text-base md:text-lg font-semibold mb-2">
+            {subtitle}
+          </div>
+          <div className="text-sm md:text-base" style={{ color: "#8BA4C2" }}>
+            This section is now wired into the app shell and ready for real content.
+          </div>
         </div>
-        <div className="text-sm">This section is standing by.</div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {items.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-xl border p-4"
+              style={{
+                backgroundColor: "#08111F",
+                borderColor: "#1B2A4A",
+              }}
+            >
+              <div
+                className="text-[11px] font-bold tracking-[0.18em] uppercase mb-2"
+                style={{ color: "#C9A84C" }}
+              >
+                {item.label}
+              </div>
+              <div className="text-sm md:text-base" style={{ color: "#F8FAFC" }}>
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
+  );
+}
+
+function SessionsScreen() {
+  return (
+    <StandbyScreen
+      title="SESSIONS"
+      subtitle="Session history and saved meeting records"
+      items={[
+        { label: "Status", value: "Shell is active" },
+        { label: "Purpose", value: "View past meetings and saved session files" },
+        { label: "Next Build", value: "Show real saved meetings from storage" },
+        { label: "Current State", value: "No longer blank" },
+      ]}
+    />
+  );
+}
+
+function EmailScreen() {
+  return (
+    <StandbyScreen
+      title="EMAIL"
+      subtitle="Outbound email workspace"
+      items={[
+        { label: "Status", value: "Shell is active" },
+        { label: "Purpose", value: "Draft, review, and send team-driven email" },
+        { label: "Next Build", value: "Wire Mailman output and send actions" },
+        { label: "Current State", value: "No longer blank" },
+      ]}
+    />
+  );
+}
+
+function TagsScreen() {
+  return (
+    <StandbyScreen
+      title="TAGS"
+      subtitle="Tag system for sorting work"
+      items={[
+        { label: "Status", value: "Shell is active" },
+        { label: "Purpose", value: "Group items by topic, urgency, and owner" },
+        { label: "Next Build", value: "Show tag filters tied to queue and sessions" },
+        { label: "Current State", value: "No longer blank" },
+      ]}
+    />
+  );
+}
+
+function ProjectsScreen() {
+  return (
+    <StandbyScreen
+      title="PROJECTS"
+      subtitle="Project tracking workspace"
+      items={[
+        { label: "Status", value: "Shell is active" },
+        { label: "Purpose", value: "Track major company initiatives and workstreams" },
+        { label: "Next Build", value: "Show project cards and linked queue items" },
+        { label: "Current State", value: "No longer blank" },
+      ]}
+    />
+  );
+}
+
+function IntegrationsScreen() {
+  return (
+    <StandbyScreen
+      title="INTEGRATIONS"
+      subtitle="Connected systems and service status"
+      items={[
+        { label: "Status", value: "Shell is active" },
+        { label: "Purpose", value: "Show Supabase, Google Drive, and API connections" },
+        { label: "Next Build", value: "Display live connection checks and repair tools" },
+        { label: "Current State", value: "No longer blank" },
+      ]}
+    />
+  );
+}
+
+function SourceOfTruthScreen() {
+  return (
+    <StandbyScreen
+      title="SOURCE OF TRUTH"
+      subtitle="Primary records and trusted operating data"
+      items={[
+        { label: "Status", value: "Shell is active" },
+        { label: "Purpose", value: "Store the approved version of key facts and assets" },
+        { label: "Next Build", value: "Link approved files, notes, and final decisions" },
+        { label: "Current State", value: "No longer blank" },
+      ]}
+    />
+  );
+}
+
+function RecoveryScreen() {
+  return (
+    <StandbyScreen
+      title="RECOVERY"
+      subtitle="Restore and fallback workspace"
+      items={[
+        { label: "Status", value: "Shell is active" },
+        { label: "Purpose", value: "Hold rollback paths, backups, and emergency recovery steps" },
+        { label: "Next Build", value: "Show restore actions and known safe baselines" },
+        { label: "Current State", value: "No longer blank" },
+      ]}
+    />
   );
 }
 
@@ -61,8 +207,12 @@ export default function App() {
     return () => window.removeEventListener("open-reports-modal", openReports);
   }, []);
 
-  const mainOverflowClass =
-    activeTab === "MEETING" ? "overflow-hidden" : "overflow-y-auto";
+  const mainOverflowClass = useMemo(() => {
+    if (activeTab === "MEETING") return "overflow-hidden";
+    if (activeTab === "QUEUE") return "overflow-y-auto";
+    if (activeTab === "VAULT") return "overflow-y-auto";
+    return "overflow-y-auto";
+  }, [activeTab]);
 
   return (
     <div
@@ -83,12 +233,14 @@ export default function App() {
               className="text-sm font-bold tracking-wide whitespace-nowrap flex-shrink-0"
               style={{ color: "#C9A84C" }}
             >
-             FOUNDER CRM
+              FOUNDER CRM
             </div>
+
             <nav className="flex items-center gap-2 min-w-0 overflow-x-auto pb-1">
               {MAIN_TABS.map((tab) => {
                 const active = activeTab === tab;
                 const isQueue = tab === "QUEUE";
+
                 return (
                   <button
                     key={tab}
@@ -125,27 +277,33 @@ export default function App() {
               })}
             </nav>
           </div>
+
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
+              onClick={() => setActiveTab("QUEUE")}
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
               style={{
                 color: "#C9A84C",
-                backgroundColor: "rgba(201,168,76,0.06)",
+                backgroundColor:
+                  activeTab === "QUEUE" ? "rgba(201,168,76,0.12)" : "rgba(201,168,76,0.06)",
                 border: "1px solid rgba(201,168,76,0.22)",
               }}
             >
               APPROVAL REQUIRED
             </button>
+
             <button
+              onClick={() => setActiveTab("RECOVERY")}
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
               style={{
                 color: "#C9A84C",
-                backgroundColor: "#0D1B2E",
+                backgroundColor: activeTab === "RECOVERY" ? "#132845" : "#0D1B2E",
                 border: "1px solid #1B2A4A",
               }}
             >
               BACKUP
             </button>
+
             <button
               onClick={() => setReportsOpen(true)}
               className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
@@ -157,22 +315,38 @@ export default function App() {
             >
               REPORTS
             </button>
+
             <SystemHealthPanel />
           </div>
         </div>
       </header>
+
       <main className={`flex-1 ${mainOverflowClass}`}>
         {activeTab === "MEETING" && (
           <StaffMeetingRoom sessionId={null} sessionKey={null} />
         )}
+
         {activeTab === "QUEUE" && (
           <BoysQueuePanel onPendingCountChange={setPendingCount} />
         )}
+
+        {activeTab === "SESSIONS" && <SessionsScreen />}
+
+        {activeTab === "EMAIL" && <EmailScreen />}
+
         {activeTab === "VAULT" && <VaultView />}
-        {!["MEETING", "QUEUE", "VAULT"].includes(activeTab) && (
-          <PlaceholderScreen title={activeTab} />
-        )}
+
+        {activeTab === "TAGS" && <TagsScreen />}
+
+        {activeTab === "PROJECTS" && <ProjectsScreen />}
+
+        {activeTab === "INTEGRATIONS" && <IntegrationsScreen />}
+
+        {activeTab === "SOURCE OF TRUTH" && <SourceOfTruthScreen />}
+
+        {activeTab === "RECOVERY" && <RecoveryScreen />}
       </main>
+
       <SystemReportsModal
         isOpen={reportsOpen}
         onClose={() => setReportsOpen(false)}
