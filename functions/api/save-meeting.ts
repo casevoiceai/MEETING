@@ -128,9 +128,7 @@ async function getAccessToken(serviceAccount: ServiceAccount): Promise<string> {
   const tokenData = await tokenRes.json();
 
   if (!tokenRes.ok) {
-    throw new Error(
-      `Google token request failed: ${JSON.stringify(tokenData)}`
-    );
+    throw new Error(`Google token request failed: ${JSON.stringify(tokenData)}`);
   }
 
   if (!tokenData.access_token) {
