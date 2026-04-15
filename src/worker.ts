@@ -162,6 +162,18 @@ async function handleApi(request: Request, env: Env) {
       const result = await saveMeetingToDrive(env, body);
       return json(result, 200);
     }
+    if (action === "check_credentials") {
+      const hasClientId = typeof env.GOOGLE_CLIENT_ID === "string" && env.GOOGLE_CLIENT_ID.trim().length > 10;
+      const hasClientSecret = typeof env.GOOGLE_CLIENT_SECRET === "string" && env.GOOGLE_CLIENT_SECRET.trim().length > 10;
+      const token = await getStoredToken(env);
+      return json({
+        success: hasClientId && hasClientSecret,
+        client_id_set: hasClientId,
+        client_secret_set: hasClientSecret,
+        oauth_token_present: !!token,
+        error: (!hasClientId || !hasClientSecret) ? "One or more credentials are missing or empty in Cloudflare." : undefined,
+      }, 200);
+    }
     if (action === "check_auth") {
       const token = await getStoredToken(env);
       return json({ success: true, connected: !!token }, 200);
