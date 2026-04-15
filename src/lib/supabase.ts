@@ -5,9 +5,9 @@ export const SUPABASE_ANON_KEY = "sb_publishable_btVRhvhpBvfdpM0EIlvngQ_A4gMMwxA
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
   },
 });
 
@@ -15,40 +15,31 @@ supabase.auth.onAuthStateChange((event, session) => {
   console.log("[Supabase Auth Event]", event, session?.user?.id ?? "no-user");
 });
 
+let cachedSession: Session | null = null;
+
 export async function ensureSupabaseSession(): Promise<Session | null> {
   try {
-    console.log("[Supabase] Checking existing session...");
-
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    if (sessionError) {
-      console.error("[Supabase] getSession failed:", sessionError);
-      throw sessionError;
+    if (cachedSession?.access_token) {
+      console.log("[Supabase] Using cached session");
+      return cachedSession;
     }
 
-    if (session?.access_token) {
-      console.log("[Supabase] Existing session found");
-      return session;
-    }
+    console.log("[Supabase] Creating fresh anonymous session...");
 
-    console.log("[Supabase] No session found. Creating anonymous session...");
+    const { data, error } = await supabase.auth.signInAnonymously();
 
-    const { data, error: signInError } = await supabase.auth.signInAnonymously();
-
-    if (signInError) {
-      console.error("[Supabase] Anonymous sign-in failed:", signInError);
-      throw signInError;
+    if (error) {
+      console.error("[Supabase] Anonymous sign-in failed:", error);
+      throw error;
     }
 
     if (data.session?.access_token) {
+      cachedSession = data.session;
       console.log("[Supabase] Anonymous session created");
       return data.session;
     }
 
-    console.error("[Supabase] Anonymous sign-in returned no session");
+    console.error("[Supabase] No session returned");
     return null;
   } catch (err) {
     console.error("[Supabase] Auth failed:", err);
