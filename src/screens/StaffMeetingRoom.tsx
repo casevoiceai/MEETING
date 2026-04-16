@@ -19,32 +19,31 @@ const TEAM_MEMBERS = [
   "CIPHER", "That Guy",
 ];
 
-// Color groups by role
 const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: string; avatar: string }> = {
-  "Julie":           { bubble: "rgba(201,168,76,0.10)",  border: "rgba(201,168,76,0.30)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.15)" },
-  "Tech-9":          { bubble: "rgba(96,165,250,0.10)",  border: "rgba(96,165,250,0.25)",  name: "#60A5FA", avatar: "rgba(96,165,250,0.15)" },
-  "Jack":            { bubble: "rgba(167,139,250,0.10)", border: "rgba(167,139,250,0.25)", name: "#A78BFA", avatar: "rgba(167,139,250,0.15)" },
-  "Max":             { bubble: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.25)",  name: "#34D399", avatar: "rgba(52,211,153,0.15)" },
-  "Doc":             { bubble: "rgba(251,146,60,0.10)",  border: "rgba(251,146,60,0.25)",  name: "#FB923C", avatar: "rgba(251,146,60,0.15)" },
-  "Flatfoot":        { bubble: "rgba(139,164,194,0.10)", border: "rgba(139,164,194,0.25)", name: "#8BA4C2", avatar: "rgba(139,164,194,0.15)" },
-  "Prez":            { bubble: "rgba(201,168,76,0.08)",  border: "rgba(201,168,76,0.20)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.12)" },
-  "Sam":             { bubble: "rgba(96,165,250,0.08)",  border: "rgba(96,165,250,0.20)",  name: "#60A5FA", avatar: "rgba(96,165,250,0.12)" },
-  "Attack Lawyer":   { bubble: "rgba(248,113,113,0.10)", border: "rgba(248,113,113,0.25)", name: "#F87171", avatar: "rgba(248,113,113,0.15)" },
-  "Defense Lawyer":  { bubble: "rgba(248,113,113,0.06)", border: "rgba(248,113,113,0.18)", name: "#FCA5A5", avatar: "rgba(248,113,113,0.10)" },
-  "Jamison":         { bubble: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.20)", name: "#A78BFA", avatar: "rgba(167,139,250,0.12)" },
-  "Jerry":           { bubble: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.20)",  name: "#34D399", avatar: "rgba(52,211,153,0.12)" },
-  "Watcher":         { bubble: "rgba(139,164,194,0.08)", border: "rgba(139,164,194,0.20)", name: "#8BA4C2", avatar: "rgba(139,164,194,0.12)" },
-  "Karen":           { bubble: "rgba(251,146,60,0.08)",  border: "rgba(251,146,60,0.20)",  name: "#FB923C", avatar: "rgba(251,146,60,0.12)" },
-  "Mailman":         { bubble: "rgba(201,168,76,0.07)",  border: "rgba(201,168,76,0.18)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.10)" },
-  "Scout":           { bubble: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.25)",  name: "#34D399", avatar: "rgba(52,211,153,0.15)" },
-  "CIPHER":          { bubble: "rgba(96,165,250,0.10)",  border: "rgba(96,165,250,0.25)",  name: "#60A5FA", avatar: "rgba(96,165,250,0.15)" },
-  "That Guy":        { bubble: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.30)", name: "#A78BFA", avatar: "rgba(167,139,250,0.18)" },
-  "Founder":         { bubble: "rgba(201,168,76,0.12)",  border: "rgba(201,168,76,0.30)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.18)" },
+  "Julie":          { bubble: "#1C2A1A", border: "#C9A84C", name: "#C9A84C", avatar: "#2A3D1A" },
+  "Tech-9":         { bubble: "#0F1E35", border: "#60A5FA", name: "#60A5FA", avatar: "#152540" },
+  "Jack":           { bubble: "#1A1535", border: "#A78BFA", name: "#A78BFA", avatar: "#221A40" },
+  "Max":            { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
+  "Doc":            { bubble: "#2A1A0F", border: "#FB923C", name: "#FB923C", avatar: "#332210" },
+  "Flatfoot":       { bubble: "#131C2A", border: "#8BA4C2", name: "#8BA4C2", avatar: "#162030" },
+  "Prez":           { bubble: "#1C1A10", border: "#C9A84C", name: "#C9A84C", avatar: "#252215" },
+  "Sam":            { bubble: "#0F1E35", border: "#60A5FA", name: "#93C5FD", avatar: "#152540" },
+  "Attack Lawyer":  { bubble: "#2A0F0F", border: "#F87171", name: "#F87171", avatar: "#381212" },
+  "Defense Lawyer": { bubble: "#201010", border: "#FCA5A5", name: "#FCA5A5", avatar: "#2A1515" },
+  "Jamison":        { bubble: "#1A1535", border: "#A78BFA", name: "#C4B5FD", avatar: "#221A40" },
+  "Jerry":          { bubble: "#0F2820", border: "#34D399", name: "#6EE7B7", avatar: "#133322" },
+  "Watcher":        { bubble: "#0D1520", border: "#8BA4C2", name: "#93C5FD", avatar: "#111C28" },
+  "Karen":          { bubble: "#2A1A0F", border: "#FB923C", name: "#FDB877", avatar: "#332210" },
+  "Mailman":        { bubble: "#1A160A", border: "#C9A84C", name: "#E6C76A", avatar: "#221C0E" },
+  "Scout":          { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
+  "CIPHER":         { bubble: "#0D1830", border: "#60A5FA", name: "#60A5FA", avatar: "#112038" },
+  "That Guy":       { bubble: "#1E1530", border: "#A78BFA", name: "#A78BFA", avatar: "#271A3A" },
+  "Founder":        { bubble: "#1C1A08", border: "#C9A84C", name: "#C9A84C", avatar: "#252210" },
 };
 
 function getColors(speaker: string, isFounder?: boolean) {
   if (isFounder) return MEMBER_COLORS["Founder"];
-  return MEMBER_COLORS[speaker] ?? { bubble: "rgba(139,164,194,0.08)", border: "rgba(139,164,194,0.20)", name: "#8BA4C2", avatar: "rgba(139,164,194,0.12)" };
+  return MEMBER_COLORS[speaker] ?? { bubble: "#131C2A", border: "#8BA4C2", name: "#8BA4C2", avatar: "#162030" };
 }
 
 interface Message {
@@ -73,7 +72,7 @@ function MessageBubble({ msg }: { msg: Message }) {
   return (
     <div className="flex gap-4">
       <div className="flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-xs font-bold"
-        style={{ backgroundColor: colors.avatar, color: colors.name, border: `1px solid ${colors.border}` }}>
+        style={{ backgroundColor: colors.avatar, color: colors.name, border: `2px solid ${colors.border}` }}>
         {msg.speaker.slice(0, 2).toUpperCase()}
       </div>
       <div className="flex flex-col max-w-[80%] items-start">
@@ -225,7 +224,7 @@ export default function StaffMeetingRoom() {
               const c = getColors(member);
               return (
                 <button key={member} onClick={() => handleCallMember(member)}
-                  className="px-2 py-1.5 rounded-lg text-[11px] font-semibold text-left transition-all hover:opacity-90"
+                  className="px-2 py-2 rounded-lg text-[11px] font-bold text-left transition-all hover:opacity-90"
                   style={{ backgroundColor: c.bubble, color: c.name, border: `1px solid ${c.border}` }}>
                   {member}
                 </button>
@@ -240,10 +239,10 @@ export default function StaffMeetingRoom() {
         {sending && (
           <div className="flex gap-4">
             <div className="w-11 h-11 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.2)" }}>
+              style={{ backgroundColor: "#1C2A1A", border: "2px solid #C9A84C" }}>
               <RefreshCw size={12} className="animate-spin" style={{ color: GOLD }} />
             </div>
-            <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base" style={{ backgroundColor: "rgba(201,168,76,0.06)", color: DIM, border: "1px solid rgba(201,168,76,0.15)" }}>
+            <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base" style={{ backgroundColor: "#1C2A1A", color: DIM, border: "1px solid #C9A84C" }}>
               ...
             </div>
           </div>
