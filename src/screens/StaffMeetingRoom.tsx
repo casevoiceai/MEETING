@@ -129,26 +129,48 @@ const TEAM_MEMBERS_BY_DEPT = [
   },
 ];
 
+// Department color map — one color family per dept, no crossover
+// BUILD: blue | DESIGN: violet | RESEARCH: emerald | SAFETY: orange
+// LEGAL: red | SALES & OPS: gold | COMMS: sky | CREDIBILITY: steel | OBSERVATION: slate
 const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: string; avatar: string }> = {
+  // Special
   Julie:           { bubble: "#1C2A1A", border: "#C9A84C", name: "#C9A84C", avatar: "#2A3D1A" },
+  Founder:         { bubble: "#1C1A08", border: "#C9A84C", name: "#C9A84C", avatar: "#252210" },
+
+  // BUILD — blue
   "Tech-9":        { bubble: "#0F1E35", border: "#60A5FA", name: "#60A5FA", avatar: "#152540" },
+
+  // DESIGN — violet
   Jack:            { bubble: "#1A1535", border: "#A78BFA", name: "#A78BFA", avatar: "#221A40" },
-  Max:             { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
+
+  // RESEARCH — emerald
+  Scout:           { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
+  Jerry:           { bubble: "#0F2820", border: "#34D399", name: "#6EE7B7", avatar: "#133322" },
+
+  // SAFETY — orange (Doc, Max, CIPHER all same family)
   Doc:             { bubble: "#2A1A0F", border: "#FB923C", name: "#FB923C", avatar: "#332210" },
-  Flatfoot:        { bubble: "#131C2A", border: "#8BA4C2", name: "#8BA4C2", avatar: "#162030" },
-  Prez:            { bubble: "#1C1A10", border: "#C9A84C", name: "#C9A84C", avatar: "#252215" },
-  Sam:             { bubble: "#0F1E35", border: "#60A5FA", name: "#93C5FD", avatar: "#152540" },
+  Max:             { bubble: "#2A1A0F", border: "#FB923C", name: "#FDB877", avatar: "#332210" },
+  CIPHER:          { bubble: "#2A1A0F", border: "#FB923C", name: "#FD9A50", avatar: "#332210" },
+
+  // LEGAL — red
   "Attack Lawyer": { bubble: "#2A0F0F", border: "#F87171", name: "#F87171", avatar: "#381212" },
   "Defense Lawyer":{ bubble: "#201010", border: "#FCA5A5", name: "#FCA5A5", avatar: "#2A1515" },
-  Jamison:         { bubble: "#1A1535", border: "#A78BFA", name: "#C4B5FD", avatar: "#221A40" },
-  Jerry:           { bubble: "#0F2820", border: "#34D399", name: "#6EE7B7", avatar: "#133322" },
-  Watcher:         { bubble: "#0D1520", border: "#8BA4C2", name: "#93C5FD", avatar: "#111C28" },
-  Karen:           { bubble: "#2A1A0F", border: "#FB923C", name: "#FDB877", avatar: "#332210" },
-  Mailman:         { bubble: "#1A160A", border: "#C9A84C", name: "#E6C76A", avatar: "#221C0E" },
-  Scout:           { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
-  CIPHER:          { bubble: "#0D1830", border: "#60A5FA", name: "#60A5FA", avatar: "#112038" },
-  "That Guy":      { bubble: "#1E1530", border: "#A78BFA", name: "#A78BFA", avatar: "#271A3A" },
-  Founder:         { bubble: "#1C1A08", border: "#C9A84C", name: "#C9A84C", avatar: "#252210" },
+
+  // SALES & OPS — gold
+  Prez:            { bubble: "#1C1A10", border: "#C9A84C", name: "#C9A84C", avatar: "#252215" },
+  Sam:             { bubble: "#1C1A10", border: "#C9A84C", name: "#E6C76A", avatar: "#252215" },
+  Karen:           { bubble: "#1C1A10", border: "#C9A84C", name: "#D4B55A", avatar: "#252215" },
+
+  // COMMS — sky blue
+  Jamison:         { bubble: "#0E1E2A", border: "#38BDF8", name: "#38BDF8", avatar: "#122434" },
+  Mailman:         { bubble: "#0E1E2A", border: "#38BDF8", name: "#7DD3FC", avatar: "#122434" },
+
+  // CREDIBILITY — steel blue
+  Flatfoot:        { bubble: "#131C2A", border: "#8BA4C2", name: "#8BA4C2", avatar: "#162030" },
+
+  // OBSERVATION — slate
+  Watcher:         { bubble: "#0D1520", border: "#94A3B8", name: "#94A3B8", avatar: "#111C28" },
+  "That Guy":      { bubble: "#131820", border: "#94A3B8", name: "#CBD5E1", avatar: "#171E28" },
 };
 
 function getColors(speaker: string, isFounder?: boolean) {
@@ -326,8 +348,6 @@ export default function StaffMeetingRoom() {
     setNoteContents((prev) => ({ ...prev, [id]: hasContent }));
   }
 
-  // Calls the edge function using the edge-function key (all-caps)
-  // and returns the response text, or null on failure
   async function callMentor(displayName: string, message: string): Promise<string | null> {
     const edgeName = normalizeToEdgeName(displayName);
     const recentTranscript = messages
@@ -350,7 +370,6 @@ export default function StaffMeetingRoom() {
     return data.response as string;
   }
 
-  // Routes via Julie, returns an array of display names to call
   async function routeWithJulie(message: string): Promise<string[]> {
     const recentTranscript = messages
       .filter((m) => !m.isSystem)
@@ -382,7 +401,6 @@ export default function StaffMeetingRoom() {
       },
     });
 
-    // If the routing call itself failed, fall back to SAM via edge name
     if (error || !data?.response) {
       return ["Sam"];
     }
@@ -391,18 +409,15 @@ export default function StaffMeetingRoom() {
       const clean = (data.response as string).replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
 
-      // If Julie has a line to say, say it
       if (parsed.line) addMessage({ speaker: "Julie", text: parsed.line, isJulie: true });
 
-      // Acknowledge actions need no mentor response
       if (parsed.action === "acknowledge") return [];
 
       if (Array.isArray(parsed.mentors) && parsed.mentors.length > 0) {
-        // Convert edge-function names to display names
         return parsed.mentors.map((edgeName: string) => ROUTING_TO_DISPLAY[edgeName] ?? edgeName);
       }
     } catch {
-      // JSON parse failed -- fall through to default
+      // fall through
     }
 
     return ["Sam"];
@@ -427,7 +442,6 @@ export default function StaffMeetingRoom() {
         }
       }
 
-      // If routing returned mentors but none responded, tell Daniel
       if (mentors.length > 0 && !anyResponse) {
         addMessage({
           speaker: "Julie",
@@ -547,7 +561,7 @@ export default function StaffMeetingRoom() {
         </div>
       </div>
 
-      {/* Call Team Panel -- floats over chat */}
+      {/* Call Team Panel */}
       {showCallPanel && (
         <div
           style={{
@@ -566,9 +580,16 @@ export default function StaffMeetingRoom() {
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               {TEAM_MEMBERS_BY_DEPT.map((group) => (
                 <div key={group.dept}>
+                  {/* Dept label: smaller, dimmer, less dominant */}
                   <p
-                    className="text-xs font-bold tracking-widest uppercase mb-2"
-                    style={{ color: MUTED }}
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 600,
+                      letterSpacing: "0.12em",
+                      textTransform: "uppercase",
+                      color: DIM,
+                      marginBottom: "6px",
+                    }}
                   >
                     {group.dept}
                   </p>
