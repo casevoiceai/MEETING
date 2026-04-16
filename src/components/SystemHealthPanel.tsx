@@ -65,7 +65,6 @@ export default function SystemHealthPanel() {
 
   const runCredentialsCheck = async () => {
     setCredStatus("loading");
-    setCredDetail("Checking Cloudflare credentials...");
     try {
       const response = await fetch("/api/save-meeting", {
         method: "POST",
@@ -73,16 +72,20 @@ export default function SystemHealthPanel() {
         body: JSON.stringify({ action: "check_credentials" }),
       });
       const data = await response.json();
+
       if (data.client_id_set && data.client_secret_set) {
         setCredStatus("healthy");
-        setCredDetail("Google Client ID and Secret are set in Cloudflare. OAuth token present: " + (data.oauth_token_present ? "yes" : "no") + ".");
+        setCredDetail(
+          "Credentials OK. Token: " +
+            (data.oauth_token_present ? "yes" : "no")
+        );
       } else {
         setCredStatus("error");
-        setCredDetail(data.error ?? "One or more credentials are missing from Cloudflare.");
+        setCredDetail("Missing credentials in Cloudflare.");
       }
     } catch {
       setCredStatus("error");
-      setCredDetail("Could not reach the worker to check credentials.");
+      setCredDetail("Worker unreachable.");
     } finally {
       setCredLastChecked(new Date().toLocaleTimeString());
     }
@@ -91,20 +94,19 @@ export default function SystemHealthPanel() {
   const runDriveCheck = async () => {
     setIsRefreshing(true);
     setDriveStatus("loading");
-    setDriveDetail("Running live Google Drive check...");
+
     try {
       const result = await testDriveConnection();
       if (result.success) {
         setDriveStatus("healthy");
-        setDriveDetail("Google Drive connection is working.");
+        setDriveDetail("Drive connected.");
       } else {
-        const message = result.error || "Google Drive check failed.";
-        setDriveStatus(message.includes("401") ? "warning" : "error");
-        setDriveDetail(message);
+        setDriveStatus("error");
+        setDriveDetail(result.error || "Drive failed.");
       }
-    } catch (error) {
+    } catch {
       setDriveStatus("error");
-      setDriveDetail(error instanceof Error ? error.message : "Google Drive check failed.");
+      setDriveDetail("Drive failed.");
     } finally {
       setDriveLastChecked(new Date().toLocaleTimeString());
       setIsRefreshing(false);
@@ -112,130 +114,121 @@ export default function SystemHealthPanel() {
   };
 
   const runAllChecks = async () => {
-    setIsRefreshing(true);
     await Promise.all([runDriveCheck(), runCredentialsCheck()]);
-    setIsRefreshing(false);
   };
 
   useEffect(() => {
-    if (!isOpen) return;
-    const timer = setTimeout(() => { runAllChecks(); }, 250);
-    return () => clearTimeout(timer);
+    if (isOpen) {
+      runAllChecks();
+    }
   }, [isOpen]);
 
-  const services = useMemo<Service[]>(() => [
-    DATABASE_SERVICE,
-    {
-      id: "credentials",
-      name: "Credentials",
-      status: credStatus,
-      lastChecked: credLastChecked,
-      detail: credDetail,
-    },
-    {
-      id: "drive",
-      name: "Google Drive",
-      status: driveStatus,
-      lastChecked: driveLastChecked,
-      detail: driveDetail,
-    },
-    AUTH_SERVICE,
-  ], [credStatus, credLastChecked, credDetail, driveDetail, driveLastChecked, driveStatus]);
-
-  const degraded = services.some(
-    (s) => s.status === "warning" || s.status === "error"
+  const services = useMemo<Service[]>(
+    () => [
+      DATABASE_SERVICE,
+      {
+        id: "credentials",
+        name: "Credentials",
+        status: credStatus,
+        lastChecked: credLastChecked,
+        detail: credDetail,
+      },
+      {
+        id: "drive",
+        name: "Google Drive",
+        status: driveStatus,
+        lastChecked: driveLastChecked,
+        detail: driveDetail,
+      },
+      AUTH_SERVICE,
+    ],
+    [credStatus, credLastChecked, credDetail, driveDetail, driveLastChecked, driveStatus]
   );
 
   return (
     <div className="relative">
+
       <button
         onClick={() => setIsOpen(true)}
         className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
-        style={{ color: "#C9A84C", backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}
+        style={{
+          color: "#C9A84C",
+          backgroundColor: "#0D1B2E",
+          border: "1px solid #1B2A4A",
+        }}
       >
         SYSTEM HEALTH
       </button>
 
       {isOpen && (
-        <div className="fixed right-0 top-[60px] h-[calc(100vh-60px)] w-[340px] bg-[#0D1B2E] border-l border-[#1B2A4A] z-[1000] overflow-y-auto shadow-2xl">
-          <div className="p-4 border-b border-[#1B2A4A] flex items-center justify-between bg-[#08111F]">
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-[#C9A84C]" />
-              <div>
-                <div className="text-[11px] font-bold tracking-[0.18em] uppercase text-white">System Health</div>
-                <div className="text-[10px] text-[#8A9BB5]">Last Check: {new Date().toLocaleTimeString()}</div>
-              </div>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="p-1 rounded hover:bg-[#132845] text-[#8A9BB5] hover:text-white">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+        <div className="fixed inset-0 z-[9000]">
 
-          <div className="p-4 border-b border-[#1B2A4A] flex justify-between items-center">
-            <span className={`text-[10px] px-2 py-0.5 rounded ${degraded ? "bg-red-900/30 text-red-400" : "bg-green-900/30 text-green-400"}`}>
-              {degraded ? "Degraded" : "Healthy"}
-            </span>
-            <button
-              onClick={runAllChecks}
-              disabled={isRefreshing}
-              className="flex items-center gap-1.5 text-[10px] font-bold text-[#C9A84C] hover:text-[#E6C76A] disabled:opacity-50"
-            >
-              <RefreshCcw className={`w-3 h-3 ${isRefreshing ? "animate-spin" : ""}`} />
-              RE-SYNC
-            </button>
-          </div>
+          {/* BACKGROUND CLICK CLOSE */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setIsOpen(false)}
+          />
 
-          <div className="p-3 space-y-2">
-            {services.map((service) => (
-              <div key={service.id} className="border border-[#1B2A4A] rounded overflow-hidden">
-                <div
-                  onClick={() => setExpandedId(expandedId === service.id ? null : service.id)}
-                  className="p-3 cursor-pointer flex justify-between items-center bg-[#0F172A]"
-                >
-                  <div className="flex items-center gap-3">
-                    {getStatusIcon(service.status)}
-                    <div>
-                      <div className="text-white text-xs font-bold">{service.name}</div>
-                      <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide mt-0.5">{service.lastChecked}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={
-                      service.status === "error" ? "text-red-400 text-xs" :
-                      service.status === "warning" ? "text-yellow-400 text-xs" :
-                      service.status === "healthy" ? "text-green-400 text-xs" :
-                      "text-sky-400 text-xs"
-                    }>
-                      {getStatusLabel(service.status)}
-                    </span>
-                    {expandedId === service.id
-                      ? <ChevronUp className="w-4 h-4 text-[#8A9BB5]" />
-                      : <ChevronDown className="w-4 h-4 text-[#8A9BB5]" />
-                    }
+          {/* PANEL */}
+          <div className="absolute right-0 top-0 h-full w-[360px] bg-[#0D1B2E] border-l border-[#1B2A4A] shadow-2xl">
+
+            {/* HEADER */}
+            <div className="p-4 border-b border-[#1B2A4A] flex items-center justify-between bg-[#08111F]">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-[#C9A84C]" />
+                <div>
+                  <div className="text-[11px] font-bold uppercase text-white">
+                    System Health
                   </div>
                 </div>
+              </div>
 
-                {expandedId === service.id && (
-                  <div className="px-3 py-3 border-t border-[#1B2A4A] bg-[#0D1B2E]">
-                    <p className="text-[10px] text-[#D0DFEE]">{service.detail}</p>
-                    {service.id === "drive" && (
-                      <div className="pt-3">
-                        <button onClick={runDriveCheck} className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded">
-                          Test connection again
-                        </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-[#8A9BB5] hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* BODY */}
+            <div className="p-3 space-y-2 overflow-y-auto h-[calc(100%-60px)]">
+              {services.map((service) => (
+                <div
+                  key={service.id}
+                  className="border border-[#1B2A4A] rounded"
+                >
+                  <div
+                    onClick={() =>
+                      setExpandedId(
+                        expandedId === service.id ? null : service.id
+                      )
+                    }
+                    className="p-3 cursor-pointer flex justify-between items-center"
+                  >
+                    <div className="flex items-center gap-3">
+                      {getStatusIcon(service.status)}
+                      <div className="text-white text-xs font-bold">
+                        {service.name}
                       </div>
-                    )}
-                    {service.id === "credentials" && (
-                      <div className="pt-3">
-                        <button onClick={runCredentialsCheck} className="text-[10px] px-3 py-1.5 border border-yellow-500 text-yellow-400 rounded">
-                          Re-check credentials
-                        </button>
-                      </div>
+                    </div>
+
+                    {expandedId === service.id ? (
+                      <ChevronUp className="w-4 h-4 text-[#8A9BB5]" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-[#8A9BB5]" />
                     )}
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {expandedId === service.id && (
+                    <div className="p-3 border-t border-[#1B2A4A] text-[#D0DFEE] text-xs">
+                      {service.detail}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
           </div>
         </div>
       )}
