@@ -12,11 +12,42 @@ const MUTED = "#8A9BB5";
 const DIM = "#3A4F6A";
 const TEXT = "#D0DFEE";
 
-const TEAM_MEMBERS = [
-  "Tech-9", "Jack", "Max", "Doc", "Flatfoot",
-  "Prez", "Sam", "Attack Lawyer", "Defense Lawyer", "Jamison",
-  "Jerry", "Watcher", "Karen", "Mailman", "Scout",
-  "CIPHER", "That Guy",
+const TEAM_MEMBERS_BY_DEPT = [
+  { dept: "BUILD", members: [
+    { name: "Tech-9", role: "Build strategist. Writes build briefs. Owns what gets built and when." },
+  ]},
+  { dept: "DESIGN", members: [
+    { name: "Jack", role: "Brand and UI designer. Flags visual drift before it ships." },
+  ]},
+  { dept: "RESEARCH", members: [
+    { name: "Scout", role: "Market intelligence. Competitor signals, funding leads, white space." },
+    { name: "Jerry", role: "Research and evidence. Challenges unsupported assumptions." },
+  ]},
+  { dept: "SAFETY", members: [
+    { name: "Doc", role: "User safety and harm prevention. Names who gets hurt and how." },
+    { name: "Max", role: "Accessibility. Finds barriers before real users do." },
+    { name: "CIPHER", role: "Data privacy and trust. Flags consent gaps and exposure risks." },
+  ]},
+  { dept: "LEGAL", members: [
+    { name: "Attack Lawyer", role: "Legal offense. IP protection, contract leverage, assertive moves." },
+    { name: "Defense Lawyer", role: "Legal defense. Liability, compliance, regulatory exposure." },
+  ]},
+  { dept: "SALES & OPS", members: [
+    { name: "Prez", role: "Sales strategy. Makes Daniel the most prepared person in the room." },
+    { name: "Sam", role: "Execution and process. Owns tasks, timelines, and follow-through." },
+    { name: "Karen", role: "Admin and logistics. Tracks action items and flags what is unowned." },
+  ]},
+  { dept: "COMMS", members: [
+    { name: "Jamison", role: "Copy and messaging. Rewrites what is not landing." },
+    { name: "Mailman", role: "Outbound email and delivery. Subject lines that get opened." },
+  ]},
+  { dept: "CREDIBILITY", members: [
+    { name: "Flatfoot", role: "Law enforcement credibility. Flags what would kill a PD pitch." },
+  ]},
+  { dept: "OBSERVATION", members: [
+    { name: "Watcher", role: "Silent observer. Speaks rarely. When it does, it matters." },
+    { name: "That Guy", role: "Wild card. Asks the question nobody else will." },
+  ]},
 ];
 
 const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: string; avatar: string }> = {
@@ -216,20 +247,27 @@ export default function StaffMeetingRoom() {
       </div>
 
       {showCallPanel && (
-        <div className="px-5 py-4 border-b" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
-          <p className="text-xs mb-3 font-bold tracking-widest uppercase" style={{ color: DIM }}>Call a Team Member directly</p>
-          <div className="grid grid-cols-4 gap-2">
-            {TEAM_MEMBERS.map((member) => {
-              const c = getColors(member);
-              return (
-                <button key={member} onClick={() => handleCallMember(member)}
-                  className="px-3 py-2.5 rounded-lg text-sm font-bold text-left transition-all hover:opacity-90"
-                  style={{ backgroundColor: c.bubble, color: c.name, border: `1px solid ${c.border}` }}>
-                  {member}
-                </button>
-              );
-            })}
-          </div>
+        <div className="px-5 py-4 border-b overflow-y-auto" style={{ borderColor: BORDER, backgroundColor: NAVY, maxHeight: "320px" }}>
+          {TEAM_MEMBERS_BY_DEPT.map((group) => (
+            <div key={group.dept} className="mb-4">
+              <p className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color: DIM }}>
+                {group.dept}
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {group.members.map((m) => {
+                  const c = getColors(m.name);
+                  return (
+                    <button key={m.name} onClick={() => handleCallMember(m.name)}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all hover:opacity-90 w-full"
+                      style={{ backgroundColor: c.bubble, border: `1px solid ${c.border}` }}>
+                      <span className="text-sm font-bold w-32 flex-shrink-0" style={{ color: c.name }}>{m.name}</span>
+                      <span className="text-xs" style={{ color: MUTED }}>{m.role}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
