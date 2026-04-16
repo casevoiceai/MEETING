@@ -152,4 +152,125 @@ export default function StaffMeetingRoom() {
     }
   }
 
-  async function handleCal
+  async function handleCallMember(member: string) {
+    if (callingMember) return;
+    setCallingMember(member);
+    setShowCallPanel(false);
+    addMessage({ speaker: "Julie", text: `Bringing in ${member}.`, isJulie: true });
+    const lastMessage = messages.filter((m) => m.isFounder).slice(-1)[0]?.text ?? "Check in with the team.";
+    try {
+      const response = await callMentor(member, lastMessage);
+      if (response) addMessage({ speaker: member, text: response });
+    } catch {
+      addMessage({ speaker: "Julie", text: `Could not reach ${member} right now.`, isJulie: true });
+    } finally {
+      setCallingMember(null);
+    }
+  }
+
+  async function handleSaveSession() {
+    setSaving(true);
+    setSaveStatus(null);
+    try {
+      const result = await saveMeetingToDrive();
+      setSaveStatus(result?.success ? "Session saved to Google Drive." : "Save failed. Check Google Drive connection.");
+    } catch {
+      setSaveStatus("Save failed.");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveStatus(null), 4000);
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full" style={{ backgroundColor: "#08111F" }}>
+      <div className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
+        <span className="text-xs font-bold tracking-widest uppercase" style={{ color: GOLD }}>Staff Meeting Room</span>
+        <div className="ml-auto flex items-center gap-2">
+          {saveStatus && (
+            <span className="text-[10px] font-semibold" style={{ color: saveStatus.includes("failed") ? "#F87171" : "#4ADE80" }}>
+              {saveStatus}
+            </span>
+          )}
+          <button onClick={() => setShowCallPanel((v) => !v)} disabled={callingMember !== null}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.25)" }}>
+            {callingMember ? <><RefreshCw size={10} className="animate-spin" /> {callingMember}...</> : <><Users size={10} /> Call Team</>}
+          </button>
+          <button onClick={handleSaveSession} disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            style={{ backgroundColor: CARD, color: MUTED, border: `1px solid ${BORDER}` }}>
+            {saving ? <RefreshCw size={10} className="animate-spin" /> : <Save size={10} />}
+            {saving ? "Saving..." : "Save Session"}
+          </button>
+        </div>
+      </div>
+
+      {showCallPanel && (
+        <div className="px-5 py-3 border-b" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
+          <p className="text-[10px] mb-2 font-bold tracking-widest uppercase" style={{ color: DIM }}>Call a Team Member directly</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {TEAM_MEMBERS.map((member) => (
+              <button key={member} onClick={() => handleCallMember(member)}
+                className="px-2 py-1.5 rounded-lg text-[10px] font-semibold text-left transition-all hover:opacity-90"
+                style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}` }}>
+                {member}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-5">
+        {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
+        {sending && (
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "rgba(139,164,194,0.1)", border: "1px solid rgba(139,164,194,0.25)" }}>
+              <RefreshCw size={12} className="animate-spin" style={{ color: STEEL }} />
+            </div>
+            <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base" style={{ backgroundColor: "rgba(139,164,194,0.08)", color: DIM, border: "1px solid rgba(139,164,194,0.15)" }}>
+              ...
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      <div className="px-5 py-4 border-t flex-shrink-0" style={{ borderColor: BORDER }}>
+        <div className="flex gap-3 items-end">
+          <textarea value={input} onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
+            rows={2}
+            className="flex-1 px-4 py-3 rounded-xl text-sm outline-none resize-none"
+            style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.5" }} />
+          <button onClick={() => setShowSideNote(true)}
+            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
+            style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.25)" }}
+            title="Side Note">
+            <StickyNote size={14} style={{ color: GOLD }} />
+          </button>
+          <button onClick={handleSend} disabled={sending || !input.trim()}
+            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
+            style={{ backgroundColor: GOLD }}>
+            <Send size={14} style={{ color: NAVY }} />
+          </button>
+        </div>
+        <p className="text-[9px] mt-1.5" style={{ color: DIM }}>Julie routes your message to the right Team Member.</p>
+      </div>
+
+      {showSideNote && (
+        <SideNoteModal
+          usedTags={usedTags}
+          onSave={(note, newTags) => {
+            setSideNotes((prev) => [...prev, note]);
+            setUsedTags((prev) => [...prev, ...newTags]);
+            setShowSideNote(false);
+          }}
+          onClose={() => setShowSideNote(false)}
+        />
+      )}
+    </div>
+  );
+}
