@@ -80,7 +80,7 @@ export default function StaffMeetingRoom() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [showCallPanel, setShowCallPanel] = useState(false);
-  const [callingMember, setCallingMember] = useState<string | null>(null);
+  {saving ? "Saving..." : "Save Session"}           </button>         </div>       </div>
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
