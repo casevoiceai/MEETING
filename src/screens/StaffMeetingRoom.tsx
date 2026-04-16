@@ -105,7 +105,7 @@ function MessageBubble({ msg }: { msg: Message }) {
         {msg.speaker.slice(0, 2).toUpperCase()}
       </div>
       <div className="flex flex-col max-w-[80%] items-start">
-        <span className="text-sm font-bold tracking-widest uppercase mb-2" style={{ color: colors.name }}>
+        <span className="text-base font-bold tracking-wider uppercase mb-2" style={{ color: colors.name }}>
           {msg.speaker}
         </span>
         <div className="px-6 py-4 rounded-2xl rounded-tl-sm text-base leading-relaxed"
@@ -233,41 +233,43 @@ export default function StaffMeetingRoom() {
             </span>
           )}
           <button onClick={() => setShowCallPanel((v) => !v)} disabled={callingMember !== null}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.25)" }}>
-            {callingMember ? <><RefreshCw size={13} className="animate-spin" /> {callingMember}...</> : <><Users size={13} /> Call Team</>}
+            {callingMember ? <><RefreshCw size={14} className="animate-spin" /> {callingMember}...</> : <><Users size={14} /> Call Team</>}
           </button>
           <button onClick={handleSaveSession} disabled={saving}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: CARD, color: MUTED, border: `1px solid ${BORDER}` }}>
-            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
             {saving ? "Saving..." : "Save Session"}
           </button>
         </div>
       </div>
 
       {showCallPanel && (
-        <div className="px-5 py-4 border-b overflow-y-auto" style={{ borderColor: BORDER, backgroundColor: NAVY, maxHeight: "320px" }}>
-          {TEAM_MEMBERS_BY_DEPT.map((group) => (
-            <div key={group.dept} className="mb-4">
-              <p className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color: DIM }}>
-                {group.dept}
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {group.members.map((m) => {
-                  const c = getColors(m.name);
-                  return (
-                    <button key={m.name} onClick={() => handleCallMember(m.name)}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all hover:opacity-90 w-full"
-                      style={{ backgroundColor: c.bubble, border: `1px solid ${c.border}` }}>
-                      <span className="text-sm font-bold w-32 flex-shrink-0" style={{ color: c.name }}>{m.name}</span>
-                      <span className="text-xs" style={{ color: MUTED }}>{m.role}</span>
-                    </button>
-                  );
-                })}
+        <div className="px-5 py-4 border-b" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+            {TEAM_MEMBERS_BY_DEPT.map((group) => (
+              <div key={group.dept}>
+                <p className="text-xs font-bold tracking-widest uppercase mb-2" style={{ color: DIM }}>
+                  {group.dept}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {group.members.map((m) => {
+                    const c = getColors(m.name);
+                    return (
+                      <button key={m.name} onClick={() => handleCallMember(m.name)}
+                        className="flex items-baseline gap-3 px-4 py-3 rounded-xl text-left transition-all hover:opacity-90 w-full"
+                        style={{ backgroundColor: c.bubble, border: `1px solid ${c.border}` }}>
+                        <span className="text-sm font-bold flex-shrink-0 w-28" style={{ color: c.name }}>{m.name}</span>
+                        <span className="text-xs leading-snug" style={{ color: MUTED }}>{m.role}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -298,18 +300,18 @@ export default function StaffMeetingRoom() {
             style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.6" }} />
           <button
             onClick={() => setShowSideNote((v) => !v)}
-            className="flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
+            className="flex-shrink-0 w-16 h-16 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
             style={{
               backgroundColor: sideNoteHasContent ? "#2A3D1A" : "rgba(201,168,76,0.08)",
               border: sideNoteHasContent ? "2px solid #C9A84C" : "1px solid rgba(201,168,76,0.25)",
             }}
             title="Side Note">
-            <StickyNote size={22} style={{ color: GOLD }} />
+            <StickyNote size={26} style={{ color: GOLD }} />
           </button>
           <button onClick={handleSend} disabled={sending || !input.trim()}
-            className="flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
+            className="flex-shrink-0 w-16 h-16 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
             style={{ backgroundColor: GOLD }}>
-            <Send size={22} style={{ color: NAVY }} />
+            <Send size={26} style={{ color: NAVY }} />
           </button>
         </div>
         <p className="text-xs mt-2" style={{ color: DIM }}>Julie routes your message to the right Team Member.</p>
