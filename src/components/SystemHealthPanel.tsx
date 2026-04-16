@@ -101,7 +101,8 @@ export default function SystemHealthPanel() {
 
   return (
     <div className="relative">
-      <button onClick={() => setIsOpen(true)}
+      <button
+        onClick={() => setIsOpen((v) => !v)}
         className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
         style={{ color: "#C9A84C", backgroundColor: "#0D1B2E", border: "1px solid #1B2A4A" }}>
         SYSTEM HEALTH
