@@ -50,7 +50,7 @@ function PlaceholderScreen({ title, description }: { title: string; description:
 }
 
 function OfficeSuppliesScreen() {
-  const tools = [
+  const staticTools = [
     { name: "INTEGRATIONS", desc: "Slack, Google Workspace, and external app connectors." },
     { name: "RECOVERY", desc: "Session recovery and conversation restore tools." },
     { name: "BACKUP", desc: "Supabase and Drive backup management." },
@@ -61,6 +61,11 @@ function OfficeSuppliesScreen() {
     { name: "ANALYTICS", desc: "MyStatement.ai usage patterns and improvement signals." },
     { name: "EXPERIMENTS", desc: "Prototype tools and exploratory builds." },
   ];
+
+  function openReports() {
+    window.dispatchEvent(new Event("open-reports-modal"));
+  }
+
   return (
     <div className="h-full w-full p-8 overflow-y-auto" style={{ backgroundColor: "#08111F" }}>
       <div
@@ -73,7 +78,31 @@ function OfficeSuppliesScreen() {
         Parked tools and future utilities. Nothing urgent lives here.
       </div>
       <div className="grid grid-cols-3 gap-4">
-        {tools.map((t) => (
+        {/* REPORTS — live and clickable */}
+        <button
+          onClick={openReports}
+          className="rounded-xl border p-5 text-left transition-all hover:opacity-90"
+          style={{ backgroundColor: "#0D1B2E", borderColor: "#C9A84C" }}
+        >
+          <div
+            className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2"
+            style={{ color: "#C9A84C" }}
+          >
+            REPORTS
+          </div>
+          <div className="text-xs leading-relaxed mb-3" style={{ color: "#8A9BB5" }}>
+            System reports, logs, and session summaries.
+          </div>
+          <div
+            className="text-[9px] font-bold tracking-widest uppercase px-2 py-1 rounded inline-block"
+            style={{ color: "#C9A84C", border: "1px solid rgba(201,168,76,0.35)" }}
+          >
+            OPEN
+          </div>
+        </button>
+
+        {/* Static not-yet-built tools */}
+        {staticTools.map((t) => (
           <div
             key={t.name}
             className="rounded-xl border p-5"
@@ -144,74 +173,59 @@ export default function App() {
         className="relative z-[200] flex-shrink-0 border-b"
         style={{ borderColor: "#1B2A4A", backgroundColor: "#08111F" }}
       >
-        <div className="px-5 h-[58px] flex items-center justify-between gap-4">
-          <div className="flex items-center gap-6 min-w-0 flex-1 overflow-hidden">
-            <div
-              className="text-sm font-bold tracking-wide whitespace-nowrap flex-shrink-0"
-              style={{ color: "#C9A84C" }}
-            >
-              FOUNDER CRM
-            </div>
-            <nav className="flex items-center gap-1 min-w-0 overflow-x-auto pb-1">
-              {MAIN_TABS.map((tab) => {
-                const active = activeTab === tab;
-                const isQueue = tab === "QUEUE";
-                const isDim = tab === "HEALTH" || tab === "OFFICE SUPPLIES";
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className="px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 flex items-center gap-2"
-                    style={
-                      active
-                        ? {
-                            backgroundColor: "#132845",
-                            color: "#F8FAFC",
-                            border: "1px solid rgba(201,168,76,0.25)",
-                          }
-                        : isDim
-                        ? {
-                            backgroundColor: "transparent",
-                            color: "#3A4F6A",
-                            border: "1px solid transparent",
-                          }
-                        : {
-                            backgroundColor: "transparent",
-                            color: "#8A9BB5",
-                            border: "1px solid transparent",
-                          }
-                    }
-                  >
-                    {tab}
-                    {isQueue && pendingCount > 0 && (
-                      <span
-                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                        style={{
-                          backgroundColor: "rgba(245,158,11,0.25)",
-                          color: "#F59E0B",
-                        }}
-                      >
-                        {pendingCount}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
+        <div className="px-5 h-[58px] flex items-center gap-4">
+          <div
+            className="text-sm font-bold tracking-wide whitespace-nowrap flex-shrink-0"
+            style={{ color: "#C9A84C" }}
+          >
+            FOUNDER CRM
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => setReportsOpen(true)}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide"
-              style={{
-                color: "#8A9BB5",
-                backgroundColor: "#0D1B2E",
-                border: "1px solid #1B2A4A",
-              }}
-            >
-              REPORTS
-            </button>
-          </div>
+          <nav className="flex items-center gap-1 min-w-0 overflow-x-auto pb-1">
+            {MAIN_TABS.map((tab) => {
+              const active = activeTab === tab;
+              const isQueue = tab === "QUEUE";
+              const isDim = tab === "HEALTH" || tab === "OFFICE SUPPLIES";
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 flex items-center gap-2"
+                  style={
+                    active
+                      ? {
+                          backgroundColor: "#132845",
+                          color: "#F8FAFC",
+                          border: "1px solid rgba(201,168,76,0.25)",
+                        }
+                      : isDim
+                      ? {
+                          backgroundColor: "transparent",
+                          color: "#3A4F6A",
+                          border: "1px solid transparent",
+                        }
+                      : {
+                          backgroundColor: "transparent",
+                          color: "#8A9BB5",
+                          border: "1px solid transparent",
+                        }
+                  }
+                >
+                  {tab}
+                  {isQueue && pendingCount > 0 && (
+                    <span
+                      className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: "rgba(245,158,11,0.25)",
+                        color: "#F59E0B",
+                      }}
+                    >
+                      {pendingCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </header>
 
