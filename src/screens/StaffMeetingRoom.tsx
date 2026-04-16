@@ -11,7 +11,6 @@ const BORDER = "#1B2A4A";
 const MUTED = "#8A9BB5";
 const DIM = "#3A4F6A";
 const TEXT = "#D0DFEE";
-const STEEL = "#8BA4C2";
 
 const TEAM_MEMBERS = [
   "Tech-9", "Jack", "Max", "Doc", "Flatfoot",
@@ -19,6 +18,34 @@ const TEAM_MEMBERS = [
   "Jerry", "Watcher", "Karen", "Mailman", "Scout",
   "CIPHER", "That Guy",
 ];
+
+// Color groups by role
+const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: string; avatar: string }> = {
+  "Julie":           { bubble: "rgba(201,168,76,0.10)",  border: "rgba(201,168,76,0.30)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.15)" },
+  "Tech-9":          { bubble: "rgba(96,165,250,0.10)",  border: "rgba(96,165,250,0.25)",  name: "#60A5FA", avatar: "rgba(96,165,250,0.15)" },
+  "Jack":            { bubble: "rgba(167,139,250,0.10)", border: "rgba(167,139,250,0.25)", name: "#A78BFA", avatar: "rgba(167,139,250,0.15)" },
+  "Max":             { bubble: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.25)",  name: "#34D399", avatar: "rgba(52,211,153,0.15)" },
+  "Doc":             { bubble: "rgba(251,146,60,0.10)",  border: "rgba(251,146,60,0.25)",  name: "#FB923C", avatar: "rgba(251,146,60,0.15)" },
+  "Flatfoot":        { bubble: "rgba(139,164,194,0.10)", border: "rgba(139,164,194,0.25)", name: "#8BA4C2", avatar: "rgba(139,164,194,0.15)" },
+  "Prez":            { bubble: "rgba(201,168,76,0.08)",  border: "rgba(201,168,76,0.20)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.12)" },
+  "Sam":             { bubble: "rgba(96,165,250,0.08)",  border: "rgba(96,165,250,0.20)",  name: "#60A5FA", avatar: "rgba(96,165,250,0.12)" },
+  "Attack Lawyer":   { bubble: "rgba(248,113,113,0.10)", border: "rgba(248,113,113,0.25)", name: "#F87171", avatar: "rgba(248,113,113,0.15)" },
+  "Defense Lawyer":  { bubble: "rgba(248,113,113,0.06)", border: "rgba(248,113,113,0.18)", name: "#FCA5A5", avatar: "rgba(248,113,113,0.10)" },
+  "Jamison":         { bubble: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.20)", name: "#A78BFA", avatar: "rgba(167,139,250,0.12)" },
+  "Jerry":           { bubble: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.20)",  name: "#34D399", avatar: "rgba(52,211,153,0.12)" },
+  "Watcher":         { bubble: "rgba(139,164,194,0.08)", border: "rgba(139,164,194,0.20)", name: "#8BA4C2", avatar: "rgba(139,164,194,0.12)" },
+  "Karen":           { bubble: "rgba(251,146,60,0.08)",  border: "rgba(251,146,60,0.20)",  name: "#FB923C", avatar: "rgba(251,146,60,0.12)" },
+  "Mailman":         { bubble: "rgba(201,168,76,0.07)",  border: "rgba(201,168,76,0.18)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.10)" },
+  "Scout":           { bubble: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.25)",  name: "#34D399", avatar: "rgba(52,211,153,0.15)" },
+  "CIPHER":          { bubble: "rgba(96,165,250,0.10)",  border: "rgba(96,165,250,0.25)",  name: "#60A5FA", avatar: "rgba(96,165,250,0.15)" },
+  "That Guy":        { bubble: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.30)", name: "#A78BFA", avatar: "rgba(167,139,250,0.18)" },
+  "Founder":         { bubble: "rgba(201,168,76,0.12)",  border: "rgba(201,168,76,0.30)",  name: "#C9A84C", avatar: "rgba(201,168,76,0.18)" },
+};
+
+function getColors(speaker: string, isFounder?: boolean) {
+  if (isFounder) return MEMBER_COLORS["Founder"];
+  return MEMBER_COLORS[speaker] ?? { bubble: "rgba(139,164,194,0.08)", border: "rgba(139,164,194,0.20)", name: "#8BA4C2", avatar: "rgba(139,164,194,0.12)" };
+}
 
 interface Message {
   id: string;
@@ -41,36 +68,20 @@ function MessageBubble({ msg }: { msg: Message }) {
     );
   }
 
-  const bubbleBg = msg.isFounder
-    ? "rgba(201,168,76,0.12)"
-    : msg.isJulie
-    ? "rgba(201,168,76,0.07)"
-    : "rgba(139,164,194,0.12)";
-
-  const bubbleBorder = msg.isFounder
-    ? "1px solid rgba(201,168,76,0.3)"
-    : msg.isJulie
-    ? "1px solid rgba(201,168,76,0.2)"
-    : "1px solid rgba(139,164,194,0.25)";
-
-  const nameColor = msg.isFounder ? GOLD : msg.isJulie ? GOLD : STEEL;
+  const colors = getColors(msg.speaker, msg.isFounder);
 
   return (
-    <div className="flex gap-3">
-      <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold"
-        style={{
-          backgroundColor: msg.isFounder ? "rgba(201,168,76,0.15)" : "rgba(139,164,194,0.1)",
-          color: msg.isFounder ? GOLD : STEEL,
-          border: msg.isFounder ? "1px solid rgba(201,168,76,0.3)" : "1px solid rgba(139,164,194,0.25)",
-        }}>
+    <div className="flex gap-4">
+      <div className="flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-xs font-bold"
+        style={{ backgroundColor: colors.avatar, color: colors.name, border: `1px solid ${colors.border}` }}>
         {msg.speaker.slice(0, 2).toUpperCase()}
       </div>
       <div className="flex flex-col max-w-[80%] items-start">
-        <span className="text-[10px] font-bold tracking-widest uppercase mb-1.5" style={{ color: nameColor }}>
+        <span className="text-[11px] font-bold tracking-widest uppercase mb-2" style={{ color: colors.name }}>
           {msg.speaker}
         </span>
         <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base leading-relaxed"
-          style={{ backgroundColor: bubbleBg, color: TEXT, border: bubbleBorder }}>
+          style={{ backgroundColor: colors.bubble, color: TEXT, border: `1px solid ${colors.border}` }}>
           {msg.text}
         </div>
         <span className="text-[10px] mt-1.5" style={{ color: DIM }}>
@@ -188,19 +199,19 @@ export default function StaffMeetingRoom() {
         <span className="text-xs font-bold tracking-widest uppercase" style={{ color: GOLD }}>Staff Meeting Room</span>
         <div className="ml-auto flex items-center gap-2">
           {saveStatus && (
-            <span className="text-[10px] font-semibold" style={{ color: saveStatus.includes("failed") ? "#F87171" : "#4ADE80" }}>
+            <span className="text-[11px] font-semibold" style={{ color: saveStatus.includes("failed") ? "#F87171" : "#4ADE80" }}>
               {saveStatus}
             </span>
           )}
           <button onClick={() => setShowCallPanel((v) => !v)} disabled={callingMember !== null}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.25)" }}>
-            {callingMember ? <><RefreshCw size={10} className="animate-spin" /> {callingMember}...</> : <><Users size={10} /> Call Team</>}
+            {callingMember ? <><RefreshCw size={11} className="animate-spin" /> {callingMember}...</> : <><Users size={11} /> Call Team</>}
           </button>
           <button onClick={handleSaveSession} disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: CARD, color: MUTED, border: `1px solid ${BORDER}` }}>
-            {saving ? <RefreshCw size={10} className="animate-spin" /> : <Save size={10} />}
+            {saving ? <RefreshCw size={11} className="animate-spin" /> : <Save size={11} />}
             {saving ? "Saving..." : "Save Session"}
           </button>
         </div>
@@ -210,26 +221,29 @@ export default function StaffMeetingRoom() {
         <div className="px-5 py-3 border-b" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
           <p className="text-[10px] mb-2 font-bold tracking-widest uppercase" style={{ color: DIM }}>Call a Team Member directly</p>
           <div className="grid grid-cols-4 gap-1.5">
-            {TEAM_MEMBERS.map((member) => (
-              <button key={member} onClick={() => handleCallMember(member)}
-                className="px-2 py-1.5 rounded-lg text-[10px] font-semibold text-left transition-all hover:opacity-90"
-                style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}` }}>
-                {member}
-              </button>
-            ))}
+            {TEAM_MEMBERS.map((member) => {
+              const c = getColors(member);
+              return (
+                <button key={member} onClick={() => handleCallMember(member)}
+                  className="px-2 py-1.5 rounded-lg text-[11px] font-semibold text-left transition-all hover:opacity-90"
+                  style={{ backgroundColor: c.bubble, color: c.name, border: `1px solid ${c.border}` }}>
+                  {member}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-5">
+      <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-6">
         {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
         {sending && (
-          <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "rgba(139,164,194,0.1)", border: "1px solid rgba(139,164,194,0.25)" }}>
-              <RefreshCw size={12} className="animate-spin" style={{ color: STEEL }} />
+          <div className="flex gap-4">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.2)" }}>
+              <RefreshCw size={12} className="animate-spin" style={{ color: GOLD }} />
             </div>
-            <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base" style={{ backgroundColor: "rgba(139,164,194,0.08)", color: DIM, border: "1px solid rgba(139,164,194,0.15)" }}>
+            <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base" style={{ backgroundColor: "rgba(201,168,76,0.06)", color: DIM, border: "1px solid rgba(201,168,76,0.15)" }}>
               ...
             </div>
           </div>
@@ -243,21 +257,21 @@ export default function StaffMeetingRoom() {
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
             placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
             rows={2}
-            className="flex-1 px-4 py-3 rounded-xl text-sm outline-none resize-none"
-            style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.5" }} />
+            className="flex-1 px-4 py-3 rounded-xl text-base outline-none resize-none"
+            style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.6" }} />
           <button onClick={() => setShowSideNote(true)}
-            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
+            className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
             style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.25)" }}
             title="Side Note">
-            <StickyNote size={14} style={{ color: GOLD }} />
+            <StickyNote size={18} style={{ color: GOLD }} />
           </button>
           <button onClick={handleSend} disabled={sending || !input.trim()}
-            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
+            className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
             style={{ backgroundColor: GOLD }}>
-            <Send size={14} style={{ color: NAVY }} />
+            <Send size={18} style={{ color: NAVY }} />
           </button>
         </div>
-        <p className="text-[9px] mt-1.5" style={{ color: DIM }}>Julie routes your message to the right Team Member.</p>
+        <p className="text-[10px] mt-1.5" style={{ color: DIM }}>Julie routes your message to the right Team Member.</p>
       </div>
 
       {showSideNote && (
