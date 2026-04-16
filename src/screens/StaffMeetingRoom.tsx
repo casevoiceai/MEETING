@@ -66,9 +66,7 @@ function MessageBubble({ msg }: { msg: Message }) {
       </div>
     );
   }
-
   const colors = getColors(msg.speaker, msg.isFounder);
-
   return (
     <div className="flex gap-4">
       <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold"
