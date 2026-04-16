@@ -49,7 +49,7 @@ function MessageBubble({ msg }: { msg: Message }) {
         }}>
         {msg.speaker.slice(0, 2).toUpperCase()}
       </div>
-      <div className={`flex flex-col max-w-[75%] ${isFounder ? "items-end" : "items-start"}`}>
+      <div className="flex flex-col max-w-[75%] items-start">
         <span className="text-[9px] font-bold tracking-widest uppercase mb-1" style={{ color: msg.isJulie ? GOLD : MUTED }}>
           {msg.speaker}
         </span>
