@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Save, Users, RefreshCw } from "lucide-react";
+import { Send, Save, Users, RefreshCw, StickyNote } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { saveMeetingToDrive } from "../lib/integrations";
 import SideNoteModal, { SideNote } from "./SideNoteModal";
@@ -187,11 +187,6 @@ export default function StaffMeetingRoom() {
             {saving ? <RefreshCw size={10} className="animate-spin" /> : <Save size={10} />}
             {saving ? "Saving..." : "Save Session"}
           </button>
-          <button onClick={() => setShowSideNote(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90"
-            style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.25)" }}>
-            + Side Note
-          </button>
         </div>
       </div>
 
@@ -234,6 +229,12 @@ export default function StaffMeetingRoom() {
             rows={2}
             className="flex-1 px-4 py-3 rounded-xl text-sm outline-none resize-none"
             style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.5" }} />
+          <button onClick={() => setShowSideNote(true)}
+            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
+            style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.25)" }}
+            title="Side Note">
+            <StickyNote size={14} style={{ color: GOLD }} />
+          </button>
           <button onClick={handleSend} disabled={sending || !input.trim()}
             className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
             style={{ backgroundColor: GOLD }}>
