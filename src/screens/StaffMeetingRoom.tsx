@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Save, Users, RefreshCw, StickyNote } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { saveMeetingToDrive } from "../lib/integrations";
-import SideNoteModal, { SideNote } from "./SideNoteModal";
+import SideNotePanel, { SideNote } from "./SideNoteModal";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -60,7 +60,7 @@ function MessageBubble({ msg }: { msg: Message }) {
   if (msg.isSystem) {
     return (
       <div className="flex justify-center py-1">
-        <span className="text-xs px-3 py-1 rounded-full" style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.02)" }}>
+        <span className="text-sm px-4 py-1.5 rounded-full" style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.02)" }}>
           {msg.text}
         </span>
       </div>
@@ -71,19 +71,19 @@ function MessageBubble({ msg }: { msg: Message }) {
 
   return (
     <div className="flex gap-4">
-      <div className="flex-shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-xs font-bold"
+      <div className="flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold"
         style={{ backgroundColor: colors.avatar, color: colors.name, border: `2px solid ${colors.border}` }}>
         {msg.speaker.slice(0, 2).toUpperCase()}
       </div>
       <div className="flex flex-col max-w-[80%] items-start">
-        <span className="text-[11px] font-bold tracking-widest uppercase mb-2" style={{ color: colors.name }}>
+        <span className="text-sm font-bold tracking-widest uppercase mb-2" style={{ color: colors.name }}>
           {msg.speaker}
         </span>
-        <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base leading-relaxed"
+        <div className="px-6 py-4 rounded-2xl rounded-tl-sm text-base leading-relaxed"
           style={{ backgroundColor: colors.bubble, color: TEXT, border: `1px solid ${colors.border}` }}>
           {msg.text}
         </div>
-        <span className="text-[10px] mt-1.5" style={{ color: DIM }}>
+        <span className="text-xs mt-1.5" style={{ color: DIM }}>
           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
@@ -104,6 +104,7 @@ export default function StaffMeetingRoom() {
   const [showSideNote, setShowSideNote] = useState(false);
   const [sideNotes, setSideNotes] = useState<SideNote[]>([]);
   const [usedTags, setUsedTags] = useState<string[]>([]);
+  const [sideNoteHasContent, setSideNoteHasContent] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -194,37 +195,37 @@ export default function StaffMeetingRoom() {
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: "#08111F" }}>
-      <div className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
-        <span className="text-xs font-bold tracking-widest uppercase" style={{ color: GOLD }}>Staff Meeting Room</span>
-        <div className="ml-auto flex items-center gap-2">
+      <div className="flex items-center gap-3 px-5 py-4 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
+        <span className="text-sm font-bold tracking-widest uppercase" style={{ color: GOLD }}>Staff Meeting Room</span>
+        <div className="ml-auto flex items-center gap-3">
           {saveStatus && (
-            <span className="text-[11px] font-semibold" style={{ color: saveStatus.includes("failed") ? "#F87171" : "#4ADE80" }}>
+            <span className="text-sm font-semibold" style={{ color: saveStatus.includes("failed") ? "#F87171" : "#4ADE80" }}>
               {saveStatus}
             </span>
           )}
           <button onClick={() => setShowCallPanel((v) => !v)} disabled={callingMember !== null}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.25)" }}>
-            {callingMember ? <><RefreshCw size={11} className="animate-spin" /> {callingMember}...</> : <><Users size={11} /> Call Team</>}
+            {callingMember ? <><RefreshCw size={13} className="animate-spin" /> {callingMember}...</> : <><Users size={13} /> Call Team</>}
           </button>
           <button onClick={handleSaveSession} disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-40"
             style={{ backgroundColor: CARD, color: MUTED, border: `1px solid ${BORDER}` }}>
-            {saving ? <RefreshCw size={11} className="animate-spin" /> : <Save size={11} />}
+            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
             {saving ? "Saving..." : "Save Session"}
           </button>
         </div>
       </div>
 
       {showCallPanel && (
-        <div className="px-5 py-3 border-b" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
-          <p className="text-[10px] mb-2 font-bold tracking-widest uppercase" style={{ color: DIM }}>Call a Team Member directly</p>
-          <div className="grid grid-cols-4 gap-1.5">
+        <div className="px-5 py-4 border-b" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
+          <p className="text-xs mb-3 font-bold tracking-widest uppercase" style={{ color: DIM }}>Call a Team Member directly</p>
+          <div className="grid grid-cols-4 gap-2">
             {TEAM_MEMBERS.map((member) => {
               const c = getColors(member);
               return (
                 <button key={member} onClick={() => handleCallMember(member)}
-                  className="px-2 py-2 rounded-lg text-[11px] font-bold text-left transition-all hover:opacity-90"
+                  className="px-3 py-2.5 rounded-lg text-sm font-bold text-left transition-all hover:opacity-90"
                   style={{ backgroundColor: c.bubble, color: c.name, border: `1px solid ${c.border}` }}>
                   {member}
                 </button>
@@ -234,15 +235,16 @@ export default function StaffMeetingRoom() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-6">
+      <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-6">
         {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
         {sending && (
           <div className="flex gap-4">
-            <div className="w-11 h-11 rounded-full flex items-center justify-center"
+            <div className="w-12 h-12 rounded-full flex items-center justify-center"
               style={{ backgroundColor: "#1C2A1A", border: "2px solid #C9A84C" }}>
-              <RefreshCw size={12} className="animate-spin" style={{ color: GOLD }} />
+              <RefreshCw size={14} className="animate-spin" style={{ color: GOLD }} />
             </div>
-            <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base" style={{ backgroundColor: "#1C2A1A", color: DIM, border: "1px solid #C9A84C" }}>
+            <div className="px-6 py-4 rounded-2xl rounded-tl-sm text-base"
+              style={{ backgroundColor: "#1C2A1A", color: DIM, border: "1px solid #C9A84C" }}>
               ...
             </div>
           </div>
@@ -255,33 +257,40 @@ export default function StaffMeetingRoom() {
           <textarea value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
             placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
-            rows={2}
-            className="flex-1 px-4 py-3 rounded-xl text-base outline-none resize-none"
+            rows={3}
+            className="flex-1 px-5 py-3 rounded-xl text-base outline-none resize-none"
             style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.6" }} />
-          <button onClick={() => setShowSideNote(true)}
-            className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
-            style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.25)" }}
+          <button
+            onClick={() => setShowSideNote((v) => !v)}
+            className="flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
+            style={{
+              backgroundColor: sideNoteHasContent ? "rgba(201,168,76,0.25)" : "rgba(201,168,76,0.08)",
+              border: sideNoteHasContent ? "2px solid #C9A84C" : "1px solid rgba(201,168,76,0.25)",
+            }}
             title="Side Note">
-            <StickyNote size={18} style={{ color: GOLD }} />
+            <StickyNote size={22} style={{ color: GOLD }} />
           </button>
           <button onClick={handleSend} disabled={sending || !input.trim()}
-            className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
+            className="flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
             style={{ backgroundColor: GOLD }}>
-            <Send size={18} style={{ color: NAVY }} />
+            <Send size={22} style={{ color: NAVY }} />
           </button>
         </div>
-        <p className="text-[10px] mt-1.5" style={{ color: DIM }}>Julie routes your message to the right Team Member.</p>
+        <p className="text-xs mt-2" style={{ color: DIM }}>Julie routes your message to the right Team Member.</p>
       </div>
 
       {showSideNote && (
-        <SideNoteModal
+        <SideNotePanel
           usedTags={usedTags}
           onSave={(note, newTags) => {
             setSideNotes((prev) => [...prev, note]);
             setUsedTags((prev) => [...prev, ...newTags]);
-            setShowSideNote(false);
+            setSideNoteHasContent(false);
           }}
-          onClose={() => setShowSideNote(false)}
+          onClose={() => {
+            setShowSideNote(false);
+            setSideNoteHasContent(false);
+          }}
         />
       )}
     </div>
