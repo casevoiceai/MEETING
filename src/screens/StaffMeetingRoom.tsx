@@ -119,7 +119,7 @@ function MessageBubble({ msg }: { msg: Message }) {
     return (
       <div className="flex justify-center py-1">
         <span
-          className="text-sm px-4 py-1.5 rounded-full"
+          className="text-lg px-4 py-1.5 rounded-full"
           style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.02)" }}
         >
           {msg.text}
@@ -142,13 +142,13 @@ function MessageBubble({ msg }: { msg: Message }) {
       </div>
       <div className="flex flex-col max-w-[80%] items-start">
         <span
-          className="text-base font-bold tracking-wider uppercase mb-2"
+          className="text-xl font-bold tracking-wider uppercase mb-2"
           style={{ color: colors.name }}
         >
           {msg.speaker}
         </span>
         <div
-          className="px-6 py-4 rounded-2xl rounded-tl-sm text-base leading-relaxed"
+          className="px-6 py-4 rounded-2xl rounded-tl-sm text-xl leading-relaxed"
           style={{
             backgroundColor: colors.bubble,
             color: TEXT,
@@ -157,7 +157,7 @@ function MessageBubble({ msg }: { msg: Message }) {
         >
           {msg.text}
         </div>
-        <span className="text-xs mt-1.5" style={{ color: DIM }}>
+        <span className="text-base mt-1.5" style={{ color: DIM }}>
           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
@@ -476,7 +476,7 @@ export default function StaffMeetingRoom() {
               <RefreshCw size={14} className="animate-spin" style={{ color: GOLD }} />
             </div>
             <div
-              className="px-6 py-4 rounded-2xl rounded-tl-sm text-base"
+              className="px-6 py-4 rounded-2xl rounded-tl-sm text-xl"
               style={{ backgroundColor: "#1C2A1A", color: DIM, border: "1px solid #C9A84C" }}
             >
               ...
@@ -500,7 +500,7 @@ export default function StaffMeetingRoom() {
             }}
             placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
             rows={3}
-            className="flex-1 px-5 py-3 rounded-xl text-base outline-none resize-none"
+            className="flex-1 px-5 py-3 rounded-xl text-xl outline-none resize-none"
             style={{
               backgroundColor: CARD,
               color: TEXT,
