@@ -11,6 +11,7 @@ const BORDER = "#1B2A4A";
 const MUTED = "#8A9BB5";
 const DIM = "#3A4F6A";
 const TEXT = "#D0DFEE";
+const STEEL = "#8BA4C2";
 
 const TEAM_MEMBERS = [
   "Tech-9", "Jack", "Max", "Doc", "Flatfoot",
@@ -33,31 +34,46 @@ function MessageBubble({ msg }: { msg: Message }) {
   if (msg.isSystem) {
     return (
       <div className="flex justify-center py-1">
-        <span className="text-[10px] px-3 py-1 rounded-full" style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.02)" }}>
+        <span className="text-xs px-3 py-1 rounded-full" style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.02)" }}>
           {msg.text}
         </span>
       </div>
     );
   }
+
+  const bubbleBg = msg.isFounder
+    ? "rgba(201,168,76,0.12)"
+    : msg.isJulie
+    ? "rgba(201,168,76,0.07)"
+    : "rgba(139,164,194,0.12)";
+
+  const bubbleBorder = msg.isFounder
+    ? "1px solid rgba(201,168,76,0.3)"
+    : msg.isJulie
+    ? "1px solid rgba(201,168,76,0.2)"
+    : "1px solid rgba(139,164,194,0.25)";
+
+  const nameColor = msg.isFounder ? GOLD : msg.isJulie ? GOLD : STEEL;
+
   return (
     <div className="flex gap-3">
-      <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
+      <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold"
         style={{
-          backgroundColor: msg.isFounder ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.05)",
-          color: msg.isFounder ? GOLD : MUTED,
-          border: msg.isFounder ? "1px solid rgba(201,168,76,0.3)" : `1px solid ${BORDER}`,
+          backgroundColor: msg.isFounder ? "rgba(201,168,76,0.15)" : "rgba(139,164,194,0.1)",
+          color: msg.isFounder ? GOLD : STEEL,
+          border: msg.isFounder ? "1px solid rgba(201,168,76,0.3)" : "1px solid rgba(139,164,194,0.25)",
         }}>
         {msg.speaker.slice(0, 2).toUpperCase()}
       </div>
       <div className="flex flex-col max-w-[80%] items-start">
-        <span className="text-[9px] font-bold tracking-widest uppercase mb-1" style={{ color: msg.isJulie ? GOLD : MUTED }}>
+        <span className="text-[10px] font-bold tracking-widest uppercase mb-1.5" style={{ color: nameColor }}>
           {msg.speaker}
         </span>
-        <div className="px-4 py-3 rounded-2xl rounded-bl-sm text-sm leading-relaxed"
-          style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}` }}>
+        <div className="px-5 py-4 rounded-2xl rounded-tl-sm text-base leading-relaxed"
+          style={{ backgroundColor: bubbleBg, color: TEXT, border: bubbleBorder }}>
           {msg.text}
         </div>
-        <span className="text-[9px] mt-1" style={{ color: DIM }}>
+        <span className="text-[10px] mt-1.5" style={{ color: DIM }}>
           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
       </div>
@@ -136,125 +152,4 @@ export default function StaffMeetingRoom() {
     }
   }
 
-  async function handleCallMember(member: string) {
-    if (callingMember) return;
-    setCallingMember(member);
-    setShowCallPanel(false);
-    addMessage({ speaker: "Julie", text: `Bringing in ${member}.`, isJulie: true });
-    const lastMessage = messages.filter((m) => m.isFounder).slice(-1)[0]?.text ?? "Check in with the team.";
-    try {
-      const response = await callMentor(member, lastMessage);
-      if (response) addMessage({ speaker: member, text: response });
-    } catch {
-      addMessage({ speaker: "Julie", text: `Could not reach ${member} right now.`, isJulie: true });
-    } finally {
-      setCallingMember(null);
-    }
-  }
-
-  async function handleSaveSession() {
-    setSaving(true);
-    setSaveStatus(null);
-    try {
-      const result = await saveMeetingToDrive();
-      setSaveStatus(result?.success ? "Session saved to Google Drive." : "Save failed. Check Google Drive connection.");
-    } catch {
-      setSaveStatus("Save failed.");
-    } finally {
-      setSaving(false);
-      setTimeout(() => setSaveStatus(null), 4000);
-    }
-  }
-
-  return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: "#08111F" }}>
-      <div className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
-        <span className="text-xs font-bold tracking-widest uppercase" style={{ color: GOLD }}>Staff Meeting Room</span>
-        <div className="ml-auto flex items-center gap-2">
-          {saveStatus && (
-            <span className="text-[10px] font-semibold" style={{ color: saveStatus.includes("failed") ? "#F87171" : "#4ADE80" }}>
-              {saveStatus}
-            </span>
-          )}
-          <button onClick={() => setShowCallPanel((v) => !v)} disabled={callingMember !== null}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
-            style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.25)" }}>
-            {callingMember ? <><RefreshCw size={10} className="animate-spin" /> {callingMember}...</> : <><Users size={10} /> Call Team</>}
-          </button>
-          <button onClick={handleSaveSession} disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90 disabled:opacity-40"
-            style={{ backgroundColor: CARD, color: MUTED, border: `1px solid ${BORDER}` }}>
-            {saving ? <RefreshCw size={10} className="animate-spin" /> : <Save size={10} />}
-            {saving ? "Saving..." : "Save Session"}
-          </button>
-        </div>
-      </div>
-
-      {showCallPanel && (
-        <div className="px-5 py-3 border-b" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
-          <p className="text-[10px] mb-2 font-bold tracking-widest uppercase" style={{ color: DIM }}>Call a Team Member directly</p>
-          <div className="grid grid-cols-4 gap-1.5">
-            {TEAM_MEMBERS.map((member) => (
-              <button key={member} onClick={() => handleCallMember(member)}
-                className="px-2 py-1.5 rounded-lg text-[10px] font-semibold text-left transition-all hover:opacity-90"
-                style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}` }}>
-                {member}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
-        {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
-        {sending && (
-          <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}` }}>
-              <RefreshCw size={10} className="animate-spin" style={{ color: MUTED }} />
-            </div>
-            <div className="px-4 py-3 rounded-2xl rounded-bl-sm text-sm" style={{ backgroundColor: CARD, color: DIM, border: `1px solid ${BORDER}` }}>
-              ...
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      <div className="px-5 py-4 border-t flex-shrink-0" style={{ borderColor: BORDER }}>
-        <div className="flex gap-3 items-end">
-          <textarea value={input} onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
-            rows={2}
-            className="flex-1 px-4 py-3 rounded-xl text-sm outline-none resize-none"
-            style={{ backgroundColor: CARD, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.5" }} />
-          <button onClick={() => setShowSideNote(true)}
-            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
-            style={{ backgroundColor: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.25)" }}
-            title="Side Note">
-            <StickyNote size={14} style={{ color: GOLD }} />
-          </button>
-          <button onClick={handleSend} disabled={sending || !input.trim()}
-            className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:opacity-90 disabled:opacity-30"
-            style={{ backgroundColor: GOLD }}>
-            <Send size={14} style={{ color: NAVY }} />
-          </button>
-        </div>
-        <p className="text-[9px] mt-1.5" style={{ color: DIM }}>Julie routes your message to the right Team Member.</p>
-      </div>
-
-      {showSideNote && (
-        <SideNoteModal
-          usedTags={usedTags}
-          onSave={(note, newTags) => {
-            setSideNotes((prev) => [...prev, note]);
-            setUsedTags((prev) => [...prev, ...newTags]);
-            setShowSideNote(false);
-          }}
-          onClose={() => setShowSideNote(false)}
-        />
-      )}
-    </div>
-  );
-}
+  async function handleCal
