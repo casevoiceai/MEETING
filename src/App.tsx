@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import VaultView from "./screens/VaultView";
+import DirectChat from "./screens/DirectChat";
 import BoysQueuePanel from "./components/BoysQueuePanel";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import SystemReportsModal from "./components/SystemReportsModal";
 
 type MainTab =
   | "MEETING"
+  | "DIRECT"
   | "PROJECTS"
   | "QUEUE"
   | "VAULT"
@@ -16,6 +18,7 @@ type MainTab =
 
 const MAIN_TABS: MainTab[] = [
   "MEETING",
+  "DIRECT",
   "PROJECTS",
   "QUEUE",
   "VAULT",
@@ -158,7 +161,8 @@ export default function App() {
     return () => window.removeEventListener("open-reports-modal", openReports);
   }, []);
 
-  const mainOverflowClass = activeTab === "MEETING" ? "overflow-hidden" : "overflow-y-auto";
+  const mainOverflowClass =
+    activeTab === "MEETING" || activeTab === "DIRECT" ? "overflow-hidden" : "overflow-y-auto";
 
   return (
     <div
@@ -231,6 +235,7 @@ export default function App() {
 
       <main className={`flex-1 ${mainOverflowClass}`}>
         {activeTab === "MEETING" && <StaffMeetingRoom />}
+        {activeTab === "DIRECT" && <DirectChat />}
         {activeTab === "QUEUE" && (
           <BoysQueuePanel onPendingCountChange={setPendingCount} />
         )}
