@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import VaultView from "./screens/VaultView";
 import DirectChat from "./screens/DirectChat";
+import EmailScreen from "./screens/EmailScreen";
 import BoysQueuePanel from "./components/BoysQueuePanel";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import SystemReportsModal from "./components/SystemReportsModal";
@@ -162,7 +163,9 @@ export default function App() {
   }, []);
 
   const mainOverflowClass =
-    activeTab === "MEETING" || activeTab === "DIRECT" ? "overflow-hidden" : "overflow-y-auto";
+    activeTab === "MEETING" || activeTab === "DIRECT" || activeTab === "EMAIL"
+      ? "overflow-hidden"
+      : "overflow-y-auto";
 
   return (
     <div
@@ -236,6 +239,7 @@ export default function App() {
       <main className={`flex-1 ${mainOverflowClass}`}>
         {activeTab === "MEETING" && <StaffMeetingRoom />}
         {activeTab === "DIRECT" && <DirectChat />}
+        {activeTab === "EMAIL" && <EmailScreen />}
         {activeTab === "QUEUE" && (
           <BoysQueuePanel onPendingCountChange={setPendingCount} />
         )}
@@ -246,12 +250,6 @@ export default function App() {
           <PlaceholderScreen
             title="Projects"
             description="Active workbench. Drop a file, image, or note into the preview zone. Teammates light up based on what you dropped. One speaker at a time in the text window below. Full conversation saves to Vault. Not yet built."
-          />
-        )}
-        {activeTab === "EMAIL" && (
-          <PlaceholderScreen
-            title="Email"
-            description="Correspondence desk. Draft outreach, follow-ups, and partner emails. AI-assisted drafting via any team member. Templates and sent archive. Not yet built."
           />
         )}
       </main>
