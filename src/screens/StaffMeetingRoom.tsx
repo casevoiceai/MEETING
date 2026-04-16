@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Save, Users, RefreshCw, StickyNote } from "lucide-react";
+import { Send, Save, Users, RefreshCw, StickyNote, Pencil, X, RotateCcw } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { saveMeetingToDrive } from "../lib/integrations";
 import SideNotesPanel, { SideNote, loadOpenNoteIds, saveOpenNoteIds } from "./SideNoteModal";
@@ -12,6 +12,24 @@ const BORDER = "#1B2A4A";
 const MUTED = "#8A9BB5";
 const DIM = "#3A4F6A";
 const TEXT = "#D0DFEE";
+
+const JULIE_PERSONALITY_KEY = "casevoice_julie_personality";
+const JULIE_DEFAULT_PERSONALITY =
+  "You are Julie, the meeting orchestrator for Vogtcom LLC Founder CRM. You are warm, sharp, and direct. You route questions to the right team members based on their specific role. You speak in brief, clear sentences. You never ramble. You keep the meeting focused and moving forward. You open every session with a concise briefing based on the queue status.";
+
+function loadJuliePersonality(): string {
+  try {
+    return localStorage.getItem(JULIE_PERSONALITY_KEY) ?? JULIE_DEFAULT_PERSONALITY;
+  } catch {
+    return JULIE_DEFAULT_PERSONALITY;
+  }
+}
+
+function saveJuliePersonality(text: string) {
+  try {
+    localStorage.setItem(JULIE_PERSONALITY_KEY, text);
+  } catch {}
+}
 
 // Maps edge function mentor keys (all-caps) to UI display names
 const ROUTING_TO_DISPLAY: Record<string, string> = {
@@ -129,46 +147,24 @@ const TEAM_MEMBERS_BY_DEPT = [
   },
 ];
 
-// Department color map — one color family per dept, no crossover
-// BUILD: blue | DESIGN: violet | RESEARCH: emerald | SAFETY: orange
-// LEGAL: red | SALES & OPS: gold | COMMS: sky | CREDIBILITY: steel | OBSERVATION: slate
 const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: string; avatar: string }> = {
-  // Special
   Julie:           { bubble: "#1C2A1A", border: "#C9A84C", name: "#C9A84C", avatar: "#2A3D1A" },
   Founder:         { bubble: "#1C1A08", border: "#C9A84C", name: "#C9A84C", avatar: "#252210" },
-
-  // BUILD — blue
   "Tech-9":        { bubble: "#0F1E35", border: "#60A5FA", name: "#60A5FA", avatar: "#152540" },
-
-  // DESIGN — violet
   Jack:            { bubble: "#1A1535", border: "#A78BFA", name: "#A78BFA", avatar: "#221A40" },
-
-  // RESEARCH — emerald
   Scout:           { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
   Jerry:           { bubble: "#0F2820", border: "#34D399", name: "#6EE7B7", avatar: "#133322" },
-
-  // SAFETY — orange (Doc, Max, CIPHER all same family)
   Doc:             { bubble: "#2A1A0F", border: "#FB923C", name: "#FB923C", avatar: "#332210" },
   Max:             { bubble: "#2A1A0F", border: "#FB923C", name: "#FDB877", avatar: "#332210" },
   CIPHER:          { bubble: "#2A1A0F", border: "#FB923C", name: "#FD9A50", avatar: "#332210" },
-
-  // LEGAL — red
   "Attack Lawyer": { bubble: "#2A0F0F", border: "#F87171", name: "#F87171", avatar: "#381212" },
   "Defense Lawyer":{ bubble: "#201010", border: "#FCA5A5", name: "#FCA5A5", avatar: "#2A1515" },
-
-  // SALES & OPS — gold
   Prez:            { bubble: "#1C1A10", border: "#C9A84C", name: "#C9A84C", avatar: "#252215" },
   Sam:             { bubble: "#1C1A10", border: "#C9A84C", name: "#E6C76A", avatar: "#252215" },
   Karen:           { bubble: "#1C1A10", border: "#C9A84C", name: "#D4B55A", avatar: "#252215" },
-
-  // COMMS — sky blue
   Jamison:         { bubble: "#0E1E2A", border: "#38BDF8", name: "#38BDF8", avatar: "#122434" },
   Mailman:         { bubble: "#0E1E2A", border: "#38BDF8", name: "#7DD3FC", avatar: "#122434" },
-
-  // CREDIBILITY — steel blue
   Flatfoot:        { bubble: "#131C2A", border: "#8BA4C2", name: "#8BA4C2", avatar: "#162030" },
-
-  // OBSERVATION — slate
   Watcher:         { bubble: "#0D1520", border: "#94A3B8", name: "#94A3B8", avatar: "#111C28" },
   "That Guy":      { bubble: "#131820", border: "#94A3B8", name: "#CBD5E1", avatar: "#171E28" },
 };
@@ -239,6 +235,135 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
+interface JulieEditorPanelProps {
+  currentPersonality: string;
+  onSave: (text: string) => void;
+  onClose: () => void;
+}
+
+function JulieEditorPanel({ currentPersonality, onSave, onClose }: JulieEditorPanelProps) {
+  const [draft, setDraft] = useState(currentPersonality);
+  const [saved, setSaved] = useState(false);
+
+  function handleSave() {
+    onSave(draft.trim() || JULIE_DEFAULT_PERSONALITY);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  function handleReset() {
+    setDraft(JULIE_DEFAULT_PERSONALITY);
+  }
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 100,
+        backgroundColor: "rgba(8,17,31,0.88)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        className="rounded-2xl flex flex-col"
+        style={{
+          backgroundColor: "#0A1628",
+          border: `1px solid rgba(201,168,76,0.35)`,
+          width: "560px",
+          maxHeight: "80vh",
+        }}
+      >
+        {/* Modal header */}
+        <div
+          className="flex items-center gap-3 px-6 py-4 border-b flex-shrink-0"
+          style={{ borderColor: BORDER }}
+        >
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold"
+            style={{ backgroundColor: "#2A3D1A", color: GOLD, border: `2px solid ${GOLD}` }}
+          >
+            JU
+          </div>
+          <div>
+            <div className="text-sm font-bold" style={{ color: GOLD }}>
+              Julie Profile
+            </div>
+            <div className="text-xs" style={{ color: DIM }}>
+              Edit how Julie opens sessions and routes messages.
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-auto p-2 rounded-lg transition-all hover:opacity-80"
+            style={{ color: MUTED }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Textarea */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={10}
+            className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
+            style={{
+              backgroundColor: "#08111F",
+              color: TEXT,
+              border: `1px solid ${BORDER}`,
+              lineHeight: "1.7",
+              fontFamily: "Inter, sans-serif",
+            }}
+          />
+          <div className="mt-2 text-xs" style={{ color: DIM }}>
+            {draft.length} characters. Changes take effect on the next message sent.
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div
+          className="flex items-center gap-3 px-6 py-4 border-t flex-shrink-0"
+          style={{ borderColor: BORDER }}
+        >
+          <button
+            onClick={handleReset}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:opacity-80"
+            style={{ color: MUTED, border: `1px solid ${BORDER}`, backgroundColor: "transparent" }}
+          >
+            <RotateCcw size={12} /> Reset to default
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:opacity-80"
+            style={{ color: MUTED, border: `1px solid ${BORDER}`, backgroundColor: "transparent" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all hover:opacity-90"
+            style={{
+              backgroundColor: saved ? "rgba(74,222,128,0.15)" : "rgba(201,168,76,0.15)",
+              color: saved ? "#4ADE80" : GOLD,
+              border: `1px solid ${saved ? "rgba(74,222,128,0.4)" : "rgba(201,168,76,0.4)"}`,
+            }}
+          >
+            {saved ? "Saved" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function buildJulieBriefing(items: BoysQueueItem[]): string {
   const now = Date.now();
   const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1000;
@@ -248,29 +373,22 @@ function buildJulieBriefing(items: BoysQueueItem[]): string {
   }
 
   const sorted = [...items].reverse();
-
   const stale = sorted.filter(
     (item) => now - new Date(item.created_at).getTime() > FORTY_EIGHT_HOURS
   );
 
   const lines: string[] = [];
-
   lines.push(
     `Room is open. ${items.length} pending item${items.length !== 1 ? "s" : ""} in the queue.`
   );
-
-  const listStr = sorted
-    .map((item) => `${item.boy_name} (${item.item_type})`)
-    .join(", ");
+  const listStr = sorted.map((item) => `${item.boy_name} (${item.item_type})`).join(", ");
   lines.push(`Oldest first: ${listStr}.`);
-
   if (stale.length > 0) {
     const staleNames = stale.map((item) => item.boy_name).join(", ");
     lines.push(
       `\u26A0 ${stale.length} item${stale.length !== 1 ? "s" : ""} past 48 hours: ${staleNames}.`
     );
   }
-
   const next = sorted[0];
   lines.push(`Start with ${next.boy_name} -- oldest item is still unresolved.`);
 
@@ -284,9 +402,11 @@ export default function StaffMeetingRoom() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [showCallPanel, setShowCallPanel] = useState(false);
+  const [showJulieEditor, setShowJulieEditor] = useState(false);
   const [callingMember, setCallingMember] = useState<string | null>(null);
   const [usedTags, setUsedTags] = useState<string[]>([]);
   const [noteContents, setNoteContents] = useState<Record<string, boolean>>({});
+  const [juliePersonality, setJuliePersonality] = useState(() => loadJuliePersonality());
 
   const [openNoteIds, setOpenNoteIds] = useState<string[]>(() => loadOpenNoteIds());
 
@@ -348,6 +468,11 @@ export default function StaffMeetingRoom() {
     setNoteContents((prev) => ({ ...prev, [id]: hasContent }));
   }
 
+  function handleJulieSave(text: string) {
+    setJuliePersonality(text);
+    saveJuliePersonality(text);
+  }
+
   async function callMentor(displayName: string, message: string): Promise<string | null> {
     const edgeName = normalizeToEdgeName(displayName);
     const recentTranscript = messages
@@ -364,6 +489,7 @@ export default function StaffMeetingRoom() {
         isOpenFloor: false,
         humorDial: 2,
         humorStyle: "dry",
+        ...(edgeName === "JULIE" ? { juliePersonality } : {}),
       },
     });
     if (error || !data?.response) return null;
@@ -387,6 +513,7 @@ export default function StaffMeetingRoom() {
         isInterrupt: false,
         isOpenFloor: false,
         humorDial: 1,
+        juliePersonality,
         meetingState: {
           openQuestions: [],
           answeredQuestions: [],
@@ -410,7 +537,6 @@ export default function StaffMeetingRoom() {
       const parsed = JSON.parse(clean);
 
       if (parsed.line) addMessage({ speaker: "Julie", text: parsed.line, isJulie: true });
-
       if (parsed.action === "acknowledge") return [];
 
       if (Array.isArray(parsed.mentors) && parsed.mentors.length > 0) {
@@ -449,7 +575,6 @@ export default function StaffMeetingRoom() {
           isJulie: true,
         });
       }
-
     } catch {
       addMessage({
         speaker: "Julie",
@@ -510,6 +635,15 @@ export default function StaffMeetingRoom() {
 
   return (
     <div className="flex flex-col h-full relative" style={{ backgroundColor: "#08111F" }}>
+      {/* Julie Editor Modal */}
+      {showJulieEditor && (
+        <JulieEditorPanel
+          currentPersonality={juliePersonality}
+          onSave={handleJulieSave}
+          onClose={() => setShowJulieEditor(false)}
+        />
+      )}
+
       {/* Header */}
       <div
         className="flex items-center gap-3 px-5 py-4 border-b flex-shrink-0"
@@ -527,8 +661,30 @@ export default function StaffMeetingRoom() {
               {saveStatus}
             </span>
           )}
+          {/* Edit Julie button */}
           <button
-            onClick={() => setShowCallPanel((v) => !v)}
+            onClick={() => {
+              setShowCallPanel(false);
+              setShowJulieEditor((v) => !v);
+            }}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90"
+            style={{
+              backgroundColor: showJulieEditor
+                ? "rgba(201,168,76,0.18)"
+                : "rgba(201,168,76,0.06)",
+              color: GOLD,
+              border: `1px solid ${showJulieEditor ? "rgba(201,168,76,0.5)" : "rgba(201,168,76,0.2)"}`,
+            }}
+            title="Edit Julie's personality and behavior"
+          >
+            <Pencil size={13} /> Julie
+          </button>
+          {/* Call Team button */}
+          <button
+            onClick={() => {
+              setShowJulieEditor(false);
+              setShowCallPanel((v) => !v);
+            }}
             disabled={callingMember !== null}
             className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-40"
             style={{
@@ -580,7 +736,6 @@ export default function StaffMeetingRoom() {
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               {TEAM_MEMBERS_BY_DEPT.map((group) => (
                 <div key={group.dept}>
-                  {/* Dept label: smaller, dimmer, less dominant */}
                   <p
                     style={{
                       fontSize: "10px",
@@ -612,10 +767,7 @@ export default function StaffMeetingRoom() {
                           >
                             {m.name}
                           </span>
-                          <span
-                            className="text-sm leading-snug"
-                            style={{ color: TEXT }}
-                          >
+                          <span className="text-sm leading-snug" style={{ color: TEXT }}>
                             {m.role}
                           </span>
                         </button>
