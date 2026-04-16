@@ -21,6 +21,7 @@ export interface SideNote {
 
 interface PersistedNote {
   id: string;
+  title: string;
   text: string;
   mentors: string[];
   tags: string[];
@@ -133,7 +134,7 @@ function MentorPicker({ selected, onChange }: { selected: string[]; onChange: (v
               onClick={(e) => { e.stopPropagation(); toggle(m); }}
               className="opacity-60 hover:opacity-100"
             >
-              ×
+              x
             </button>
           </span>
         ))}
@@ -189,6 +190,7 @@ function SingleNote({ id, usedTags, onClose, onSave, onContentChange }: SingleNo
     y: Math.max(20, 80 + Math.floor(Math.random() * 40)),
   });
 
+  const [title, setTitle] = useState(saved?.title ?? "Side Note");
   const [text, setText] = useState(saved?.text ?? "");
   const [mentors, setMentors] = useState<string[]>(saved?.mentors ?? []);
   const [tags, setTags] = useState<string[]>(saved?.tags ?? []);
@@ -202,11 +204,10 @@ function SingleNote({ id, usedTags, onClose, onSave, onContentChange }: SingleNo
   posRef.current = pos;
   sizeRef.current = size;
 
-  // Auto-persist on any change
   useEffect(() => {
-    saveNote({ id, text, mentors, tags, pos, size, minimized });
+    saveNote({ id, title, text, mentors, tags, pos, size, minimized });
     onContentChange(id, text.trim().length > 0);
-  }, [text, mentors, tags, pos, size, minimized]);
+  }, [title, text, mentors, tags, pos, size, minimized]);
 
   function startDrag(e: React.MouseEvent) {
     e.preventDefault();
@@ -258,7 +259,10 @@ function SingleNote({ id, usedTags, onClose, onSave, onContentChange }: SingleNo
     if (!text.trim()) return;
     const newTags = tags.filter((t) => !usedTags.includes(t));
     onSave({ text: text.trim(), mentors, tags, timestamp: Date.now() }, newTags);
-    // NOTE: intentionally does NOT clear text or close -- note stays open and editable
+    if (title === "Side Note") {
+      const firstLine = text.trim().split("\n")[0];
+      setTitle(firstLine.slice(0, 36) + (firstLine.length > 36 ? "..." : ""));
+    }
   }
 
   function addTag(raw: string) {
@@ -279,14 +283,14 @@ function SingleNote({ id, usedTags, onClose, onSave, onContentChange }: SingleNo
       >
         <button
           onClick={(e) => { e.stopPropagation(); setMinimized(false); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold tracking-widest uppercase shadow-lg"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold shadow-lg"
           style={{
             backgroundColor: text.trim() ? "#C9A84C" : "#F5E6A3",
             color: "#1B1B1B",
             border: "2px solid #D6C47A",
           }}
         >
-          📝 Side Note{text.trim() ? " ●" : ""}
+          {"\uD83D\uDCDD"} {title}{text.trim() ? " \u25CF" : ""}
         </button>
       </div>,
       document.body
@@ -311,16 +315,27 @@ function SingleNote({ id, usedTags, onClose, onSave, onContentChange }: SingleNo
           position: "relative",
         }}
       >
-        {/* Drag Handle */}
         <div
-          className="flex items-center justify-between px-4 py-3 rounded-t-2xl select-none"
+          className="flex items-center justify-between px-4 py-3 rounded-t-2xl"
           style={{ borderBottom: "1px solid #D6C47A", cursor: "grab" }}
           onMouseDown={startDrag}
         >
-          <span className="text-sm font-bold tracking-widest uppercase" style={{ color: "#1B1B1B" }}>
-            Side Note
-          </span>
-          <div className="flex items-center gap-2">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onFocus={(e) => { e.currentTarget.style.borderBottomColor = "#B8943C"; }}
+            onBlur={(e) => { e.currentTarget.style.borderBottomColor = "transparent"; }}
+            className="text-sm font-bold tracking-widest uppercase bg-transparent outline-none flex-1 mr-2"
+            style={{
+              color: "#1B1B1B",
+              borderBottom: "1px dashed transparent",
+              cursor: "text",
+            }}
+            placeholder="Side Note"
+            maxLength={60}
+          />
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onMouseDown={(e) => e.stopPropagation()}
               onClick={() => setMinimized(true)}
@@ -342,7 +357,6 @@ function SingleNote({ id, usedTags, onClose, onSave, onContentChange }: SingleNo
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex flex-col gap-3 p-4">
           <textarea
             value={text}
@@ -414,7 +428,6 @@ function SingleNote({ id, usedTags, onClose, onSave, onContentChange }: SingleNo
           </div>
         </div>
 
-        {/* Resize Handle */}
         <div
           onMouseDown={startResize}
           title="Drag to resize"
