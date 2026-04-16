@@ -13,6 +13,57 @@ const MUTED = "#8A9BB5";
 const DIM = "#3A4F6A";
 const TEXT = "#D0DFEE";
 
+// Maps edge function mentor keys (all-caps) to UI display names
+const ROUTING_TO_DISPLAY: Record<string, string> = {
+  MARK: "Prez",
+  SCOUT: "Scout",
+  SIGMA: "Sam",
+  JAMES: "Jamison",
+  MAILMAN: "Mailman",
+  JERRY: "Jerry",
+  RAY: "Max",
+  ATK: "Attack Lawyer",
+  DEF: "Defense Lawyer",
+  WATCHER: "Watcher",
+  KAREN: "Karen",
+  THATGUY: "That Guy",
+  JAMISON: "Jamison",
+  DOC: "Doc",
+  TECHGUY: "Tech-9",
+  SAM: "Sam",
+  CIPHER: "CIPHER",
+  RICK: "Flatfoot",
+  ALEX: "Jack",
+  PAUL: "Sam",
+  PAT: "Watcher",
+  ULYSES: "That Guy",
+  JULIE: "Julie",
+};
+
+function normalizeToEdgeName(displayName: string): string {
+  const reverse: Record<string, string> = {
+    "Prez": "MARK",
+    "Scout": "SCOUT",
+    "Sam": "SAM",
+    "Jamison": "JAMISON",
+    "Mailman": "MAILMAN",
+    "Jerry": "JERRY",
+    "Max": "RAY",
+    "Attack Lawyer": "ATK",
+    "Defense Lawyer": "DEF",
+    "Watcher": "WATCHER",
+    "Karen": "KAREN",
+    "That Guy": "THATGUY",
+    "Doc": "DOC",
+    "Tech-9": "TECHGUY",
+    "CIPHER": "CIPHER",
+    "Flatfoot": "RICK",
+    "Jack": "ALEX",
+    "Julie": "JULIE",
+  };
+  return reverse[displayName] ?? displayName.toUpperCase();
+}
+
 const TEAM_MEMBERS_BY_DEPT = [
   {
     dept: "BUILD",
@@ -174,7 +225,6 @@ function buildJulieBriefing(items: BoysQueueItem[]): string {
     return "Room is open. Queue is clear. What are we working on?";
   }
 
-  // Oldest first
   const sorted = [...items].reverse();
 
   const stale = sorted.filter(
@@ -216,15 +266,12 @@ export default function StaffMeetingRoom() {
   const [usedTags, setUsedTags] = useState<string[]>([]);
   const [noteContents, setNoteContents] = useState<Record<string, boolean>>({});
 
-  // Persistent open notes -- restored from localStorage on mount
   const [openNoteIds, setOpenNoteIds] = useState<string[]>(() => loadOpenNoteIds());
 
-  // Persist open note IDs whenever they change
   useEffect(() => {
     saveOpenNoteIds(openNoteIds);
   }, [openNoteIds]);
 
-  // NS4: Julie opens the session with a queue briefing
   useEffect(() => {
     async function openSession() {
       let briefing = "Room is open. What are we working on?";
@@ -279,14 +326,17 @@ export default function StaffMeetingRoom() {
     setNoteContents((prev) => ({ ...prev, [id]: hasContent }));
   }
 
-  async function callMentor(mentor: string, message: string) {
+  // Calls the edge function using the edge-function key (all-caps)
+  // and returns the response text, or null on failure
+  async function callMentor(displayName: string, message: string): Promise<string | null> {
+    const edgeName = normalizeToEdgeName(displayName);
     const recentTranscript = messages
       .filter((m) => !m.isSystem)
       .slice(-8)
       .map((m) => ({ speaker: m.speaker, text: m.text }));
     const { data, error } = await supabase.functions.invoke("mentor-response", {
       body: {
-        mentor,
+        mentor: edgeName,
         message,
         mode: "meeting",
         recentTranscript,
@@ -300,6 +350,7 @@ export default function StaffMeetingRoom() {
     return data.response as string;
   }
 
+  // Routes via Julie, returns an array of display names to call
   async function routeWithJulie(message: string): Promise<string[]> {
     const recentTranscript = messages
       .filter((m) => !m.isSystem)
@@ -330,14 +381,30 @@ export default function StaffMeetingRoom() {
         },
       },
     });
-    if (error || !data?.response) return ["Sam"];
+
+    // If the routing call itself failed, fall back to SAM via edge name
+    if (error || !data?.response) {
+      return ["Sam"];
+    }
+
     try {
       const clean = (data.response as string).replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
+
+      // If Julie has a line to say, say it
       if (parsed.line) addMessage({ speaker: "Julie", text: parsed.line, isJulie: true });
+
+      // Acknowledge actions need no mentor response
       if (parsed.action === "acknowledge") return [];
-      if (Array.isArray(parsed.mentors) && parsed.mentors.length > 0) return parsed.mentors;
-    } catch {}
+
+      if (Array.isArray(parsed.mentors) && parsed.mentors.length > 0) {
+        // Convert edge-function names to display names
+        return parsed.mentors.map((edgeName: string) => ROUTING_TO_DISPLAY[edgeName] ?? edgeName);
+      }
+    } catch {
+      // JSON parse failed -- fall through to default
+    }
+
     return ["Sam"];
   }
 
@@ -347,16 +414,32 @@ export default function StaffMeetingRoom() {
     setInput("");
     setSending(true);
     addMessage({ speaker: "Founder", text, isFounder: true });
+
     try {
       const mentors = await routeWithJulie(text);
-      for (const mentor of mentors.slice(0, 2)) {
-        const response = await callMentor(mentor, text);
-        if (response) addMessage({ speaker: mentor, text: response });
+      let anyResponse = false;
+
+      for (const displayName of mentors.slice(0, 2)) {
+        const response = await callMentor(displayName, text);
+        if (response) {
+          addMessage({ speaker: displayName, text: response });
+          anyResponse = true;
+        }
       }
+
+      // If routing returned mentors but none responded, tell Daniel
+      if (mentors.length > 0 && !anyResponse) {
+        addMessage({
+          speaker: "Julie",
+          text: "The team is not responding right now. The edge function may be down or the API key may need to be refreshed. Check System Health.",
+          isJulie: true,
+        });
+      }
+
     } catch {
       addMessage({
         speaker: "Julie",
-        text: "Lost the connection for a moment. Try again.",
+        text: "Lost the connection. Try again.",
         isJulie: true,
       });
     } finally {
@@ -373,7 +456,15 @@ export default function StaffMeetingRoom() {
       messages.filter((m) => m.isFounder).slice(-1)[0]?.text ?? "Check in with the team.";
     try {
       const response = await callMentor(member, lastMessage);
-      if (response) addMessage({ speaker: member, text: response });
+      if (response) {
+        addMessage({ speaker: member, text: response });
+      } else {
+        addMessage({
+          speaker: "Julie",
+          text: `Could not reach ${member} right now.`,
+          isJulie: true,
+        });
+      }
     } catch {
       addMessage({
         speaker: "Julie",
@@ -590,12 +681,12 @@ export default function StaffMeetingRoom() {
         </p>
       </div>
 
-      {/* Side Notes -- all open notes rendered via SideNotesPanel */}
+      {/* Side Notes */}
       <SideNotesPanel
         noteIds={openNoteIds}
         usedTags={usedTags}
         onNoteClose={handleNoteClose}
-        onSave={(note, newTags) => {
+        onSave={(note: SideNote, newTags: string[]) => {
           setUsedTags((prev) => [...prev, ...newTags]);
         }}
         onContentChange={handleNoteContentChange}
