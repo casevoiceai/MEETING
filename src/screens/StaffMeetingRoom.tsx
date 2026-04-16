@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Save, Users, RefreshCw, ChevronDown } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { saveMeetingToDrive } from "../lib/integrations";
+import { saveMeetingToDrive } from "../lib/integrations"; import SideNoteModal, { SideNote } from "./SideNoteModal";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
