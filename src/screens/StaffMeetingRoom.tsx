@@ -3,6 +3,7 @@ import { Send, Save, Users, RefreshCw, StickyNote } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { saveMeetingToDrive } from "../lib/integrations";
 import SideNotesPanel, { SideNote, loadOpenNoteIds, saveOpenNoteIds } from "./SideNoteModal";
+import { listPendingQueueItems, BoysQueueItem } from "../lib/boysQueue";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -165,16 +166,47 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
+function buildJulieBriefing(items: BoysQueueItem[]): string {
+  const now = Date.now();
+  const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1000;
+
+  if (items.length === 0) {
+    return "Room is open. Queue is clear. What are we working on?";
+  }
+
+  // Oldest first
+  const sorted = [...items].reverse();
+
+  const stale = sorted.filter(
+    (item) => now - new Date(item.created_at).getTime() > FORTY_EIGHT_HOURS
+  );
+
+  const lines: string[] = [];
+
+  lines.push(
+    `Room is open. ${items.length} pending item${items.length !== 1 ? "s" : ""} in the queue.`
+  );
+
+  const listStr = sorted
+    .map((item) => `${item.boy_name} (${item.item_type})`)
+    .join(", ");
+  lines.push(`Oldest first: ${listStr}.`);
+
+  if (stale.length > 0) {
+    const staleNames = stale.map((item) => item.boy_name).join(", ");
+    lines.push(
+      `\u26A0 ${stale.length} item${stale.length !== 1 ? "s" : ""} past 48 hours: ${staleNames}.`
+    );
+  }
+
+  const next = sorted[0];
+  lines.push(`Start with ${next.boy_name} -- oldest item is still unresolved.`);
+
+  return lines.join(" ");
+}
+
 export default function StaffMeetingRoom() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      speaker: "Julie",
-      text: "Room is open. What are we working on?",
-      timestamp: new Date(),
-      isJulie: true,
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -191,6 +223,29 @@ export default function StaffMeetingRoom() {
   useEffect(() => {
     saveOpenNoteIds(openNoteIds);
   }, [openNoteIds]);
+
+  // NS4: Julie opens the session with a queue briefing
+  useEffect(() => {
+    async function openSession() {
+      let briefing = "Room is open. What are we working on?";
+      try {
+        const items = await listPendingQueueItems();
+        briefing = buildJulieBriefing(items);
+      } catch {
+        briefing = "Room is open. Could not reach the queue right now. What are we working on?";
+      }
+      setMessages([
+        {
+          id: "welcome",
+          speaker: "Julie",
+          text: briefing,
+          timestamp: new Date(),
+          isJulie: true,
+        },
+      ]);
+    }
+    openSession();
+  }, []);
 
   const anyNoteHasContent = Object.values(noteContents).some(Boolean);
   const bottomRef = useRef<HTMLDivElement>(null);
