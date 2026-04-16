@@ -264,7 +264,7 @@ export default function StaffMeetingRoom() {
             onClick={() => setShowSideNote((v) => !v)}
             className="flex-shrink-0 w-14 h-14 rounded-xl flex items-center justify-center transition-all hover:opacity-90"
             style={{
-              backgroundColor: sideNoteHasContent ? "rgba(201,168,76,0.25)" : "rgba(201,168,76,0.08)",
+              backgroundColor: sideNoteHasContent ? "#2A3D1A" : "rgba(201,168,76,0.08)",
               border: sideNoteHasContent ? "2px solid #C9A84C" : "1px solid rgba(201,168,76,0.25)",
             }}
             title="Side Note">
