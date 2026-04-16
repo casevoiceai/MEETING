@@ -80,7 +80,7 @@ export default function StaffMeetingRoom() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [showCallPanel, setShowCallPanel] = useState(false);
-  {saving ? "Saving..." : "Save Session"}           </button>         </div>       </div>
+  {saving ? "Saving..." : "Save Session"}           </button>           <button onClick={() => setShowSideNote(true)}             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all hover:opacity-90"             style={{ backgroundColor: "rgba(201,168,76,0.08)", color: GOLD, border: "1px solid rgba(201,168,76,0.25)" }}>             + Side Note           </button>         </div>       </div>       {showSideNote && (         <SideNoteModal           usedTags={usedTags}           onSave={(note, newTags) => {             setSideNotes((prev) => [...prev, note]);             setUsedTags((prev) => [...prev, ...newTags]);             setShowSideNote(false);           }}           onClose={() => setShowSideNote(false)}         />       )}
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
