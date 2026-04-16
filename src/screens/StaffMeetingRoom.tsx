@@ -40,7 +40,7 @@ function MessageBubble({ msg }: { msg: Message }) {
   }
   const isFounder = msg.isFounder;
   return (
-    <div className={`flex gap-3 ${isFounder ? "flex-row-reverse" : ""}`}>
+    <div className="flex gap-3">
       <div className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
         style={{
           backgroundColor: isFounder ? "rgba(201,168,76,0.15)" : "rgba(255,255,255,0.05)",
