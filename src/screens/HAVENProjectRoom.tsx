@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
-import { CORE_5_SYSTEM_PROMPTS, CORE_5_MEMBERS, type Core5Key } from "../utils/core5SystemPrompts";
+import { CORE_5_MEMBERS, type Core5Key } from "../utils/core5SystemPrompts";
 
 interface MemberResponse {
   key: Core5Key;
@@ -26,6 +26,23 @@ interface SavedSession {
 
 function timestamp(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+async function callMember(memberKey: Core5Key, message: string): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke("mentor-response", {
+    body: {
+      mentor: memberKey,
+      message,
+      mode: "meeting",
+      recentTranscript: [],
+      isInterrupt: false,
+      isOpenFloor: false,
+      humorDial: 1,
+      humorStyle: "dry",
+    },
+  });
+  if (error || !data?.response) return null;
+  return data.response as string;
 }
 
 export default function HAVENProjectRoom() {
@@ -57,22 +74,12 @@ export default function HAVENProjectRoom() {
     for (let i = 0; i < CORE_5_MEMBERS.length; i++) {
       const member = CORE_5_MEMBERS[i];
       try {
-        const { data, error } = await supabase.functions.invoke("mentor-response", {
-          body: {
-            mentorKey: member.key,
-            message: topic,
-            systemPromptOverride: CORE_5_SYSTEM_PROMPTS[member.key],
-          },
-        });
-
-        const text =
-          error || !data?.reply
-            ? "No response received. Check the edge function connection."
-            : data.reply;
-
+        const text = await callMember(member.key, topic);
         setResponses((prev) =>
           prev.map((r, idx) =>
-            idx === i ? { ...r, loading: false, response: text, error: !!error } : r
+            idx === i
+              ? { ...r, loading: false, response: text ?? "No response received.", error: !text }
+              : r
           )
         );
       } catch {
@@ -98,30 +105,18 @@ export default function HAVENProjectRoom() {
 
     for (const member of targets) {
       try {
-        const { data, error } = await supabase.functions.invoke("mentor-response", {
-          body: {
-            mentorKey: member.key,
-            message: followUpText,
-            systemPromptOverride: CORE_5_SYSTEM_PROMPTS[member.key],
-          },
-        });
-
-        const text =
-          error || !data?.reply ? "No response received." : data.reply;
-
+        const text = await callMember(member.key, followUpText);
         const msg: FollowUpMessage = {
           sender: member.name,
-          text,
+          text: text ?? "No response received.",
           timestamp: timestamp(),
         };
         setFollowUps((prev) => [...prev, msg]);
       } catch {
-        const msg: FollowUpMessage = {
-          sender: member.name,
-          text: "Connection error.",
-          timestamp: timestamp(),
-        };
-        setFollowUps((prev) => [...prev, msg]);
+        setFollowUps((prev) => [
+          ...prev,
+          { sender: member.name, text: "Connection error.", timestamp: timestamp() },
+        ]);
       }
     }
 
@@ -160,7 +155,6 @@ export default function HAVENProjectRoom() {
       className="h-full w-full overflow-y-auto p-8"
       style={{ backgroundColor: "#08111F", color: "#FFFFFF", fontFamily: "'Inter', sans-serif" }}
     >
-      {/* Header */}
       <div className="mb-1">
         <div
           className="text-[11px] font-bold tracking-[0.22em] uppercase"
@@ -173,7 +167,6 @@ export default function HAVENProjectRoom() {
         </div>
       </div>
 
-      {/* Topic Input */}
       {!sessionActive && (
         <div className="mt-6 max-w-2xl">
           <label
@@ -188,11 +181,7 @@ export default function HAVENProjectRoom() {
             rows={3}
             placeholder="Describe the issue, decision, or question..."
             className="w-full rounded-lg border px-4 py-3 text-sm resize-none outline-none"
-            style={{
-              backgroundColor: "#0D1B2E",
-              borderColor: "#1B2A4A",
-              color: "#FFFFFF",
-            }}
+            style={{ backgroundColor: "#0D1B2E", borderColor: "#1B2A4A", color: "#FFFFFF" }}
           />
           <button
             onClick={convene}
@@ -209,10 +198,8 @@ export default function HAVENProjectRoom() {
         </div>
       )}
 
-      {/* Active Session */}
       {sessionActive && (
         <div className="mt-6 max-w-3xl">
-          {/* Topic recap */}
           <div
             className="mb-5 px-4 py-3 rounded-lg border text-sm"
             style={{ backgroundColor: "#0D1B2E", borderColor: "#1B2A4A", color: "#8A9BB5" }}
@@ -226,7 +213,6 @@ export default function HAVENProjectRoom() {
             {topic}
           </div>
 
-          {/* Response Cards */}
           <div className="flex flex-col gap-4 mb-6">
             {responses.map((r) => {
               const colors = CORE_5_MEMBERS.find((m) => m.key === r.key)!.colors;
@@ -234,16 +220,10 @@ export default function HAVENProjectRoom() {
                 <div
                   key={r.key}
                   className="rounded-xl border p-5"
-                  style={{
-                    backgroundColor: colors.bubble,
-                    borderColor: colors.border,
-                  }}
+                  style={{ backgroundColor: colors.bubble, borderColor: colors.border }}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span
-                      className="text-xs font-bold tracking-wide"
-                      style={{ color: colors.name }}
-                    >
+                    <span className="text-xs font-bold tracking-wide" style={{ color: colors.name }}>
                       {r.name}
                     </span>
                     <span
@@ -256,7 +236,7 @@ export default function HAVENProjectRoom() {
                   {r.loading ? (
                     <div className="flex items-center gap-2" style={{ color: "#3A4F6A" }}>
                       <div
-                        className="w-3 h-3 rounded-full border-2 border-t-transparent animate-spin"
+                        className="w-3 h-3 rounded-full border-2 animate-spin"
                         style={{ borderColor: colors.border, borderTopColor: "transparent" }}
                       />
                       <span className="text-xs">Thinking...</span>
@@ -271,7 +251,6 @@ export default function HAVENProjectRoom() {
             })}
           </div>
 
-          {/* Follow-up section -- appears after all 5 respond */}
           {allDone && (
             <>
               <div
@@ -281,7 +260,6 @@ export default function HAVENProjectRoom() {
                 What do you want to focus on?
               </div>
 
-              {/* Follow-up thread */}
               {followUps.length > 0 && (
                 <div className="flex flex-col gap-3 mb-4">
                   {followUps.map((f, i) => {
@@ -294,10 +272,7 @@ export default function HAVENProjectRoom() {
                         style={{ backgroundColor: "#0D1B2E", borderColor: "#1B2A4A" }}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span
-                            className="text-[10px] font-bold tracking-wide"
-                            style={{ color: col }}
-                          >
+                          <span className="text-[10px] font-bold tracking-wide" style={{ color: col }}>
                             {f.sender}
                           </span>
                           <span className="text-[9px]" style={{ color: "#3A4F6A" }}>
@@ -313,18 +288,13 @@ export default function HAVENProjectRoom() {
                 </div>
               )}
 
-              {/* Follow-up input */}
               <div className="flex flex-col gap-2 mb-4">
                 <div className="flex gap-2">
                   <select
                     value={followUpTarget}
                     onChange={(e) => setFollowUpTarget(e.target.value as Core5Key | "ALL")}
                     className="rounded-lg border px-3 py-2 text-xs outline-none"
-                    style={{
-                      backgroundColor: "#0D1B2E",
-                      borderColor: "#1B2A4A",
-                      color: "#8A9BB5",
-                    }}
+                    style={{ backgroundColor: "#0D1B2E", borderColor: "#1B2A4A", color: "#8A9BB5" }}
                   >
                     <option value="ALL">All members</option>
                     {CORE_5_MEMBERS.map((m) => (
@@ -347,11 +317,7 @@ export default function HAVENProjectRoom() {
                     }}
                     placeholder="Ask the team anything else about this topic..."
                     className="flex-1 rounded-lg border px-4 py-2 text-sm outline-none"
-                    style={{
-                      backgroundColor: "#0D1B2E",
-                      borderColor: "#1B2A4A",
-                      color: "#FFFFFF",
-                    }}
+                    style={{ backgroundColor: "#0D1B2E", borderColor: "#1B2A4A", color: "#FFFFFF" }}
                     disabled={followUpLoading}
                   />
                   <button
@@ -372,7 +338,6 @@ export default function HAVENProjectRoom() {
                 </div>
               </div>
 
-              {/* Bottom actions */}
               <div className="flex items-center gap-3">
                 <button
                   onClick={saveToVault}
@@ -389,12 +354,8 @@ export default function HAVENProjectRoom() {
                 </button>
                 <button
                   onClick={reset}
-                  className="px-5 py-2 rounded-lg text-xs font-bold tracking-wide uppercase transition-all"
-                  style={{
-                    backgroundColor: "transparent",
-                    color: "#3A4F6A",
-                    cursor: "pointer",
-                  }}
+                  className="px-5 py-2 rounded-lg text-xs font-bold tracking-wide uppercase"
+                  style={{ backgroundColor: "transparent", color: "#3A4F6A", cursor: "pointer" }}
                 >
                   NEW TOPIC
                 </button>
