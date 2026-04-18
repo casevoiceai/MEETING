@@ -6,9 +6,11 @@ import EmailScreen from "./screens/EmailScreen";
 import BoysQueuePanel from "./components/BoysQueuePanel";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import SystemReportsModal from "./components/SystemReportsModal";
+import HAVENProjectRoom from "./screens/HAVENProjectRoom";
 
 type MainTab =
   | "MEETING"
+  | "HAVEN"
   | "DIRECT"
   | "PROJECTS"
   | "QUEUE"
@@ -19,6 +21,7 @@ type MainTab =
 
 const MAIN_TABS: MainTab[] = [
   "MEETING",
+  "HAVEN",
   "DIRECT",
   "PROJECTS",
   "QUEUE",
@@ -82,7 +85,6 @@ function OfficeSuppliesScreen() {
         Parked tools and future utilities. Nothing urgent lives here.
       </div>
       <div className="grid grid-cols-3 gap-4">
-        {/* REPORTS — live and clickable */}
         <button
           onClick={openReports}
           className="rounded-xl border p-5 text-left transition-all hover:opacity-90"
@@ -105,7 +107,6 @@ function OfficeSuppliesScreen() {
           </div>
         </button>
 
-        {/* Static not-yet-built tools */}
         {staticTools.map((t) => (
           <div
             key={t.name}
@@ -238,6 +239,7 @@ export default function App() {
 
       <main className={`flex-1 ${mainOverflowClass}`}>
         {activeTab === "MEETING" && <StaffMeetingRoom />}
+        {activeTab === "HAVEN" && <HAVENProjectRoom />}
         {activeTab === "DIRECT" && <DirectChat />}
         {activeTab === "EMAIL" && <EmailScreen />}
         {activeTab === "QUEUE" && (
