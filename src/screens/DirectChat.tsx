@@ -24,7 +24,7 @@ const MEMBER_TO_EDGE: Record<string, string> = {
   "Karen": "KAREN",
   "That Guy": "THATGUY",
   "Doc": "DOC",
-  "Tech-9": "TECHGUY",
+  "Tech": "TECHGUY",
   "CIPHER": "CIPHER",
   "Flatfoot": "RICK",
   "Jack": "ALEX",
@@ -33,7 +33,7 @@ const MEMBER_TO_EDGE: Record<string, string> = {
 
 const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: string; avatar: string }> = {
   Founder:          { bubble: "#1C1A08", border: "#C9A84C", name: "#C9A84C", avatar: "#252210" },
-  "Tech-9":         { bubble: "#0F1E35", border: "#60A5FA", name: "#60A5FA", avatar: "#152540" },
+  "Tech":           { bubble: "#0F1E35", border: "#60A5FA", name: "#60A5FA", avatar: "#152540" },
   Jack:             { bubble: "#1A1535", border: "#A78BFA", name: "#A78BFA", avatar: "#221A40" },
   Scout:            { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
   Jerry:            { bubble: "#0F2820", border: "#34D399", name: "#6EE7B7", avatar: "#133322" },
@@ -53,7 +53,7 @@ const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: stri
 };
 
 const ALL_MEMBERS = [
-  { name: "Tech-9",        role: "Build strategist. Owns what gets built and when.",           dept: "BUILD"        },
+  { name: "Tech",          role: "Build strategist. Owns what gets built and when.",           dept: "BUILD"        },
   { name: "Jack",          role: "Brand and UI designer. Flags visual drift before it ships.", dept: "DESIGN"       },
   { name: "Scout",         role: "Market intelligence. Competitor signals, funding leads.",     dept: "RESEARCH"     },
   { name: "Jerry",         role: "Research and evidence. Challenges unsupported assumptions.",  dept: "RESEARCH"     },

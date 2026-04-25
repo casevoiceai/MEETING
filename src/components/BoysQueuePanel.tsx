@@ -20,7 +20,7 @@ const DIM = "#3A4F6A";
 const TEXT = "#D0DFEE";
 
 const TEAM_MEMBERS = [
-  "Tech-9", "Jack", "Max", "Doc", "Flatfoot",
+  "Tech", "Jack", "Max", "Doc", "Flatfoot",
   "Prez", "Sam", "Attack Lawyer", "Defense Lawyer", "Jamison",
   "Jerry", "Watcher", "Karen", "Mailman", "Scout",
   "CIPHER", "That Guy",

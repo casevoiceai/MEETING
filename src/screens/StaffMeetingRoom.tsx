@@ -47,7 +47,7 @@ const ROUTING_TO_DISPLAY: Record<string, string> = {
   THATGUY: "That Guy",
   JAMISON: "Jamison",
   DOC: "Doc",
-  TECHGUY: "Tech-9",
+  TECHGUY: "Tech",
   SAM: "Sam",
   CIPHER: "CIPHER",
   RICK: "Flatfoot",
@@ -73,7 +73,7 @@ function normalizeToEdgeName(displayName: string): string {
     "Karen": "KAREN",
     "That Guy": "THATGUY",
     "Doc": "DOC",
-    "Tech-9": "TECHGUY",
+    "Tech": "TECHGUY",
     "CIPHER": "CIPHER",
     "Flatfoot": "RICK",
     "Jack": "ALEX",
@@ -86,7 +86,7 @@ const TEAM_MEMBERS_BY_DEPT = [
   {
     dept: "BUILD",
     members: [
-      { name: "Tech-9", role: "Build strategist. Writes build briefs. Owns what gets built and when." },
+      { name: "Tech", role: "Build strategist. Writes build briefs. Owns what gets built and when." },
     ],
   },
   {
@@ -150,7 +150,7 @@ const TEAM_MEMBERS_BY_DEPT = [
 const MEMBER_COLORS: Record<string, { bubble: string; border: string; name: string; avatar: string }> = {
   Julie:           { bubble: "#1C2A1A", border: "#C9A84C", name: "#C9A84C", avatar: "#2A3D1A" },
   Founder:         { bubble: "#1C1A08", border: "#C9A84C", name: "#C9A84C", avatar: "#252210" },
-  "Tech-9":        { bubble: "#0F1E35", border: "#60A5FA", name: "#60A5FA", avatar: "#152540" },
+  "Tech":          { bubble: "#0F1E35", border: "#60A5FA", name: "#60A5FA", avatar: "#152540" },
   Jack:            { bubble: "#1A1535", border: "#A78BFA", name: "#A78BFA", avatar: "#221A40" },
   Scout:           { bubble: "#0F2820", border: "#34D399", name: "#34D399", avatar: "#133322" },
   Jerry:           { bubble: "#0F2820", border: "#34D399", name: "#6EE7B7", avatar: "#133322" },

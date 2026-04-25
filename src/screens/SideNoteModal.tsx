@@ -6,7 +6,7 @@ const NOTES_KEY = "casevoice_sidenotes_v2";
 const OPEN_IDS_KEY = "casevoice_open_note_ids";
 
 const TEAM_MEMBERS = [
-  "Tech-9", "Jack", "Max", "Doc", "Flatfoot",
+  "Tech", "Jack", "Max", "Doc", "Flatfoot",
   "Prez", "Sam", "Attack Lawyer", "Defense Lawyer", "Jamison",
   "Jerry", "Watcher", "Karen", "Mailman", "Scout",
   "CIPHER", "That Guy", "Julie",
