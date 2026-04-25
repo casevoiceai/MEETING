@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, RefreshCcw, X } from "lucide-react";
 import { testDriveConnection } from "../lib/integrations";
-import { reconcileSystemState, type ReconciliationResult } from "../lib/health";
 
 type ServiceStatus = "healthy" | "warning" | "error" | "loading";
 type Service = { id: string; name: string; status: ServiceStatus; lastChecked: string; detail: string; };
@@ -33,8 +32,6 @@ export default function SystemHealthPanel() {
   const [credStatus, setCredStatus] = useState<ServiceStatus>("loading");
   const [credLastChecked, setCredLastChecked] = useState("Pending");
   const [credDetail, setCredDetail] = useState("Credential check has not run yet.");
-  const [reconciliation, setReconciliation] = useState<ReconciliationResult | null>(null);
-  const [reconciling, setReconciling] = useState(false);
 
   const runCredentialsCheck = async () => {
     setCredStatus("loading");
@@ -81,16 +78,9 @@ export default function SystemHealthPanel() {
     }
   };
 
-  const runReconciliation = async () => {
-    setReconciling(true);
-    const result = await reconcileSystemState();
-    setReconciliation(result);
-    setReconciling(false);
-  };
-
   const runAllChecks = async () => {
     setIsRefreshing(true);
-    await Promise.all([runDriveCheck(), runCredentialsCheck(), runReconciliation()]);
+    await Promise.all([runDriveCheck(), runCredentialsCheck()]);
     setIsRefreshing(false);
   };
 
@@ -180,73 +170,6 @@ export default function SystemHealthPanel() {
                 )}
               </div>
             ))}
-
-            {/* State Reconciliation row */}
-            <div className="border border-[#1B2A4A] rounded overflow-hidden">
-              <div
-                onClick={() => setExpandedId(expandedId === "reconciliation" ? null : "reconciliation")}
-                className="p-3 cursor-pointer flex justify-between items-center bg-[#0F172A]"
-              >
-                <div className="flex items-center gap-3">
-                  {reconciling
-                    ? <RefreshCcw className="w-4 h-4 text-sky-500 animate-spin" />
-                    : reconciliation === null
-                    ? <RefreshCcw className="w-4 h-4 text-sky-500 animate-spin" />
-                    : reconciliation.ok
-                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    : <AlertCircle className="w-4 h-4 text-amber-500" />
-                  }
-                  <div>
-                    <div className="text-white text-xs font-bold">State Reconciliation</div>
-                    <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide mt-0.5">
-                      {reconciliation ? new Date(reconciliation.checkedAt).toLocaleTimeString() : "Pending"}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={
-                    reconciling || reconciliation === null ? "text-sky-400 text-xs" :
-                    reconciliation.ok ? "text-green-400 text-xs" : "text-amber-400 text-xs"
-                  }>
-                    {reconciling || reconciliation === null ? "Checking" : reconciliation.ok ? "In Sync" : `${reconciliation.warnings.length} Warning${reconciliation.warnings.length !== 1 ? "s" : ""}`}
-                  </span>
-                  {expandedId === "reconciliation" ? <ChevronUp className="w-4 h-4 text-[#8A9BB5]" /> : <ChevronDown className="w-4 h-4 text-[#8A9BB5]" />}
-                </div>
-              </div>
-              {expandedId === "reconciliation" && reconciliation && (
-                <div className="px-3 py-3 border-t border-[#1B2A4A] bg-[#0D1B2E] space-y-2">
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-[#8A9BB5]">Backend (5174)</span>
-                    <span className={reconciliation.services.backend.reachable ? "text-emerald-400" : "text-red-400"}>
-                      {reconciliation.services.backend.reachable ? "Reachable" : reconciliation.services.backend.detail ?? "Unreachable"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-[#8A9BB5]">Local AI (5000)</span>
-                    <span className={reconciliation.services.localAI.reachable ? "text-emerald-400" : "text-red-400"}>
-                      {reconciliation.services.localAI.reachable ? "Reachable" : reconciliation.services.localAI.detail ?? "Unreachable"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[10px]">
-                    <span className="text-[#8A9BB5]">Queue</span>
-                    <span className="text-[#D0DFEE]">{reconciliation.services.queue.detail}</span>
-                  </div>
-                  {reconciliation.warnings.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-[#1B2A4A] space-y-1">
-                      {reconciliation.warnings.map((w, i) => (
-                        <p key={i} className="text-[10px] text-amber-400">{w}</p>
-                      ))}
-                    </div>
-                  )}
-                  <div className="pt-1">
-                    <button onClick={runReconciliation} disabled={reconciling}
-                      className="text-[10px] px-3 py-1.5 border border-[#1B2A4A] text-[#8A9BB5] rounded disabled:opacity-50">
-                      Re-check now
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}
