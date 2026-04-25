@@ -96,3 +96,54 @@ export async function saveMeetingToDrive() {
     return { success: false };
   }
 }
+
+// Notion integration — not yet configured. Safe fallbacks below.
+
+export async function getNotionFallbackStatus(): Promise<{
+  inFallback: boolean;
+  lastError: string;
+  lastErrorAt: string | null;
+  pendingCount: number;
+}> {
+  return { inFallback: false, lastError: "", lastErrorAt: null, pendingCount: 0 };
+}
+
+export async function testNotionConnection(): Promise<{ success: boolean; error?: string }> {
+  return { success: false, error: "Notion integration not configured." };
+}
+
+export async function listNotionDatabases(): Promise<{ id: string; name: string }[]> {
+  return [];
+}
+
+export async function saveNotionDbConfig(
+  _config: { julie_reports?: string; tasks?: string; projects?: string }
+): Promise<void> {
+  // no-op until Notion integration is implemented
+}
+
+export async function pushJulieReportToNotion(
+  _logId: string,
+  _payload: {
+    sessionId: string;
+    sessionKey: string;
+    sessionDate: string;
+    summary: string;
+    decisions: string[];
+    openQuestions: string[];
+    assignedTasks: { task: string; owner: string }[];
+    activeTopics: string[];
+    mentorsInvolved: string[];
+    driveLinks: { transcript?: string; report?: string };
+  }
+): Promise<{ success: boolean; error?: string }> {
+  return { success: false, error: "Notion integration not configured." };
+}
+
+export async function retryNotionPendingItems(): Promise<{
+  retried: number;
+  succeeded: number;
+  stillFailing: number;
+}> {
+  return { retried: 0, succeeded: 0, stillFailing: 0 };
+}
