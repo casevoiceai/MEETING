@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import StaffMeetingRoom from "./screens/StaffMeetingRoom";
 import VaultView from "./screens/VaultView";
 import DirectChat from "./screens/DirectChat";
-import EmailScreen from "./screens/EmailScreen";
+import EmailView from "./screens/EmailView";
+import ProjectsView from "./screens/ProjectsView";
 import BoysQueuePanel from "./components/BoysQueuePanel";
 import SystemHealthPanel from "./components/SystemHealthPanel";
 import SystemReportsModal from "./components/SystemReportsModal";
@@ -241,19 +242,14 @@ export default function App() {
         {activeTab === "MEETING" && <StaffMeetingRoom />}
         {activeTab === "HAVEN" && <HAVENProjectRoom />}
         {activeTab === "DIRECT" && <DirectChat />}
-        {activeTab === "EMAIL" && <EmailScreen />}
+        {activeTab === "EMAIL" && <EmailView />}
         {activeTab === "QUEUE" && (
           <BoysQueuePanel onPendingCountChange={setPendingCount} />
         )}
         {activeTab === "VAULT" && <VaultView />}
         {activeTab === "HEALTH" && <HealthScreen />}
         {activeTab === "OFFICE SUPPLIES" && <OfficeSuppliesScreen />}
-        {activeTab === "PROJECTS" && (
-          <PlaceholderScreen
-            title="Projects"
-            description="Active workbench. Drop a file, image, or note into the preview zone. Teammates light up based on what you dropped. One speaker at a time in the text window below. Full conversation saves to Vault. Not yet built."
-          />
-        )}
+        {activeTab === "PROJECTS" && <ProjectsView />}
       </main>
 
       <SystemReportsModal isOpen={reportsOpen} onClose={() => setReportsOpen(false)} />
