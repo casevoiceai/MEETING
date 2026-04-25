@@ -2,6 +2,38 @@ import { supabase } from "./supabase";
 
 export type QueueStatus = "pending" | "approved" | "kicked_back";
 
+const VALID_FIRE_LEVELS = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+const REQUIRED_SECTIONS = ["ISSUE:", "RECOMMENDED FIX:", "QUESTIONS FOR FOUNDER:", "FIRE LEVEL:"] as const;
+const MIN_CONTENT_LENGTH = 80;
+
+export interface MeaningGateResult {
+  valid: boolean;
+  reason?: string;
+}
+
+export function validateTeamMemberOutput(content: string): MeaningGateResult {
+  if (!content || content.trim().length < MIN_CONTENT_LENGTH) {
+    return { valid: false, reason: "Output is too short or empty to be trusted." };
+  }
+
+  for (const section of REQUIRED_SECTIONS) {
+    if (!content.includes(section)) {
+      return { valid: false, reason: `Missing required section: ${section}` };
+    }
+  }
+
+  const fireLevelMatch = content.match(/FIRE LEVEL:\s*([A-Z]+)/);
+  if (!fireLevelMatch) {
+    return { valid: false, reason: "FIRE LEVEL value is missing or unreadable." };
+  }
+  const level = fireLevelMatch[1].trim() as string;
+  if (!(VALID_FIRE_LEVELS as readonly string[]).includes(level)) {
+    return { valid: false, reason: `Invalid FIRE LEVEL "${level}". Must be LOW, MEDIUM, HIGH, or CRITICAL.` };
+  }
+
+  return { valid: true };
+}
+
 export interface BoysQueueItem {
   id: string;
   item_type: string;

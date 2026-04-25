@@ -5,6 +5,7 @@ import {
   listAllQueueItems,
   approveQueueItem,
   kickBackQueueItem,
+  validateTeamMemberOutput,
   type BoysQueueItem,
   type QueueStatus,
 } from "../lib/boysQueue";
@@ -189,9 +190,14 @@ export default function BoysQueuePanel({ onPendingCountChange }: BoysQueuePanelP
       if (error) {
         setRunMessage({ text: `${member} failed: ${error.message}`, ok: false });
       } else if (data?.success) {
-        setRunMessage({ text: `${member} dropped an item in the queue.`, ok: true });
-        await load();
-        setTab("pending");
+        const gate = validateTeamMemberOutput(data?.content ?? "");
+        if (!gate.valid) {
+          setRunMessage({ text: `[Meaning Gate] ${member} output rejected: ${gate.reason}`, ok: false });
+        } else {
+          setRunMessage({ text: `${member} dropped an item in the queue.`, ok: true });
+          await load();
+          setTab("pending");
+        }
       } else {
         setRunMessage({ text: `${member} returned no item: ${data?.error ?? "unknown"}`, ok: false });
       }
