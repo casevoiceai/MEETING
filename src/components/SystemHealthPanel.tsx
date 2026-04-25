@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, RefreshCcw, X } from "lucide-react";
 import { testDriveConnection } from "../lib/integrations";
+import { runStateReconciliation, DriftReport } from "../lib/health";
 
 type ServiceStatus = "healthy" | "warning" | "error" | "loading";
 type Service = { id: string; name: string; status: ServiceStatus; lastChecked: string; detail: string; };
@@ -32,6 +33,9 @@ export default function SystemHealthPanel() {
   const [credStatus, setCredStatus] = useState<ServiceStatus>("loading");
   const [credLastChecked, setCredLastChecked] = useState("Pending");
   const [credDetail, setCredDetail] = useState("Credential check has not run yet.");
+  const [driftReport, setDriftReport] = useState<DriftReport | null>(null);
+  const [driftChecking, setDriftChecking] = useState(false);
+  const [driftLastChecked, setDriftLastChecked] = useState("Pending");
 
   const runCredentialsCheck = async () => {
     setCredStatus("loading");
@@ -78,9 +82,22 @@ export default function SystemHealthPanel() {
     }
   };
 
+  const runReconciliationCheck = async () => {
+    setDriftChecking(true);
+    try {
+      const report = await runStateReconciliation();
+      setDriftReport(report);
+    } catch {
+      setDriftReport(null);
+    } finally {
+      setDriftLastChecked(new Date().toLocaleTimeString());
+      setDriftChecking(false);
+    }
+  };
+
   const runAllChecks = async () => {
     setIsRefreshing(true);
-    await Promise.all([runDriveCheck(), runCredentialsCheck()]);
+    await Promise.all([runDriveCheck(), runCredentialsCheck(), runReconciliationCheck()]);
     setIsRefreshing(false);
   };
 
@@ -170,6 +187,56 @@ export default function SystemHealthPanel() {
                 )}
               </div>
             ))}
+
+            {/* State Reconciliation row — read-only detection, no repair */}
+            <div className="border border-[#1B2A4A] rounded overflow-hidden">
+              <div
+                onClick={() => setExpandedId(expandedId === "reconciliation" ? null : "reconciliation")}
+                className="p-3 cursor-pointer flex justify-between items-center bg-[#0F172A]"
+              >
+                <div className="flex items-center gap-3">
+                  {driftChecking
+                    ? <RefreshCcw className="w-4 h-4 text-sky-500 animate-spin" />
+                    : driftReport === null
+                      ? <RefreshCcw className="w-4 h-4 text-sky-500" />
+                      : driftReport.clean
+                        ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                        : <AlertCircle className="w-4 h-4 text-amber-500" />}
+                  <div>
+                    <div className="text-white text-xs font-bold">State Reconciliation</div>
+                    <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide mt-0.5">{driftLastChecked}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={
+                    driftChecking ? "text-sky-400 text-xs" :
+                    driftReport === null ? "text-sky-400 text-xs" :
+                    driftReport.clean ? "text-green-400 text-xs" : "text-amber-400 text-xs"
+                  }>
+                    {driftChecking ? "Checking" : driftReport === null ? "Pending" : driftReport.clean ? "Clean" : "Drift Detected"}
+                  </span>
+                  {expandedId === "reconciliation" ? <ChevronUp className="w-4 h-4 text-[#8A9BB5]" /> : <ChevronDown className="w-4 h-4 text-[#8A9BB5]" />}
+                </div>
+              </div>
+              {expandedId === "reconciliation" && (
+                <div className="px-3 py-3 border-t border-[#1B2A4A] bg-[#0D1B2E]">
+                  {driftReport === null || driftChecking ? (
+                    <p className="text-[10px] text-[#8A9BB5]">Check has not run yet. Use RE-SYNC to trigger.</p>
+                  ) : driftReport.clean ? (
+                    <p className="text-[10px] text-emerald-400">No state drift detected.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {driftReport.drifts.map((d, i) => (
+                        <div key={i} className="space-y-0.5">
+                          <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide">{d.check}</div>
+                          <div className="text-[10px] text-[#D0DFEE]">{d.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
