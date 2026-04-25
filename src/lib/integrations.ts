@@ -97,6 +97,18 @@ export async function saveMeetingToDrive() {
   }
 }
 
+// Drive file sync — not yet configured. Throws so callers handle it honestly.
+export async function syncFileToDrive(_params: {
+  localFileId: string;
+  sessionId: string;
+  fileName: string;
+  fileContent: string;
+  mimeType: string;
+  driveFolder: string;
+}): Promise<never> {
+  throw new Error("Drive sync not configured.");
+}
+
 // Notion integration — not yet configured. Safe fallbacks below.
 
 export async function getNotionFallbackStatus(): Promise<{
