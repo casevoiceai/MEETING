@@ -5,9 +5,9 @@ import DirectChat from "./screens/DirectChat";
 import EmailView from "./screens/EmailView";
 import ProjectsView from "./screens/ProjectsView";
 import BoysQueuePanel from "./components/BoysQueuePanel";
-import SystemHealthPanel from "./components/SystemHealthPanel";
 import SystemReportsModal from "./components/SystemReportsModal";
 import HAVENProjectRoom from "./screens/HAVENProjectRoom";
+import HealthView from "./screens/HealthView";
 
 type MainTab =
   | "MEETING"
@@ -136,22 +136,6 @@ function OfficeSuppliesScreen() {
   );
 }
 
-function HealthScreen() {
-  return (
-    <div className="h-full w-full p-8 overflow-y-auto" style={{ backgroundColor: "#08111F" }}>
-      <div
-        className="mb-2 text-[11px] font-bold tracking-[0.22em] uppercase"
-        style={{ color: "#C9A84C" }}
-      >
-        System Health
-      </div>
-      <div className="mb-6 text-sm" style={{ color: "#3A4F6A" }}>
-        Open this when something smells wrong. Not a daily screen.
-      </div>
-      <SystemHealthPanel />
-    </div>
-  );
-}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("MEETING");
@@ -247,7 +231,7 @@ export default function App() {
           <BoysQueuePanel onPendingCountChange={setPendingCount} />
         )}
         {activeTab === "VAULT" && <VaultView />}
-        {activeTab === "HEALTH" && <HealthScreen />}
+        {activeTab === "HEALTH" && <HealthView />}
         {activeTab === "OFFICE SUPPLIES" && <OfficeSuppliesScreen />}
         {activeTab === "PROJECTS" && <ProjectsView />}
       </main>
