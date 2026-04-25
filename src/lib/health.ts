@@ -2,6 +2,69 @@ import { supabase } from "./supabase";
 import { getNotionFallbackStatus, testDriveConnection } from "./integrations";
 import { getQueuedActions } from "./offline";
 import { getAllLockStates, type IntegrationLock } from "./deadManSwitch";
+import { getPendingQueueCount } from "./boysQueue";
+
+export interface ReconciliationServiceStatus {
+  reachable: boolean;
+  detail?: string;
+}
+
+export interface ReconciliationResult {
+  ok: boolean;
+  checkedAt: string;
+  services: {
+    backend: ReconciliationServiceStatus;
+    localAI: ReconciliationServiceStatus;
+    queue: { pendingCount: number; detail?: string };
+  };
+  warnings: string[];
+}
+
+async function pingWithTimeout(url: string, timeoutMs = 3000): Promise<{ ok: boolean; detail?: string }> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return { ok: res.ok, detail: res.ok ? undefined : `HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : "Unreachable" };
+  }
+}
+
+export async function reconcileSystemState(): Promise<ReconciliationResult> {
+  const [backendPing, aiPing, queueCount] = await Promise.all([
+    pingWithTimeout("http://127.0.0.1:5174/api/ping"),
+    pingWithTimeout("http://127.0.0.1:5000/status"),
+    getPendingQueueCount().catch(() => -1),
+  ]);
+
+  const warnings: string[] = [];
+
+  if (!backendPing.ok) {
+    warnings.push(`Backend unreachable: ${backendPing.detail ?? "no response"}`);
+  }
+  if (!aiPing.ok) {
+    warnings.push(`Local AI unreachable: ${aiPing.detail ?? "no response"}`);
+  }
+  if (queueCount === -1) {
+    warnings.push("Could not read queue count from database.");
+  }
+
+  return {
+    ok: warnings.length === 0,
+    checkedAt: new Date().toISOString(),
+    services: {
+      backend: { reachable: backendPing.ok, detail: backendPing.detail },
+      localAI: { reachable: aiPing.ok, detail: aiPing.detail },
+      queue: {
+        pendingCount: queueCount,
+        detail: queueCount === -1 ? "Read error" : `${queueCount} pending`,
+      },
+    },
+    warnings,
+  };
+}
 
 export type HealthStatus = "ok" | "warning" | "error" | "unknown" | "checking" | "locked";
 
