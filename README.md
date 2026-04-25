@@ -22,11 +22,13 @@ Do **not** run `npm run dev` for local development — it does not enforce the r
 
 ### Starting the backend (port 5174)
 
-The local backend is a Deno server at `functions/api/save-meeting.ts`. Start it separately:
+The local backend is a Node.js server. Start it separately:
 
 ```
-deno run --allow-net --allow-env --allow-read functions/api/save-meeting.ts
+node server.cjs
 ```
+
+`server.cjs` is a local-only file and is not committed to the repo. Keep it in the project root on your machine.
 
 ### Local AI service (port 5000)
 
