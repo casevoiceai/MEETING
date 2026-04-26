@@ -188,7 +188,7 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
   async function handleAddTask() {
     if (!newTaskText.trim()) return;
     const t = await addProjectTask(project.id, newTaskText.trim(), newTaskOwner.trim());
-    setTasks((prev) => [...prev, t]);
+    setTasks((prev) => [t, ...prev]);
     setNewTaskText("");
     setNewTaskOwner("");
   }
@@ -671,7 +671,6 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
   const [newProjectName, setNewProjectName] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [projectDeleteProposed, setProjectDeleteProposed] = useState<Set<string>>(new Set());
   const guardrail = useGuardrail();
 
@@ -741,7 +740,6 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
           payload: { project_id: id, project_name: proj?.name },
         });
         setProjectDeleteProposed((prev) => new Set(prev).add(id));
-        setConfirmDeleteId(null);
       }
     );
   }
@@ -752,8 +750,8 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
   }
 
   return (
-    <div className="flex-1 flex min-h-0" style={{ backgroundColor: NAVY, color: "#FFFFFF" }}>
-      <div className="w-60 border-r flex-shrink-0 flex flex-col" style={{ borderColor: BORDER }}>
+    <div className="flex-1 flex min-h-0 overflow-hidden" style={{ backgroundColor: NAVY, color: "#FFFFFF" }}>
+      <div className="w-64 border-r flex-shrink-0 flex flex-col min-h-0" style={{ borderColor: BORDER }}>
         <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: BORDER }}>
           <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>Projects</p>
           <button onClick={() => setCreating(true)} className="p-1.5 rounded transition-opacity hover:opacity-70" style={{ color: GOLD }}>
@@ -809,16 +807,16 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
 
         <div className="flex-1 overflow-y-auto py-2">
           {projects.map((p) => (
-            <div key={p.id} className="group flex items-center gap-1 px-1">
+            <div key={p.id} className="group flex items-center gap-1 px-1 min-w-0">
               <button
                 onClick={() => setSelected(p)}
-                className="flex-1 flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-all"
+                className="flex-1 flex items-center justify-between gap-1 px-3 py-2.5 rounded-lg text-left transition-all min-w-0"
                 style={{ backgroundColor: selected?.id === p.id ? "#1B2A4A" : "transparent" }}
               >
-                <span className="text-sm font-medium truncate" style={{ color: selected?.id === p.id ? "#FFFFFF" : MUTED }}>
+                <span className="text-sm font-medium truncate min-w-0" style={{ color: selected?.id === p.id ? "#FFFFFF" : MUTED }}>
                   {p.name}
                 </span>
-                {selected?.id === p.id && <ChevronRight size={12} style={{ color: DIM }} />}
+                {selected?.id === p.id && <ChevronRight size={12} style={{ color: DIM, flexShrink: 0 }} />}
               </button>
               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                 <button
@@ -829,7 +827,7 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
                   <Archive size={11} style={{ color: DIM }} />
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(p.id); }}
+                  onClick={(e) => { e.stopPropagation(); handleDeleteProject(p.id); }}
                   className="p-1 rounded hover:opacity-70 transition-opacity"
                   title="Delete permanently"
                 >
@@ -841,7 +839,7 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {!selected ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
             <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgba(201,168,76,0.06)" }}>

@@ -740,22 +740,42 @@ function AIPanel({
 
 /* ── Attachment Viewer ───────────────────────────────────────────────────── */
 
-function classifyAttachment(att: EmailAttachment): "text" | "image" | "binary" {
+type AttKind = "text" | "image" | "pdf" | "binary";
+
+function classifyAttachment(att: EmailAttachment): AttKind {
   const ct = (att.content_type ?? "").toLowerCase();
   const fn = (att.filename ?? "").toLowerCase();
-  if (ct.startsWith("image/") || /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(fn)) return "image";
+  if (ct === "application/pdf" || fn.endsWith(".pdf")) return "pdf";
+  if (
+    ct.startsWith("image/") ||
+    /\.(png|jpe?g|gif|webp|svg|bmp|tiff?|ico|avif)$/i.test(fn)
+  ) return "image";
   if (
     ct.startsWith("text/") ||
-    /\.(txt|md|csv|json|xml|log|html|htm|js|ts|py|sql|sh|yaml|yml|toml|ini|env)$/i.test(fn)
+    /\.(txt|md|csv|json|xml|log|html?|jsx?|tsx?|py|sql|sh|bash|yaml|yml|toml|ini|env)$/i.test(fn)
   ) return "text";
   return "binary";
 }
 
-function formatBytes(n: number | null | undefined): string {
-  if (!n) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+function kindLabel(k: AttKind): string {
+  return k === "text" ? "Text" : k === "image" ? "Image" : k === "pdf" ? "PDF" : "File";
+}
+
+function kindColor(k: AttKind): string {
+  return k === "text" ? "#4ADE80" : k === "image" ? "#5A9BD3" : k === "pdf" ? "#F87171" : MUTED;
+}
+
+/* Resolve a stored content string into a src-ready data URL for images */
+function resolveImageSrc(att: EmailAttachment): string | null {
+  const c = att.content;
+  if (!c) return null;
+  if (c.startsWith("data:")) return c;
+  /* Heuristic: raw base64 (no spaces/newlines in first 200 chars) */
+  const sample = c.slice(0, 200);
+  if (/^[A-Za-z0-9+/\r\n]+=*$/.test(sample)) {
+    return `data:${att.content_type || "image/png"};base64,${c}`;
+  }
+  return null;
 }
 
 interface AttachmentViewerProps {
@@ -765,25 +785,19 @@ interface AttachmentViewerProps {
 }
 
 function AttachmentViewer({ att, open, onToggle }: AttachmentViewerProps) {
-  const [copied, setCopied] = useState(false);
+  const [copied,   setCopied]   = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
-  const kind = classifyAttachment(att);
+  const kind        = classifyAttachment(att);
   const mentorColor = att.routed_to ? ROUTED_MENTOR_COLORS[att.routed_to] ?? GOLD : null;
+  const iconColor   = mentorColor ?? kindColor(kind);
+  const hasContent  = Boolean(att.content);
 
-  const iconColor = mentorColor ?? (
-    kind === "text"   ? "#4ADE80"  :
-    kind === "image"  ? "#5A9BD3"  :
-                        MUTED
-  );
-
-  const badgeLabel = att.content
-    ? kind === "text"  ? "View"
-    : kind === "image" ? "Image"
-    : "Content"
+  const badgeLabel = hasContent
+    ? kind === "pdf" ? "PDF" : kind === "image" ? "Image" : kind === "text" ? "View" : "File"
     : "No content";
-
-  const badgeColor = att.content ? "#4ADE80" : DIM;
+  const badgeColor = hasContent ? kindColor(kind) : DIM;
 
   async function handleCopyContent() {
     if (!att.content) return;
@@ -794,7 +808,30 @@ function AttachmentViewer({ att, open, onToggle }: AttachmentViewerProps) {
 
   function handleDownload() {
     if (!att.content) return;
-    const blob = new Blob([att.content], { type: att.content_type || "text/plain" });
+    /* If it's a data URL, strip the header before creating the blob */
+    let blobContent: string = att.content;
+    let mimeType: string = att.content_type || "application/octet-stream";
+    if (att.content.startsWith("data:")) {
+      const [header, b64] = att.content.split(",");
+      const mime = header.replace("data:", "").replace(";base64", "");
+      if (mime) mimeType = mime;
+      blobContent = b64 ?? att.content;
+    }
+    /* Attempt base64 decode for binary types */
+    let blobParts: BlobPart[];
+    try {
+      if (kind !== "text") {
+        const binary = atob(blobContent);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        blobParts = [bytes];
+      } else {
+        blobParts = [blobContent];
+      }
+    } catch {
+      blobParts = [blobContent];
+    }
+    const blob = new Blob(blobParts, { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -803,38 +840,57 @@ function AttachmentViewer({ att, open, onToggle }: AttachmentViewerProps) {
     URL.revokeObjectURL(url);
   }
 
-  /* Detect base64 image (content could be a data URL or raw base64) */
-  const isBase64Image =
-    kind === "image" &&
-    att.content &&
-    (att.content.startsWith("data:image") || /^[A-Za-z0-9+/]+=*$/.test(att.content.slice(0, 100)));
+  const imageSrc = kind === "image" ? resolveImageSrc(att) : null;
 
-  const imageSrc =
-    isBase64Image && att.content
-      ? att.content.startsWith("data:")
-        ? att.content
-        : `data:${att.content_type || "image/png"};base64,${att.content}`
-      : null;
+  /* PDF: open in new tab via object URL if base64, otherwise show details */
+  function handleOpenPdf() {
+    if (!att.content) return;
+    try {
+      let b64 = att.content;
+      if (att.content.startsWith("data:")) {
+        b64 = att.content.split(",")[1] ?? b64;
+      }
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch {
+      handleDownload();
+    }
+  }
 
   const PREVIEW_LIMIT = 3000;
   const contentToShow = att.content ?? "";
-  const isTruncated = contentToShow.length > PREVIEW_LIMIT;
+  const isTruncated   = contentToShow.length > PREVIEW_LIMIT;
   const displayContent = expanded ? contentToShow : contentToShow.slice(0, PREVIEW_LIMIT);
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${open ? GOLD + "44" : BORDER}` }}>
-      {/* ── Row / Header ── */}
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: `1px solid ${open ? iconColor + "55" : BORDER}` }}
+    >
+      {/* ── Header row ── */}
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-2.5 transition-opacity hover:opacity-90 text-left"
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:opacity-90 transition-opacity"
         style={{ backgroundColor: CARD }}
       >
-        <FileText size={14} style={{ color: iconColor, flexShrink: 0 }} />
+        {/* Kind icon */}
+        {kind === "pdf"    && <FileText size={14} style={{ color: "#F87171",  flexShrink: 0 }} />}
+        {kind === "image"  && <Eye      size={14} style={{ color: "#5A9BD3",  flexShrink: 0 }} />}
+        {kind === "text"   && <FileText size={14} style={{ color: "#4ADE80",  flexShrink: 0 }} />}
+        {kind === "binary" && <FileText size={14} style={{ color: MUTED,      flexShrink: 0 }} />}
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate" style={{ color: TEXT }}>{att.filename}</p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px]" style={{ color: DIM }}>{att.content_type || "unknown type"}</span>
+          <p className="text-sm font-semibold truncate" style={{ color: TEXT }}>
+            {att.filename}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <span className="text-[10px]" style={{ color: DIM }}>
+              {att.content_type || "unknown type"}
+            </span>
             {att.routed_to && (
               <span className="text-[10px] font-bold uppercase" style={{ color: mentorColor ?? GOLD }}>
                 → {att.routed_to}
@@ -843,56 +899,96 @@ function AttachmentViewer({ att, open, onToggle }: AttachmentViewerProps) {
           </div>
         </div>
 
-        <span className="text-[10px] font-bold uppercase flex-shrink-0" style={{ color: badgeColor }}>
+        <span
+          className="text-[10px] font-bold uppercase flex-shrink-0 px-2 py-0.5 rounded-full"
+          style={{ color: badgeColor, backgroundColor: badgeColor + "15" }}
+        >
           {badgeLabel}
         </span>
-        <span className="text-[10px] flex-shrink-0" style={{ color: DIM }}>
-          {open ? "▲" : "▼"}
-        </span>
+        <ChevronDown
+          size={13}
+          className={`flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+          style={{ color: DIM }}
+        />
       </button>
 
       {/* ── Expanded panel ── */}
       {open && (
         <div style={{ backgroundColor: NAVY, borderTop: `1px solid ${BORDER}` }}>
           {/* Action bar */}
-          <div className="flex items-center gap-2 px-4 py-2 border-b" style={{ borderColor: BORDER }}>
-            <span className="text-[10px] font-bold tracking-widest uppercase flex-1" style={{ color: DIM }}>
-              {kind === "text" ? "Text Content" : kind === "image" ? "Image" : "Binary File"}
+          <div
+            className="flex items-center gap-2 px-4 py-2 border-b flex-wrap"
+            style={{ borderColor: BORDER }}
+          >
+            <span
+              className="text-[10px] font-bold tracking-widest uppercase flex-1"
+              style={{ color: DIM }}
+            >
+              {kindLabel(kind)}
             </span>
+
+            {/* PDF: open in browser */}
+            {kind === "pdf" && att.content && (
+              <button
+                onClick={handleOpenPdf}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase hover:opacity-80"
+                style={{ color: "#F87171", border: `1px solid #F8717133`, backgroundColor: CARD }}
+              >
+                <Eye size={10} /> Open PDF
+              </button>
+            )}
+
+            {/* Copy — all kinds */}
             {att.content && (
-              <>
-                <button
-                  onClick={handleCopyContent}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase hover:opacity-80"
-                  style={{ color: copied ? "#4ADE80" : MUTED, border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
-                  {copied ? <Check size={10} /> : <Copy size={10} />}
-                  {copied ? "Copied!" : "Copy"}
-                </button>
-                <button
-                  onClick={handleDownload}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase hover:opacity-80"
-                  style={{ color: GOLD, border: `1px solid ${GOLD}33`, backgroundColor: CARD }}>
-                  <Eye size={10} /> Download
-                </button>
-              </>
+              <button
+                onClick={handleCopyContent}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase hover:opacity-80"
+                style={{
+                  color: copied ? "#4ADE80" : MUTED,
+                  border: `1px solid ${BORDER}`,
+                  backgroundColor: CARD,
+                }}
+              >
+                {copied ? <Check size={10} /> : <Copy size={10} />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            )}
+
+            {/* Download — all kinds with content */}
+            {att.content && (
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase hover:opacity-80"
+                style={{ color: GOLD, border: `1px solid ${GOLD}33`, backgroundColor: CARD }}
+              >
+                <Eye size={10} /> Download
+              </button>
             )}
           </div>
 
-          {/* Content area */}
+          {/* ── Content area ── */}
           <div className="px-4 py-3">
-            {/* ── Text ── */}
+
+            {/* TEXT: scrollable pre block */}
             {kind === "text" && att.content && (
               <div>
                 <pre
-                  className="text-xs leading-relaxed whitespace-pre-wrap font-mono break-words"
-                  style={{ color: MUTED, maxHeight: expanded ? "none" : "320px", overflow: "hidden" }}>
+                  className="text-xs leading-relaxed whitespace-pre-wrap font-mono break-words overflow-y-auto"
+                  style={{
+                    color: MUTED,
+                    maxHeight: expanded ? "600px" : "320px",
+                    overflowY: "auto",
+                    scrollbarWidth: "thin",
+                  }}
+                >
                   {displayContent}
                 </pre>
                 {isTruncated && (
                   <button
                     onClick={() => setExpanded(v => !v)}
                     className="mt-2 text-xs font-semibold hover:opacity-80"
-                    style={{ color: GOLD }}>
+                    style={{ color: GOLD }}
+                  >
                     {expanded
                       ? "Show less ▲"
                       : `Show all (${(contentToShow.length / 1000).toFixed(1)} KB) ▼`}
@@ -901,33 +997,68 @@ function AttachmentViewer({ att, open, onToggle }: AttachmentViewerProps) {
               </div>
             )}
 
-            {/* ── Image (base64) ── */}
-            {kind === "image" && imageSrc && (
+            {/* TEXT: no content */}
+            {kind === "text" && !att.content && (
+              <p className="text-xs py-2" style={{ color: DIM }}>
+                No text content stored for this attachment.
+              </p>
+            )}
+
+            {/* IMAGE: render inline if resolvable */}
+            {kind === "image" && imageSrc && !imgError && (
               <div className="flex flex-col items-start gap-2">
                 <img
                   src={imageSrc}
                   alt={att.filename}
+                  onError={() => setImgError(true)}
                   className="max-w-full rounded-lg"
-                  style={{ maxHeight: "400px", border: `1px solid ${BORDER}` }}
+                  style={{ maxHeight: "400px", border: `1px solid ${BORDER}`, objectFit: "contain" }}
                 />
                 <p className="text-xs" style={{ color: DIM }}>
-                  Stored as base64. Use Download to save locally.
+                  Use Download to save a local copy.
                 </p>
               </div>
             )}
 
-            {/* ── Image (no preview) ── */}
-            {kind === "image" && !imageSrc && (
+            {/* IMAGE: can't render inline */}
+            {kind === "image" && (!imageSrc || imgError) && (
               <div className="flex flex-col gap-2 py-2">
-                <p className="text-sm font-semibold" style={{ color: MUTED }}>{att.filename}</p>
+                <div className="flex items-center gap-2">
+                  <Eye size={16} style={{ color: MUTED }} />
+                  <p className="text-sm font-semibold" style={{ color: MUTED }}>{att.filename}</p>
+                </div>
                 <p className="text-xs" style={{ color: DIM }}>
-                  Image file — no inline preview available (not stored as base64).
-                  {att.content && " Use Download to retrieve the content."}
+                  {att.content
+                    ? "Image stored but cannot render inline — use Download to save the file."
+                    : "Image file — no content captured. Only the filename is stored."}
                 </p>
               </div>
             )}
 
-            {/* ── Binary ── */}
+            {/* PDF: show details + open button hint */}
+            {kind === "pdf" && (
+              <div className="flex flex-col gap-2 py-2">
+                <div className="flex items-center gap-3">
+                  <FileText size={22} style={{ color: "#F87171" }} />
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: TEXT }}>{att.filename}</p>
+                    <p className="text-xs mt-0.5" style={{ color: DIM }}>PDF Document</p>
+                  </div>
+                </div>
+                {att.content ? (
+                  <p className="text-xs" style={{ color: DIM }}>
+                    Click <strong style={{ color: "#F87171" }}>Open PDF</strong> to view in a new browser
+                    tab, or <strong style={{ color: GOLD }}>Download</strong> to save locally.
+                  </p>
+                ) : (
+                  <p className="text-xs" style={{ color: DIM }}>
+                    PDF file — no content captured. Only the filename is stored.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* BINARY: generic */}
             {kind === "binary" && (
               <div className="flex flex-col gap-2 py-2">
                 <div className="flex items-center gap-3">
@@ -941,22 +1072,16 @@ function AttachmentViewer({ att, open, onToggle }: AttachmentViewerProps) {
                 </div>
                 {att.content ? (
                   <p className="text-xs" style={{ color: DIM }}>
-                    Content is stored. Use <strong style={{ color: GOLD }}>Copy</strong> or{" "}
+                    Content is stored. Use{" "}
+                    <strong style={{ color: GOLD }}>Copy</strong> or{" "}
                     <strong style={{ color: GOLD }}>Download</strong> to retrieve it.
                   </p>
                 ) : (
                   <p className="text-xs" style={{ color: DIM }}>
-                    Binary file — content was not captured at upload time. Only the filename is stored.
+                    Preview not available — content was not captured at upload time. Only the filename is stored.
                   </p>
                 )}
               </div>
-            )}
-
-            {/* ── No content at all ── */}
-            {!att.content && kind === "text" && (
-              <p className="text-xs py-2" style={{ color: DIM }}>
-                No text content stored for this attachment.
-              </p>
             )}
           </div>
         </div>
