@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, RefreshCcw, X } from "lucide-react";
 import { testDriveConnection } from "../lib/integrations";
 import { runStateReconciliation, DriftReport } from "../lib/health";
+
 import { supabase } from "../lib/supabase";
 
 type ServiceStatus = "healthy" | "warning" | "error" | "loading";
