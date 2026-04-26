@@ -40,22 +40,17 @@ export default function SystemHealthPanel() {
   const runCredentialsCheck = async () => {
     setCredStatus("loading");
     try {
-      const response = await fetch("https://foundercrm.casevoice-ai.workers.dev/api/save-meeting", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check_credentials" }),
-      });
-      const data = await response.json();
-      if (data.client_id_set && data.client_secret_set) {
+      const result = await testDriveConnection();
+      if (result.success) {
         setCredStatus("healthy");
-        setCredDetail("Client ID and Secret are set in Cloudflare. OAuth token: " + (data.oauth_token_present ? "present" : "not present") + ".");
+        setCredDetail("Service account credentials verified via Google Drive.");
       } else {
         setCredStatus("error");
-        setCredDetail(data.error ?? "One or more credentials are missing from Cloudflare.");
+        setCredDetail(result.error ?? "Credentials check failed.");
       }
     } catch {
       setCredStatus("error");
-      setCredDetail("Could not reach the worker to check credentials.");
+      setCredDetail("Could not verify credentials.");
     } finally {
       setCredLastChecked(new Date().toLocaleTimeString());
     }
