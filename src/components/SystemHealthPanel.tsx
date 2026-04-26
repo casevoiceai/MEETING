@@ -30,31 +30,9 @@ export default function SystemHealthPanel() {
   const [driveStatus, setDriveStatus] = useState<ServiceStatus>("loading");
   const [driveLastChecked, setDriveLastChecked] = useState("Pending");
   const [driveDetail, setDriveDetail] = useState("Drive check has not run yet.");
-  const [credStatus, setCredStatus] = useState<ServiceStatus>("loading");
-  const [credLastChecked, setCredLastChecked] = useState("Pending");
-  const [credDetail, setCredDetail] = useState("Credential check has not run yet.");
   const [driftReport, setDriftReport] = useState<DriftReport | null>(null);
   const [driftChecking, setDriftChecking] = useState(false);
   const [driftLastChecked, setDriftLastChecked] = useState("Pending");
-
-  const runCredentialsCheck = async () => {
-    setCredStatus("loading");
-    try {
-      const result = await testDriveConnection();
-      if (result.success) {
-        setCredStatus("healthy");
-        setCredDetail("Service account credentials verified via Google Drive.");
-      } else {
-        setCredStatus("error");
-        setCredDetail(result.error ?? "Credentials check failed.");
-      }
-    } catch {
-      setCredStatus("error");
-      setCredDetail("Could not verify credentials.");
-    } finally {
-      setCredLastChecked(new Date().toLocaleTimeString());
-    }
-  };
 
   const runDriveCheck = async () => {
     setDriveStatus("loading");
@@ -92,7 +70,7 @@ export default function SystemHealthPanel() {
 
   const runAllChecks = async () => {
     setIsRefreshing(true);
-    await Promise.all([runDriveCheck(), runCredentialsCheck(), runReconciliationCheck()]);
+    await Promise.all([runDriveCheck(), runReconciliationCheck()]);
     setIsRefreshing(false);
   };
 
@@ -104,10 +82,9 @@ export default function SystemHealthPanel() {
 
   const services = useMemo<Service[]>(() => [
     DATABASE_SERVICE,
-    { id: "credentials", name: "Credentials", status: credStatus, lastChecked: credLastChecked, detail: credDetail },
     { id: "drive", name: "Google Drive", status: driveStatus, lastChecked: driveLastChecked, detail: driveDetail },
     AUTH_SERVICE,
-  ], [credStatus, credLastChecked, credDetail, driveStatus, driveLastChecked, driveDetail]);
+  ], [driveStatus, driveLastChecked, driveDetail]);
 
   const degraded = services.some((s) => s.status === "warning" || s.status === "error");
 
@@ -173,11 +150,7 @@ export default function SystemHealthPanel() {
                         <button onClick={runDriveCheck} className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded">Test connection again</button>
                       </div>
                     )}
-                    {service.id === "credentials" && (
-                      <div className="pt-3">
-                        <button onClick={runCredentialsCheck} className="text-[10px] px-3 py-1.5 border border-yellow-500 text-yellow-400 rounded">Re-check credentials</button>
-                      </div>
-                    )}
+
                   </div>
                 )}
               </div>
