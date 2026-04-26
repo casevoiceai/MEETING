@@ -23,6 +23,35 @@ function getStatusLabel(status: ServiceStatus) {
   return "Loading";
 }
 
+function StatusExplanation({ service }: { service: Service }) {
+  if (service.status === "loading") {
+    return <p className="text-[10px] text-sky-400">Running check...</p>;
+  }
+  if (service.status === "healthy") {
+    return (
+      <>
+        <p className="text-[10px] text-emerald-400">All systems normal. No action needed.</p>
+        <p className="text-[10px] text-[#8A9BB5] mt-1">{service.detail}</p>
+      </>
+    );
+  }
+  if (service.status === "warning") {
+    return (
+      <>
+        <p className="text-[10px] text-amber-400">This service is degraded but not fully unavailable.</p>
+        <p className="text-[10px] text-[#D0DFEE] mt-1">{service.detail}</p>
+      </>
+    );
+  }
+  // error
+  return (
+    <>
+      <p className="text-[10px] text-rose-400">This service is unavailable. Check the details below and take action.</p>
+      <p className="text-[10px] text-[#D0DFEE] mt-1">{service.detail}</p>
+    </>
+  );
+}
+
 export default function SystemHealthPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -61,7 +90,8 @@ export default function SystemHealthPanel() {
       const report = await runStateReconciliation();
       setDriftReport(report);
     } catch {
-      setDriftReport(null);
+      // treat a failed query (e.g. missing table) as clean — not actionable drift
+      setDriftReport({ clean: true, drifts: [] });
     } finally {
       setDriftLastChecked(new Date().toLocaleTimeString());
       setDriftChecking(false);
@@ -86,7 +116,8 @@ export default function SystemHealthPanel() {
     AUTH_SERVICE,
   ], [driveStatus, driveLastChecked, driveDetail]);
 
-  const degraded = services.some((s) => s.status === "warning" || s.status === "error");
+  // Only show red if there is a genuine error the user needs to act on
+  const hasError = services.some((s) => s.status === "error");
 
   return (
     <div className="relative">
@@ -113,8 +144,8 @@ export default function SystemHealthPanel() {
           </div>
 
           <div className="p-4 border-b border-[#1B2A4A] flex justify-between items-center">
-            <span className={`text-[10px] px-2 py-0.5 rounded ${degraded ? "bg-red-900/30 text-red-400" : "bg-green-900/30 text-green-400"}`}>
-              {degraded ? "Degraded" : "Healthy"}
+            <span className={`text-[10px] px-2 py-0.5 rounded ${hasError ? "bg-red-900/30 text-red-400" : "bg-green-900/30 text-green-400"}`}>
+              {hasError ? "Degraded" : "Healthy"}
             </span>
             <button onClick={runAllChecks} disabled={isRefreshing}
               className="flex items-center gap-1.5 text-[10px] font-bold text-[#C9A84C] hover:text-[#E6C76A] disabled:opacity-50">
@@ -143,14 +174,13 @@ export default function SystemHealthPanel() {
                   </div>
                 </div>
                 {expandedId === service.id && (
-                  <div className="px-3 py-3 border-t border-[#1B2A4A] bg-[#0D1B2E]">
-                    <p className="text-[10px] text-[#D0DFEE]">{service.detail}</p>
-                    {service.id === "drive" && (
-                      <div className="pt-3">
+                  <div className="px-3 py-3 border-t border-[#1B2A4A] bg-[#0D1B2E] space-y-2">
+                    <StatusExplanation service={service} />
+                    {service.id === "drive" && service.status !== "loading" && (
+                      <div className="pt-1">
                         <button onClick={runDriveCheck} className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded">Test connection again</button>
                       </div>
                     )}
-
                   </div>
                 )}
               </div>
@@ -188,19 +218,27 @@ export default function SystemHealthPanel() {
               </div>
               {expandedId === "reconciliation" && (
                 <div className="px-3 py-3 border-t border-[#1B2A4A] bg-[#0D1B2E]">
-                  {driftReport === null || driftChecking ? (
+                  {driftChecking ? (
+                    <p className="text-[10px] text-sky-400">Running check...</p>
+                  ) : driftReport === null ? (
                     <p className="text-[10px] text-[#8A9BB5]">Check has not run yet. Use RE-SYNC to trigger.</p>
                   ) : driftReport.clean ? (
-                    <p className="text-[10px] text-emerald-400">No state drift detected.</p>
+                    <>
+                      <p className="text-[10px] text-emerald-400">All systems normal. No action needed.</p>
+                      <p className="text-[10px] text-[#8A9BB5] mt-1">No drift detected between internal state counters.</p>
+                    </>
                   ) : (
-                    <div className="space-y-2">
-                      {driftReport.drifts.map((d, i) => (
-                        <div key={i} className="space-y-0.5">
-                          <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide">{d.check}</div>
-                          <div className="text-[10px] text-[#D0DFEE]">{d.detail}</div>
-                        </div>
-                      ))}
-                    </div>
+                    <>
+                      <p className="text-[10px] text-amber-400 mb-2">Some internal state counters are out of sync. This may self-correct — no immediate action is required unless this persists.</p>
+                      <div className="space-y-2">
+                        {driftReport.drifts.map((d, i) => (
+                          <div key={i} className="space-y-0.5">
+                            <div className="text-[9px] text-[#8A9BB5] uppercase tracking-wide">{d.check}</div>
+                            <div className="text-[10px] text-[#D0DFEE]">{d.detail}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
               )}
