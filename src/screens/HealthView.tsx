@@ -21,9 +21,6 @@ interface Service {
   detail: string;
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
 function statusIcon(status: ServiceStatus) {
   if (status === "healthy") return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
   if (status === "warning") return <AlertCircle className="w-5 h-5 text-amber-400" />;
@@ -104,9 +101,9 @@ export default function HealthView() {
   async function runCredentialsCheck() {
     setCredStatus("loading");
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/check-credentials`, {
+      const res = await fetch("https://foundercrm.casevoice-ai.workers.dev/api/save-meeting", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${ANON_KEY}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "check_credentials" }),
       });
       const data = await res.json();
@@ -179,13 +176,11 @@ export default function HealthView() {
 
   const degraded = services.some((s) => s.status === "warning" || s.status === "error");
 
-  const driftServiceStatus: ServiceStatus = driftChecking
-    ? "loading"
-    : driftReport === null
-      ? "loading"
-      : driftReport.clean
-        ? "healthy"
-        : "warning";
+  const driftLabelColor = driftChecking || driftReport === null
+    ? "#38BDF8"
+    : driftReport.clean
+      ? "#4ADE80"
+      : "#F59E0B";
 
   const driftLabel = driftChecking
     ? "Checking"
@@ -194,12 +189,6 @@ export default function HealthView() {
       : driftReport.clean
         ? "Clean"
         : "Drift Detected";
-
-  const driftLabelColor = driftChecking || driftReport === null
-    ? "#38BDF8"
-    : driftReport.clean
-      ? "#4ADE80"
-      : "#F59E0B";
 
   function toggle(id: string) {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -270,7 +259,6 @@ export default function HealthView() {
             </ServiceRow>
           ))}
 
-          {/* State Reconciliation — read-only detection, no repair */}
           <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${BORDER}`, backgroundColor: "#0F1E33" }}>
             <button
               onClick={() => toggle("reconciliation")}
@@ -310,27 +298,4 @@ export default function HealthView() {
                   ) : (
                     <div className="flex flex-col gap-3">
                       {driftReport.drifts.map((d, i) => (
-                        <div key={i} className="px-4 py-3 rounded-xl" style={{ backgroundColor: NAVY, border: `1px solid ${BORDER}` }}>
-                          <div className="text-[10px] uppercase tracking-widest font-bold mb-1" style={{ color: DIM }}>{d.check}</div>
-                          <div className="text-sm" style={{ color: "#D0DFEE" }}>{d.detail}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    onClick={runReconciliation}
-                    disabled={driftChecking}
-                    className="mt-4 text-xs px-4 py-2 rounded-lg font-bold tracking-widest uppercase transition-all hover:opacity-80 disabled:opacity-40"
-                    style={{ color: GOLD, border: `1px solid rgba(201,168,76,0.4)`, backgroundColor: "rgba(201,168,76,0.06)" }}
-                  >
-                    Run Reconciliation
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+                        <div key={i} className="px-4 py-3 rounded-xl" style={
