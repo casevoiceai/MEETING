@@ -237,17 +237,52 @@ async function callEmailAnalysis(action: string, payload: Record<string, unknown
 
 /* ── File reading helper ─────────────────────────────────────────────────── */
 
-interface AttachmentDraft { filename: string; content: string; readable: boolean; }
+interface AttachmentDraft {
+  filename: string;
+  content: string;       /* text content, base64 data URL, or "" for unread binary */
+  content_type: string;  /* MIME type */
+  readable: boolean;     /* true = text, false = binary/image/pdf */
+}
 
-async function readFileAsText(file: File): Promise<AttachmentDraft> {
-  const readable = file.type.startsWith("text/") || /\.(txt|md|csv|json|xml|log|html|js|ts|py|sql)$/i.test(file.name);
-  if (!readable) return { filename: file.name, content: "", readable: false };
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload  = (e) => resolve({ filename: file.name, content: (e.target?.result as string) ?? "", readable: true });
-    reader.onerror = ()  => resolve({ filename: file.name, content: "", readable: false });
-    reader.readAsText(file);
-  });
+const MAX_ATTACHMENTS = 6;
+
+function detectReadable(file: File): boolean {
+  return (
+    file.type.startsWith("text/") ||
+    /\.(txt|md|csv|json|xml|log|html?|jsx?|tsx?|py|sql|sh|yaml|yml|toml|ini|env)$/i.test(file.name)
+  );
+}
+
+function readFileToDraft(file: File): Promise<AttachmentDraft> {
+  const readable = detectReadable(file);
+  const content_type = file.type || "application/octet-stream";
+
+  if (readable) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload  = (e) => resolve({ filename: file.name, content: (e.target?.result as string) ?? "", content_type, readable: true });
+      reader.onerror = ()  => resolve({ filename: file.name, content: "", content_type, readable: false });
+      reader.readAsText(file);
+    });
+  }
+
+  /* Images and PDFs: read as base64 data URL so the viewer can render/open them */
+  const isMedia =
+    file.type.startsWith("image/") ||
+    file.type === "application/pdf" ||
+    /\.(png|jpe?g|gif|webp|svg|bmp|pdf)$/i.test(file.name);
+
+  if (isMedia) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload  = (e) => resolve({ filename: file.name, content: (e.target?.result as string) ?? "", content_type, readable: false });
+      reader.onerror = ()  => resolve({ filename: file.name, content: "", content_type, readable: false });
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /* Other binary: store filename only */
+  return Promise.resolve({ filename: file.name, content: "", content_type, readable: false });
 }
 
 /* ── Clipboard helper ────────────────────────────────────────────────────── */
@@ -1237,48 +1272,138 @@ interface ComposeWorkspaceProps {
   onCancel: () => void;
 }
 
+function AttachmentDraftRow({ att, onRemove }: { att: AttachmentDraft; onRemove: () => void }) {
+  const isPdf   = att.content_type === "application/pdf" || att.filename.toLowerCase().endsWith(".pdf");
+  const isImage = att.content_type.startsWith("image/");
+  const iconColor = isPdf ? "#F87171" : isImage ? "#5A9BD3" : att.readable ? "#4ADE80" : MUTED;
+
+  let tag: string;
+  if (isPdf)         tag = "PDF";
+  else if (isImage)  tag = "Image";
+  else if (att.readable) tag = "Text";
+  else               tag = "Binary";
+
+  let hint: string;
+  if (att.readable)          hint = "Content saved — viewable in preview";
+  else if (att.content)      hint = "Stored as base64 — downloadable in preview";
+  else                       hint = "Filename stored only";
+
+  return (
+    <div
+      className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
+      style={{ backgroundColor: NAVY, border: `1px solid ${BORDER}` }}
+    >
+      <FileText size={14} style={{ color: iconColor, flexShrink: 0 }} />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold truncate" style={{ color: TEXT }}>{att.filename}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span
+            className="text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded"
+            style={{ color: iconColor, backgroundColor: iconColor + "18" }}
+          >
+            {tag}
+          </span>
+          <span className="text-xs" style={{ color: DIM }}>{hint}</span>
+        </div>
+      </div>
+      <button
+        onClick={onRemove}
+        className="opacity-50 hover:opacity-100 transition-opacity flex-shrink-0"
+        title="Remove attachment"
+        style={{ color: MUTED }}
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
 function ComposeWorkspace({
   to, onTo, toEmail, onToEmail, subject, onSubject, body, onBody,
   bodyHistory, onRestore, onSaved, onCancel,
 }: ComposeWorkspaceProps) {
-  const [attachment,  setAttachment]  = useState<AttachmentDraft | null>(null);
-  const [saving,      setSaving]      = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [attachments,  setAttachments]  = useState<AttachmentDraft[]>([]);
+  const [saving,       setSaving]       = useState(false);
+  const [saveError,    setSaveError]    = useState<string | null>(null);
+  const [showHistory,  setShowHistory]  = useState(false);
+  const [attLoading,   setAttLoading]   = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  async function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setAttachment(await readFileAsText(file));
+  async function pickFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    const remaining = MAX_ATTACHMENTS - attachments.length;
+    if (remaining <= 0) {
+      setSaveError(`Maximum ${MAX_ATTACHMENTS} attachments allowed.`);
+      return;
+    }
+
+    const toRead = files.slice(0, remaining);
+    if (files.length > remaining) {
+      setSaveError(`Only ${remaining} more file${remaining !== 1 ? "s" : ""} can be added (max ${MAX_ATTACHMENTS}).`);
+    } else {
+      setSaveError(null);
+    }
+
+    setAttLoading(true);
+    const drafts = await Promise.all(toRead.map(readFileToDraft));
+    setAttachments(prev => [...prev, ...drafts]);
+    setAttLoading(false);
+
+    /* Reset input so the same file can be re-selected after removal */
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+    setSaveError(null);
   }
 
   async function handleSave() {
-    if (!subject.trim() || !body.trim()) return;
+    const trimmedSubject = subject.trim();
+    const trimmedBody    = body.trim();
+
+    if (!trimmedSubject) { setSaveError("Subject is required before saving."); return; }
+    if (!trimmedBody)    { setSaveError("Email body is required before saving."); return; }
+
+    setSaveError(null);
     setSaving(true);
     try {
       const email = await createEmail({
-        subject:      subject.trim(),
+        subject:      trimmedSubject,
         sender_name:  to.trim()      || "Unknown",
         sender_email: toEmail.trim() || "unknown@example.com",
-        body:         body.trim(),
+        body:         trimmedBody,
         received_at:  new Date().toISOString(),
       });
+
       saveContact(to.trim(), toEmail.trim());
-      if (attachment) {
-        await addEmailAttachment({
-          email_id:     email.id,
-          filename:     attachment.filename,
-          content_type: attachment.readable ? "text/plain" : "application/octet-stream",
-          content:      attachment.content,
-        });
+
+      /* Save all attachments in parallel */
+      if (attachments.length > 0) {
+        await Promise.all(
+          attachments.map(att =>
+            addEmailAttachment({
+              email_id:     email.id,
+              filename:     att.filename,
+              content_type: att.content_type,
+              content:      att.content,
+            })
+          )
+        );
       }
+
       onSaved(email);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed. Please try again.");
     } finally {
       setSaving(false);
     }
   }
 
-  const canSave = subject.trim().length > 0 && body.trim().length > 0;
+  const canSave  = subject.trim().length > 0 && body.trim().length > 0;
+  const atLimit  = attachments.length >= MAX_ATTACHMENTS;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -1291,6 +1416,7 @@ function ComposeWorkspace({
         />
       )}
 
+      {/* Header */}
       <div className="px-6 py-4 border-b flex items-center justify-between flex-shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-2">
           <Send size={14} style={{ color: GOLD }} />
@@ -1302,6 +1428,7 @@ function ComposeWorkspace({
         </button>
       </div>
 
+      {/* Scrollable form */}
       <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 flex flex-col gap-3">
         <ContactManager
           onSelect={c => { onTo(c.name); onToEmail(c.email); }}
@@ -1311,73 +1438,155 @@ function ComposeWorkspace({
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Name)</label>
-            <input value={to} onChange={e => onTo(e.target.value)} placeholder="Jane Smith"
-              className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
+            <input
+              value={to} onChange={e => onTo(e.target.value)} placeholder="Jane Smith"
+              className="px-3 py-2.5 rounded-lg text-sm outline-none"
+              style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }}
+            />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Email)</label>
-            <input value={toEmail} onChange={e => onToEmail(e.target.value)} placeholder="jane@example.com"
-              className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
+            <input
+              value={toEmail} onChange={e => onToEmail(e.target.value)} placeholder="jane@example.com"
+              className="px-3 py-2.5 rounded-lg text-sm outline-none"
+              style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }}
+            />
           </div>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>Subject <span style={{ color: "#F87171" }}>*</span></label>
-          <input value={subject} onChange={e => onSubject(e.target.value)} placeholder="Subject line"
-            className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
+          <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>
+            Subject <span style={{ color: "#F87171" }}>*</span>
+          </label>
+          <input
+            value={subject} onChange={e => { onSubject(e.target.value); setSaveError(null); }}
+            placeholder="Subject line"
+            className="px-3 py-2.5 rounded-lg text-sm outline-none"
+            style={{
+              backgroundColor: NAVY, color: TEXT,
+              border: `1px solid ${saveError && !subject.trim() ? "#F87171" : BORDER}`,
+            }}
+          />
         </div>
 
-        {/* Body + history toolbar */}
+        {/* Body */}
         <div className="flex flex-col gap-1 flex-1">
           <div className="flex items-center gap-2">
-            <label className="text-xs tracking-widest uppercase font-bold flex-1" style={{ color: MUTED }}>Body <span style={{ color: "#F87171" }}>*</span></label>
+            <label className="text-xs tracking-widest uppercase font-bold flex-1" style={{ color: MUTED }}>
+              Body <span style={{ color: "#F87171" }}>*</span>
+            </label>
             {bodyHistory.length > 0 && (
-              <button onClick={() => setShowHistory(true)}
+              <button
+                onClick={() => setShowHistory(true)}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
-                style={{ color: MUTED, border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
+                style={{ color: MUTED, border: `1px solid ${BORDER}`, backgroundColor: CARD }}
+              >
                 <Clock size={10} /> History ({bodyHistory.length})
               </button>
             )}
           </div>
-          <textarea value={body} onChange={e => onBody(e.target.value)} placeholder="Write your email…"
+          <textarea
+            value={body}
+            onChange={e => { onBody(e.target.value); setSaveError(null); }}
+            placeholder="Write your email…"
             className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none resize-none"
-            style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.85", minHeight: "220px" }} />
+            style={{
+              backgroundColor: NAVY, color: TEXT,
+              border: `1px solid ${saveError && !body.trim() ? "#F87171" : BORDER}`,
+              lineHeight: "1.85", minHeight: "220px",
+            }}
+          />
         </div>
 
-        {/* Attachment */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>Attachment (optional)</label>
-          <input ref={fileRef} type="file" className="hidden" onChange={pickFile} />
-          {!attachment ? (
-            <button onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold hover:opacity-80 justify-center border-2 border-dashed"
-              style={{ borderColor: BORDER, color: DIM }}>
-              <Paperclip size={14} /> Choose File
+        {/* Attachments section */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>
+              Attachments
+              <span className="ml-2 font-normal normal-case tracking-normal" style={{ color: DIM }}>
+                ({attachments.length}/{MAX_ATTACHMENTS})
+              </span>
+            </label>
+            {attachments.length > 0 && !atLimit && (
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={attLoading}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase hover:opacity-80 transition-opacity disabled:opacity-40"
+                style={{ color: GOLD, border: `1px solid ${GOLD}33`, backgroundColor: CARD }}
+              >
+                <Paperclip size={10} /> Add more
+              </button>
+            )}
+          </div>
+
+          {/* Hidden multi-file input */}
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={pickFiles}
+          />
+
+          {/* Existing attachments */}
+          {attachments.map((att, i) => (
+            <AttachmentDraftRow key={`${att.filename}-${i}`} att={att} onRemove={() => removeAttachment(i)} />
+          ))}
+
+          {/* Add button / drop zone */}
+          {!atLimit && (
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={attLoading}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold hover:opacity-80 justify-center border-2 border-dashed transition-opacity disabled:opacity-40"
+              style={{ borderColor: BORDER, color: DIM }}
+            >
+              {attLoading
+                ? <><Loader size={14} className="animate-spin" /> Reading files…</>
+                : <><Paperclip size={14} /> {attachments.length === 0 ? "Choose files (optional)" : "Add another file"}</>
+              }
             </button>
-          ) : (
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ backgroundColor: NAVY, border: `1px solid ${BORDER}` }}>
-              <FileText size={14} style={{ color: GOLD, flexShrink: 0 }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate" style={{ color: TEXT }}>{attachment.filename}</p>
-                <p className="text-xs mt-0.5" style={{ color: attachment.readable ? "#4ADE80" : DIM }}>
-                  {attachment.readable ? "Text — will be saved" : "Binary — filename stored only"}
-                </p>
-              </div>
-              <button onClick={() => { setAttachment(null); if (fileRef.current) fileRef.current.value = ""; }}
-                className="opacity-50 hover:opacity-100" style={{ color: MUTED }}><X size={14} /></button>
-            </div>
+          )}
+
+          {atLimit && (
+            <p className="text-xs text-center" style={{ color: DIM }}>
+              Maximum {MAX_ATTACHMENTS} attachments reached.
+            </p>
           )}
         </div>
+
+        {/* Validation / error message */}
+        {saveError && (
+          <div
+            className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold"
+            style={{ backgroundColor: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)", color: "#F87171" }}
+          >
+            <AlertTriangle size={13} />
+            {saveError}
+          </div>
+        )}
       </div>
 
+      {/* Footer actions */}
       <div className="flex gap-2 px-6 py-4 border-t flex-shrink-0" style={{ borderColor: BORDER }}>
-        <button onClick={onCancel}
+        <button
+          onClick={onCancel}
           className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wider uppercase hover:opacity-70"
-          style={{ backgroundColor: NAVY, color: MUTED, border: `1px solid ${BORDER}` }}>Cancel</button>
-        <button onClick={handleSave} disabled={saving || !canSave}
-          className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wider uppercase hover:opacity-90 disabled:opacity-40"
-          style={{ backgroundColor: GOLD, color: NAVY }}>
-          {saving ? "Saving…" : "Save & Continue"}
+          style={{ backgroundColor: NAVY, color: MUTED, border: `1px solid ${BORDER}` }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wider uppercase hover:opacity-90 disabled:opacity-50 transition-opacity"
+          style={{ backgroundColor: canSave ? GOLD : DIM, color: NAVY }}
+          title={!canSave ? "Subject and body are required" : undefined}
+        >
+          {saving
+            ? <span className="flex items-center justify-center gap-2"><Loader size={13} className="animate-spin" /> Saving…</span>
+            : "Save & Continue"
+          }
         </button>
       </div>
     </div>
