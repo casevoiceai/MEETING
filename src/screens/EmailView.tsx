@@ -1386,7 +1386,7 @@ function ComposeWorkspace({
 
 /* ── Main Email View ─────────────────────────────────────────────────────── */
 
-type CenterState = { mode: "empty" } | { mode: "compose" } | { mode: "email"; emailId: string };
+type CenterState = { mode: "empty" } | { mode: "compose" } | { mode: "email"; email: Email };
 
 export default function EmailView({ onPendingChange: _onPendingChange }: { onPendingChange?: (count: number) => void }) {
   const [emails,        setEmails]        = useState<Email[]>([]);
@@ -1413,9 +1413,7 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
     listEmails().then(data => { setEmails(data); setLoading(false); });
   }, []);
 
-  const selectedEmail = centerState.mode === "email"
-    ? emails.find(e => e.id === centerState.emailId) ?? null
-    : null;
+  const selectedEmail = centerState.mode === "email" ? centerState.email : null;
 
   /* AI context: works for both compose and saved email */
   const aiCtx: EmailContext | null = (() => {
@@ -1444,7 +1442,7 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
   async function handleSelectEmail(email: Email) {
     if (loadedId.current === email.id) return;
     loadedId.current = email.id;
-    setCenterState({ mode: "email", emailId: email.id });
+    setCenterState({ mode: "email", email });
     setBodyValue(email.body);
     setBodyHistory([]);
     setAttachments([]);
@@ -1453,7 +1451,9 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
 
     if (!email.is_read) {
       await markEmailRead(email.id);
-      setEmails(prev => prev.map(e => e.id === email.id ? { ...e, is_read: true } : e));
+      const readEmail = { ...email, is_read: true };
+      setEmails(prev => prev.map(e => e.id === email.id ? readEmail : e));
+      setCenterState({ mode: "email", email: readEmail });
     }
 
     const [atts, ana, drs] = await Promise.all([
@@ -1470,10 +1470,12 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
     if (!selectedEmail) return;
     setSaving(true);
     try {
-      /* Push current body to history before saving */
       setBodyHistory(prev => pushVersion(prev, bodyValue, "Saved"));
       await supabase.from("emails").update({ body: bodyValue }).eq("id", selectedEmail.id);
-      setEmails(prev => prev.map(e => e.id === selectedEmail.id ? { ...e, body: bodyValue } : e));
+      const updated = { ...selectedEmail, body: bodyValue };
+      setEmails(prev => prev.map(e => e.id === selectedEmail.id ? updated : e));
+      /* Keep centerState in sync so the workspace doesn't show stale data */
+      setCenterState({ mode: "email", email: updated });
     } finally {
       setSaving(false);
     }
@@ -1504,11 +1506,24 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
   }
 
   function handleComposeSaved(email: Email) {
-    /* Push compose body to history before transitioning */
-    setBodyHistory(prev => pushVersion(prev, bodyValue, "Saved"));
+    /* Add email to list, transition to view mode immediately without a round-trip find */
     setEmails(prev => [email, ...prev]);
-    loadedId.current = null;
-    handleSelectEmail(email);
+    setBodyHistory(prev => pushVersion(prev, bodyValue, "Saved"));
+    loadedId.current = email.id;
+    setCenterState({ mode: "email", email });
+    setAttachments([]);
+    setAnalysis(null);
+    setDrafts([]);
+    /* Load side data in the background — no await so we don't block the render */
+    Promise.all([
+      listEmailAttachments(email.id),
+      getEmailAnalysis(email.id),
+      listEmailDrafts(email.id),
+    ]).then(([atts, ana, drs]) => {
+      setAttachments(atts);
+      setAnalysis(ana);
+      setDrafts(drs);
+    });
   }
 
   function openCompose() {
