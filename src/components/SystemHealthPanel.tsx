@@ -40,7 +40,7 @@ export default function SystemHealthPanel() {
   const runCredentialsCheck = async () => {
     setCredStatus("loading");
     try {
-      const response = await fetch("/api/save-meeting", {
+      const response = await fetch("https://foundercrm.casevoice-ai.workers.dev/api/save-meeting", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "check_credentials" }),
