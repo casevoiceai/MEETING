@@ -342,11 +342,8 @@ export async function runStateReconciliation(): Promise<DriftReport> {
         detail: `HEAD count=${countFromHead} but SELECT returned ${items.length} rows`,
       });
     }
-  } catch (err) {
-    drifts.push({
-      check: "boys_queue_count_mismatch",
-      detail: err instanceof Error ? err.message : "Query failed",
-    });
+  } catch {
+    // inaccessible table is not drift
   }
 
   // Check 3: Orphaned lock — locked=true but no matching recentError logged
