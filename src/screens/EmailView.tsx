@@ -19,7 +19,7 @@ const CARD       = "#111D30";
 const BORDER     = "#1B2A4A";
 const GOLD       = "#C9A84C";
 const MUTED      = "#A0B4CC";
-const DIM        = "#607A96";
+const DIM        = "#7A94B0"; /* raised from #607A96 for readability */
 const TEXT       = "#D8E8F5";
 const SIDEBAR_BG = "#090F1C";
 const PANEL_BG   = "#080F1C";
@@ -33,11 +33,164 @@ interface SavedContact { name: string; email: string; }
 function loadContacts(): SavedContact[] {
   try { return JSON.parse(localStorage.getItem(CONTACTS_KEY) ?? "[]"); } catch { return []; }
 }
+function persistContacts(list: SavedContact[]) {
+  localStorage.setItem(CONTACTS_KEY, JSON.stringify(list));
+}
 function saveContact(name: string, email: string) {
   if (!email.trim()) return;
   const existing = loadContacts();
-  const deduped = [{ name, email }, ...existing.filter(c => c.email !== email)].slice(0, 30);
-  localStorage.setItem(CONTACTS_KEY, JSON.stringify(deduped));
+  const deduped = [{ name: name.trim(), email: email.trim() }, ...existing.filter(c => c.email !== email.trim())].slice(0, 30);
+  persistContacts(deduped);
+}
+function deleteContact(email: string) {
+  persistContacts(loadContacts().filter(c => c.email !== email));
+}
+function updateContact(oldEmail: string, name: string, email: string) {
+  if (!email.trim()) return;
+  const list = loadContacts();
+  const updated = list.map(c => c.email === oldEmail ? { name: name.trim(), email: email.trim() } : c);
+  /* De-dup: if new email clashes with another entry, remove the other */
+  const deduped = updated.filter((c, i) => updated.findIndex(x => x.email === c.email) === i);
+  persistContacts(deduped);
+}
+
+/* ── Contact Manager component ───────────────────────────────────────────── */
+
+interface ContactManagerProps {
+  onSelect: (c: SavedContact) => void;
+  onContactsChanged: () => void;
+}
+
+function ContactManager({ onSelect, onContactsChanged }: ContactManagerProps) {
+  const [contacts,   setContacts]   = useState<SavedContact[]>([]);
+  const [open,       setOpen]       = useState(false);
+  const [editEmail,  setEditEmail]  = useState<string | null>(null); // key of contact being edited
+  const [editName,   setEditName]   = useState("");
+  const [editAddr,   setEditAddr]   = useState("");
+
+  useEffect(() => { setContacts(loadContacts()); }, []);
+
+  function refresh() {
+    setContacts(loadContacts());
+    onContactsChanged();
+  }
+
+  function startEdit(c: SavedContact) {
+    setEditEmail(c.email);
+    setEditName(c.name);
+    setEditAddr(c.email);
+  }
+
+  function cancelEdit() {
+    setEditEmail(null);
+    setEditName("");
+    setEditAddr("");
+  }
+
+  function commitEdit(oldEmail: string) {
+    if (!editAddr.trim()) return;
+    updateContact(oldEmail, editName, editAddr);
+    cancelEdit();
+    refresh();
+  }
+
+  function handleDelete(email: string) {
+    deleteContact(email);
+    refresh();
+  }
+
+  function handleSelect(c: SavedContact) {
+    onSelect(c);
+    setOpen(false);
+  }
+
+  if (contacts.length === 0) return null;
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 text-xs font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
+        style={{ color: GOLD }}>
+        <User size={12} />
+        {open ? "Hide Contacts" : `Saved Contacts (${contacts.length})`}
+        {open ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+      </button>
+
+      {open && (
+        <div className="mt-2 flex flex-col gap-1.5 max-h-52 overflow-y-auto rounded-xl border p-2"
+          style={{ borderColor: BORDER, backgroundColor: NAVY }}>
+          {contacts.map(c => (
+            <div key={c.email}>
+              {editEmail === c.email ? (
+                /* ── Edit row ── */
+                <div className="flex flex-col gap-2 px-3 py-2.5 rounded-lg" style={{ backgroundColor: CARD, border: `1px solid ${GOLD}44` }}>
+                  <input
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    placeholder="Name"
+                    className="px-2.5 py-1.5 rounded-lg text-sm outline-none"
+                    style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }}
+                  />
+                  <input
+                    value={editAddr}
+                    onChange={e => setEditAddr(e.target.value)}
+                    placeholder="email@example.com"
+                    className="px-2.5 py-1.5 rounded-lg text-sm outline-none"
+                    style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => commitEdit(c.email)}
+                      disabled={!editAddr.trim()}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase disabled:opacity-40 hover:opacity-90"
+                      style={{ backgroundColor: GOLD, color: NAVY }}>
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase hover:opacity-70"
+                      style={{ backgroundColor: BORDER, color: MUTED }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ── Display row ── */
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg group"
+                  style={{ backgroundColor: CARD }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: TEXT }}>{c.name || c.email}</p>
+                    {c.name && <p className="text-xs truncate mt-0.5" style={{ color: DIM }}>{c.email}</p>}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => handleSelect(c)}
+                      className="px-2 py-1 rounded text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
+                      style={{ color: GOLD, backgroundColor: GOLD + "18" }}>
+                      Use
+                    </button>
+                    <button
+                      onClick={() => startEdit(c)}
+                      className="px-2 py-1 rounded text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
+                      style={{ color: MUTED, backgroundColor: "rgba(255,255,255,0.05)" }}>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(c.email)}
+                      className="px-2 py-1 rounded text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
+                      style={{ color: "#F87171", backgroundColor: "rgba(248,113,113,0.08)" }}>
+                      Del
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const TONE_OPTIONS = [
@@ -369,8 +522,8 @@ function AIPanel({
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="px-4 py-3 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
-        <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>AI Assistant</p>
-        <p className="text-[10px] mt-0.5" style={{ color: DIM }}>Reads center content. Never overwrites without you.</p>
+        <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>AI Assistant</p>
+        <p className="text-xs mt-0.5" style={{ color: DIM }}>Reads center content. Never overwrites without you.</p>
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
@@ -378,7 +531,7 @@ function AIPanel({
         {isEmpty && (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
             <Lightbulb size={22} style={{ color: DIM }} />
-            <p className="text-xs leading-relaxed" style={{ color: DIM }}>
+            <p className="text-sm leading-relaxed" style={{ color: MUTED }}>
               {!ctx
                 ? "Select or compose an email to use AI tools."
                 : "Add some body content to analyze or get a reply suggestion."}
@@ -390,7 +543,7 @@ function AIPanel({
           <div className="flex flex-col gap-5">
             {/* ── Analyze ─────────────────────────────────────────────── */}
             <div className="flex flex-col gap-2">
-              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Analyze Email</p>
+              <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>Analyze Email</p>
               <button onClick={handleAnalyze} disabled={analyzing}
                 className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-50"
                 style={{ backgroundColor: analysis ? CARD : "rgba(201,168,76,0.15)", color: GOLD, border: `1px solid rgba(201,168,76,0.3)` }}>
@@ -467,7 +620,7 @@ function AIPanel({
                   )}
 
                   <div className="border-t pt-3" style={{ borderColor: BORDER }}>
-                    <p className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color: DIM }}>Team Insights</p>
+                    <p className="text-xs font-bold tracking-widest uppercase mb-2" style={{ color: MUTED }}>Team Insights</p>
                     <div className="flex flex-col gap-2">
                       {routedMentors.map(mentor => {
                         const color   = ROUTED_MENTOR_COLORS[mentor] ?? GOLD;
@@ -509,7 +662,7 @@ function AIPanel({
 
             {/* ── Suggest Reply ────────────────────────────────────────── */}
             <div className="flex flex-col gap-2 border-t pt-4" style={{ borderColor: BORDER }}>
-              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Suggest Reply</p>
+              <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>Suggest Reply</p>
               <div className="flex gap-1 flex-wrap">
                 {TONE_OPTIONS.map(t => (
                   <button key={t.id} onClick={() => setSelectedTone(t.id)}
@@ -530,7 +683,7 @@ function AIPanel({
 
               {drafts.length > 0 && (
                 <div className="flex flex-col gap-2 mt-1">
-                  <p className="text-[9px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Suggestions ({drafts.length})</p>
+                  <p className="text-xs font-bold tracking-widest uppercase" style={{ color: MUTED }}>Suggestions ({drafts.length})</p>
                   {drafts.map(draft => {
                     const toneColor = TONE_OPTIONS.find(t => t.id === draft.tone)?.color ?? GOLD;
                     const isCopied  = copiedId === draft.id;
@@ -573,8 +726,8 @@ function AIPanel({
 
             {/* Send Lock */}
             <div className="flex items-start gap-2 border-t pt-4" style={{ borderColor: BORDER }}>
-              <Shield size={11} style={{ color: GOLD, flexShrink: 0, marginTop: 2 }} />
-              <p className="text-[10px] leading-relaxed" style={{ color: DIM }}>
+              <Shield size={12} style={{ color: GOLD, flexShrink: 0, marginTop: 2 }} />
+              <p className="text-xs leading-relaxed" style={{ color: MUTED }}>
                 <span style={{ color: GOLD, fontWeight: 700 }}>Send Lock</span> — Copy the body and send from your own email client.
               </p>
             </div>
@@ -656,7 +809,7 @@ function EmailWorkspace({
       <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 flex flex-col gap-3">
         {/* Toolbar */}
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-[10px] font-bold tracking-widest uppercase flex-1" style={{ color: DIM }}>Email Body</p>
+          <p className="text-xs font-bold tracking-widest uppercase flex-1" style={{ color: MUTED }}>Email Body</p>
           {/* Undo: restore most recent history version */}
           <button
             onClick={() => canUndo && onRestore(bodyHistory[0].body)}
@@ -750,20 +903,10 @@ function ComposeWorkspace({
   to, onTo, toEmail, onToEmail, subject, onSubject, body, onBody,
   bodyHistory, onRestore, onSaved, onCancel,
 }: ComposeWorkspaceProps) {
-  const [attachment,   setAttachment]   = useState<AttachmentDraft | null>(null);
-  const [saving,       setSaving]       = useState(false);
-  const [contacts,     setContacts]     = useState<SavedContact[]>([]);
-  const [showContacts, setShowContacts] = useState(false);
-  const [showHistory,  setShowHistory]  = useState(false);
+  const [attachment,  setAttachment]  = useState<AttachmentDraft | null>(null);
+  const [saving,      setSaving]      = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setContacts(loadContacts()); }, []);
-
-  function selectContact(c: SavedContact) {
-    onTo(c.name);
-    onToEmail(c.email);
-    setShowContacts(false);
-  }
 
   async function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -822,45 +965,26 @@ function ComposeWorkspace({
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 flex flex-col gap-3">
-        {contacts.length > 0 && (
-          <div>
-            <button onClick={() => setShowContacts(v => !v)}
-              className="flex items-center gap-2 text-xs font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
-              style={{ color: GOLD }}>
-              <User size={11} />
-              {showContacts ? "Hide" : "Use Previous Contact"} ({contacts.length})
-              {showContacts ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-            </button>
-            {showContacts && (
-              <div className="mt-2 flex flex-col gap-1 max-h-32 overflow-y-auto rounded-xl border p-2" style={{ borderColor: BORDER, backgroundColor: NAVY }}>
-                {contacts.map(c => (
-                  <button key={c.email} onClick={() => selectContact(c)}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:opacity-80"
-                    style={{ backgroundColor: CARD }}>
-                    <span className="text-sm font-semibold" style={{ color: TEXT }}>{c.name || c.email}</span>
-                    {c.name && <span className="text-xs" style={{ color: DIM }}>{c.email}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <ContactManager
+          onSelect={c => { onTo(c.name); onToEmail(c.email); }}
+          onContactsChanged={() => {}}
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Name)</label>
+            <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Name)</label>
             <input value={to} onChange={e => onTo(e.target.value)} placeholder="Jane Smith"
               className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Email)</label>
+            <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Email)</label>
             <input value={toEmail} onChange={e => onToEmail(e.target.value)} placeholder="jane@example.com"
               className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
           </div>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>Subject <span style={{ color: "#F87171" }}>*</span></label>
+          <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>Subject <span style={{ color: "#F87171" }}>*</span></label>
           <input value={subject} onChange={e => onSubject(e.target.value)} placeholder="Subject line"
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
         </div>
@@ -868,7 +992,7 @@ function ComposeWorkspace({
         {/* Body + history toolbar */}
         <div className="flex flex-col gap-1 flex-1">
           <div className="flex items-center gap-2">
-            <label className="text-[10px] tracking-widest uppercase font-bold flex-1" style={{ color: MUTED }}>Body <span style={{ color: "#F87171" }}>*</span></label>
+            <label className="text-xs tracking-widest uppercase font-bold flex-1" style={{ color: MUTED }}>Body <span style={{ color: "#F87171" }}>*</span></label>
             {bodyHistory.length > 0 && (
               <button onClick={() => setShowHistory(true)}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
@@ -884,7 +1008,7 @@ function ComposeWorkspace({
 
         {/* Attachment */}
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>Attachment (optional)</label>
+          <label className="text-xs tracking-widest uppercase font-bold" style={{ color: MUTED }}>Attachment (optional)</label>
           <input ref={fileRef} type="file" className="hidden" onChange={pickFile} />
           {!attachment ? (
             <button onClick={() => fileRef.current?.click()}
