@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Inbox, Mail, Paperclip, Archive, Trash2, RefreshCw,
   Plus, Copy, Check, AlertTriangle, Lightbulb, MessageSquare, Shield,
-  Loader, ChevronDown, ChevronUp, FileText, X, Eye, User, Send,
+  Loader, ChevronDown, ChevronUp, FileText, X, Eye, User, Send, Clock,
 } from "lucide-react";
 import {
   listEmails, createEmail, markEmailRead, archiveEmail, deleteEmail,
@@ -49,10 +49,26 @@ const TONE_OPTIONS = [
 
 const ROUTED_MENTOR_COLORS: Record<string, string> = {
   JAMES: "#6BAF8E", MAILMAN: "#6BAF8E", TECHGUY: "#5A9BD3",
-  DOC: "#E07B5A", ALEX: "#5AB8A8", CIPHER: "#C97B7B",
-  RICK: "#F87171", MARK: "#C9A84C", ATK: "#C97B7B",
-  DEF: "#7B8FA8", PAUL: "#5A9BD3", SCOUT: "#C9A84C",
+  DOC: "#E07B5A",   ALEX: "#5AB8A8",   CIPHER: "#C97B7B",
+  RICK: "#F87171",  MARK: "#C9A84C",   ATK: "#C97B7B",
+  DEF: "#7B8FA8",   PAUL: "#5A9BD3",   SCOUT: "#C9A84C",
 };
+
+/* ── Version history ─────────────────────────────────────────────────────── */
+
+interface BodyVersion {
+  body: string;
+  timestamp: number;
+  label: string; // "Saved", "AI Replace", "AI Insert", "Manual"
+}
+
+const MAX_VERSIONS = 5;
+
+function pushVersion(prev: BodyVersion[], body: string, label: string): BodyVersion[] {
+  if (!body.trim()) return prev;
+  const next = [{ body, timestamp: Date.now(), label }, ...prev].slice(0, MAX_VERSIONS);
+  return next;
+}
 
 /* ── API helper ─────────────────────────────────────────────────────────── */
 
@@ -81,7 +97,7 @@ async function readFileAsText(file: File): Promise<AttachmentDraft> {
   });
 }
 
-/* ── Clip helper ─────────────────────────────────────────────────────────── */
+/* ── Clipboard helper ────────────────────────────────────────────────────── */
 
 async function copyToClipboard(text: string) {
   try {
@@ -96,7 +112,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-/* ── Email status label (Fix 7) ─────────────────────────────────────────── */
+/* ── Status badge ────────────────────────────────────────────────────────── */
 
 type EmailStatus = "composing" | "saved" | "analyzed";
 
@@ -114,11 +130,117 @@ function StatusBadge({ status }: { status: EmailStatus }) {
   );
 }
 
+/* ── Draft History Modal ─────────────────────────────────────────────────── */
+
+interface DraftHistoryModalProps {
+  versions: BodyVersion[];
+  currentBody: string;
+  onRestore: (body: string) => void;
+  onClose: () => void;
+}
+
+function DraftHistoryModal({ versions, currentBody, onRestore, onClose }: DraftHistoryModalProps) {
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+  const [copiedIdx,  setCopiedIdx]  = useState<number | null>(null);
+
+  async function handleCopy(body: string, idx: number) {
+    await copyToClipboard(body);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
+  }
+
+  function fmt(ts: number) {
+    return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.75)" }}>
+      <div className="flex flex-col rounded-2xl overflow-hidden"
+        style={{ width: "560px", maxHeight: "80vh", backgroundColor: CARD, border: `1px solid ${BORDER}` }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <p className="text-sm font-bold" style={{ color: "#FFF" }}>Draft History</p>
+            <p className="text-[10px] mt-0.5" style={{ color: DIM }}>
+              Keeps the last 5 saved body versions so you can recover earlier wording.
+            </p>
+          </div>
+          <button onClick={onClose} className="opacity-40 hover:opacity-80 transition-opacity" style={{ color: MUTED }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {versions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-16">
+            <Clock size={24} style={{ color: DIM }} />
+            <p className="text-sm" style={{ color: MUTED }}>No history yet.</p>
+            <p className="text-xs" style={{ color: DIM }}>Versions are saved when you Save, Replace, or Insert AI text.</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
+            {versions.map((v, idx) => (
+              <div key={idx} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}`, backgroundColor: NAVY }}>
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Clock size={11} style={{ color: DIM }} />
+                    <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: GOLD }}>{v.label}</span>
+                    <span className="text-[10px]" style={{ color: DIM }}>{fmt(v.timestamp)}</span>
+                    {idx === 0 && <span className="text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded-full"
+                      style={{ color: "#4ADE80", backgroundColor: "rgba(74,222,128,0.1)" }}>Latest</span>}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setPreviewIdx(previewIdx === idx ? null : idx)}
+                      className="text-[9px] font-bold tracking-widest uppercase px-2 py-1 rounded transition-opacity hover:opacity-70"
+                      style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.05)" }}>
+                      {previewIdx === idx ? "Hide" : "Preview"}
+                    </button>
+                    <button onClick={() => handleCopy(v.body, idx)}
+                      className="text-[9px] font-bold tracking-widest uppercase px-2 py-1 rounded transition-opacity hover:opacity-70"
+                      style={{ color: copiedIdx === idx ? "#4ADE80" : MUTED, backgroundColor: "rgba(255,255,255,0.05)" }}>
+                      {copiedIdx === idx ? "Copied!" : "Copy"}
+                    </button>
+                    <button onClick={() => { onRestore(v.body); onClose(); }}
+                      className="text-[9px] font-bold tracking-widest uppercase px-2 py-1 rounded transition-opacity hover:opacity-80"
+                      style={{ color: GOLD, backgroundColor: GOLD + "18", border: `1px solid ${GOLD}33` }}>
+                      Restore
+                    </button>
+                  </div>
+                </div>
+                {previewIdx === idx && (
+                  <div className="px-4 pb-3 border-t" style={{ borderColor: BORDER }}>
+                    <p className="text-xs leading-relaxed whitespace-pre-wrap pt-3" style={{ color: MUTED }}>
+                      {v.body.length > 600 ? v.body.slice(0, 600) + "\n\n[truncated…]" : v.body}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="px-5 py-3 border-t flex-shrink-0" style={{ borderColor: BORDER }}>
+          <button onClick={onClose}
+            className="w-full px-4 py-2 rounded-lg text-sm font-semibold tracking-wider uppercase hover:opacity-70"
+            style={{ backgroundColor: NAVY, color: MUTED, border: `1px solid ${BORDER}` }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Email context (shared by compose and saved email) ───────────────────── */
+
+interface EmailContext {
+  subject: string;
+  sender_name: string;
+  sender_email: string;
+  body: string;
+  savedId: string | null; // null during compose-before-save
+}
+
 /* ── Right AI Panel ──────────────────────────────────────────────────────── */
 
 interface AIPanelProps {
-  email: Email | null;
-  emailBody: string;
+  ctx: EmailContext | null;
   analysis: EmailAnalysis | null;
   drafts: EmailDraft[];
   onAnalysisDone: (a: EmailAnalysis) => void;
@@ -129,7 +251,7 @@ interface AIPanelProps {
 }
 
 function AIPanel({
-  email, emailBody, analysis, drafts,
+  ctx, analysis, drafts,
   onAnalysisDone, onDraftCreated, onDraftDeleted,
   onReplaceBody, onInsertBelow,
 }: AIPanelProps) {
@@ -147,15 +269,19 @@ function AIPanel({
     setCollapsed(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   }
 
+  /* Check if there's enough content to analyze */
+  const hasContent = !!(ctx?.body?.trim());
+  const isEmpty    = !ctx || !hasContent;
+
   async function handleAnalyze() {
-    if (!email) return;
+    if (!ctx) return;
     setAnalyzing(true);
     try {
       const result = await callEmailAnalysis("analyze", {
-        email: { subject: email.subject, sender_name: email.sender_name, sender_email: email.sender_email, body: emailBody },
+        email: { subject: ctx.subject || "(no subject)", sender_name: ctx.sender_name || "Unknown", sender_email: ctx.sender_email || "", body: ctx.body },
       });
-      if (result.analysis) {
-        await upsertEmailAnalysis(email.id, {
+      if (result.analysis && ctx.savedId) {
+        await upsertEmailAnalysis(ctx.savedId, {
           summary:         result.analysis.summary        ?? "",
           intent:          result.analysis.intent         ?? "",
           risks:           result.analysis.risks          ?? [],
@@ -165,8 +291,11 @@ function AIPanel({
           tags:            result.analysis.tags           ?? [],
           mentor_insights: insights,
         });
-        const saved = await getEmailAnalysis(email.id);
+        const saved = await getEmailAnalysis(ctx.savedId);
         if (saved) onAnalysisDone(saved);
+      } else if (result.analysis) {
+        /* Compose before save — store analysis in component state only */
+        onAnalysisDone(result.analysis as EmailAnalysis);
       }
     } finally {
       setAnalyzing(false);
@@ -174,7 +303,7 @@ function AIPanel({
   }
 
   async function handleSuggestReply() {
-    if (!email) return;
+    if (!ctx) return;
     setGenerating(true);
     try {
       const toneToMentor: Record<string, string> = {
@@ -182,12 +311,27 @@ function AIPanel({
       };
       const draftedBy = toneToMentor[selectedTone] ?? "JAMES";
       const result = await callEmailAnalysis("draft_reply", {
-        email: { subject: email.subject, sender_name: email.sender_name, sender_email: email.sender_email, body: emailBody },
+        email: { subject: ctx.subject || "(no subject)", sender_name: ctx.sender_name || "Unknown", sender_email: ctx.sender_email || "", body: ctx.body },
         tone: selectedTone, mentor: draftedBy,
       });
       if (result.draft) {
-        const saved = await createEmailDraft({ email_id: email.id, tone: selectedTone, body: result.draft, drafted_by: draftedBy });
-        onDraftCreated(saved);
+        if (ctx.savedId) {
+          const saved = await createEmailDraft({ email_id: ctx.savedId, tone: selectedTone, body: result.draft, drafted_by: draftedBy });
+          onDraftCreated(saved);
+        } else {
+          /* Compose before save — create a temporary draft object (no DB) */
+          const tmp: EmailDraft = {
+            id: `tmp-${Date.now()}`,
+            email_id: "",
+            tone: selectedTone,
+            body: result.draft,
+            drafted_by: draftedBy,
+            approved_by_user: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          onDraftCreated(tmp);
+        }
       }
     } finally {
       setGenerating(false);
@@ -195,17 +339,19 @@ function AIPanel({
   }
 
   async function handleMentorInsight(mentor: string) {
-    if (!email) return;
+    if (!ctx) return;
     setMlLoading(mentor);
     try {
       const result = await callEmailAnalysis("mentor_insight", {
-        email: { subject: email.subject, sender_name: email.sender_name, sender_email: email.sender_email, body: emailBody },
+        email: { subject: ctx.subject || "(no subject)", sender_name: ctx.sender_name || "Unknown", sender_email: ctx.sender_email || "", body: ctx.body },
         mentor,
       });
       if (result.insight) {
         const updated = { ...insights, [mentor]: result.insight };
         setInsights(updated);
-        await upsertEmailAnalysis(email.id, { mentor_insights: updated });
+        if (ctx.savedId) {
+          await upsertEmailAnalysis(ctx.savedId, { mentor_insights: updated });
+        }
       }
     } finally {
       setMlLoading(null);
@@ -220,254 +366,263 @@ function AIPanel({
 
   const routedMentors = (analysis as ({ routed_mentors?: string[] } & EmailAnalysis) | null)?.routed_mentors ?? ["JAMES", "RICK", "MARK"];
 
-  if (!email) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 px-4">
-        <Lightbulb size={24} style={{ color: DIM }} />
-        <p className="text-xs text-center" style={{ color: DIM }}>Select an email to use AI tools</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Panel header */}
       <div className="px-4 py-3 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
         <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>AI Assistant</p>
-        <p className="text-[10px] mt-0.5" style={{ color: DIM }}>Reads center. Never overwrites without you.</p>
+        <p className="text-[10px] mt-0.5" style={{ color: DIM }}>Reads center content. Never overwrites without you.</p>
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
-        <div className="flex flex-col gap-5">
-
-          {/* Analyze */}
-          <div className="flex flex-col gap-2">
-            <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Analyze Email</p>
-            <button onClick={handleAnalyze} disabled={analyzing}
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: analysis ? CARD : "rgba(201,168,76,0.15)", color: GOLD, border: `1px solid rgba(201,168,76,0.3)` }}>
-              {analyzing ? <Loader size={12} className="animate-spin" /> : <Eye size={12} />}
-              {analyzing ? "Analyzing..." : analysis ? "Re-analyze" : "Analyze"}
-            </button>
-
-            {analysis && (
-              <div className="flex flex-col gap-2 mt-1">
-                {analysis.summary && (
-                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(201,168,76,0.15)" }}>
-                    <button onClick={() => toggle("summary")}
-                      className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:opacity-90"
-                      style={{ backgroundColor: "rgba(201,168,76,0.06)" }}>
-                      <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: GOLD }}>Summary</span>
-                      {collapsed.has("summary") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
-                    </button>
-                    {!collapsed.has("summary") && (
-                      <div className="px-3 py-2.5">
-                        <p className="text-xs leading-relaxed" style={{ color: MUTED }}>{analysis.summary}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {analysis.intent && (
-                  <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
-                    <button onClick={() => toggle("intent")}
-                      className="w-full flex items-center justify-between px-3 py-2.5 hover:opacity-90"
-                      style={{ backgroundColor: CARD }}>
-                      <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Intent</span>
-                      {collapsed.has("intent") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
-                    </button>
-                    {!collapsed.has("intent") && (
-                      <div className="px-3 py-2.5" style={{ backgroundColor: CARD }}>
-                        <p className="text-xs leading-relaxed" style={{ color: MUTED }}>{analysis.intent}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {analysis.risks?.length > 0 && (
-                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(249,115,22,0.2)" }}>
-                    <button onClick={() => toggle("risks")}
-                      className="w-full flex items-center justify-between px-3 py-2.5 hover:opacity-90"
-                      style={{ backgroundColor: "rgba(249,115,22,0.05)" }}>
-                      <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1" style={{ color: "#F87171" }}>
-                        <AlertTriangle size={10} /> Risks
-                      </span>
-                      {collapsed.has("risks") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
-                    </button>
-                    {!collapsed.has("risks") && (
-                      <div className="px-3 py-2.5 flex flex-col gap-1" style={{ backgroundColor: "rgba(249,115,22,0.02)" }}>
-                        {analysis.risks.map((r, i) => (
-                          <p key={i} className="text-xs leading-relaxed" style={{ color: "#FB923C" }}>{r}</p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {analysis.opportunities?.length > 0 && (
-                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(74,222,128,0.2)" }}>
-                    <button onClick={() => toggle("opps")}
-                      className="w-full flex items-center justify-between px-3 py-2.5 hover:opacity-90"
-                      style={{ backgroundColor: "rgba(74,222,128,0.05)" }}>
-                      <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#4ADE80" }}>Opportunities</span>
-                      {collapsed.has("opps") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
-                    </button>
-                    {!collapsed.has("opps") && (
-                      <div className="px-3 py-2.5 flex flex-col gap-1" style={{ backgroundColor: "rgba(74,222,128,0.02)" }}>
-                        {analysis.opportunities.map((o, i) => (
-                          <p key={i} className="text-xs leading-relaxed" style={{ color: "#4ADE80" }}>{o}</p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Team insights */}
-                <div className="border-t pt-3" style={{ borderColor: BORDER }}>
-                  <p className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color: DIM }}>Team Insights</p>
-                  <div className="flex flex-col gap-2">
-                    {routedMentors.map(mentor => {
-                      const color   = ROUTED_MENTOR_COLORS[mentor] ?? GOLD;
-                      const exists  = insights[mentor];
-                      const loading = mlLoading === mentor;
-                      const isColl  = collapsed.has(`m-${mentor}`);
-                      return (
-                        <div key={mentor} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}`, backgroundColor: NAVY }}>
-                          <div className="flex items-center justify-between px-3 py-2">
-                            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color }}>{mentor}</span>
-                            <div className="flex items-center gap-1">
-                              {exists && (
-                                <button onClick={() => toggle(`m-${mentor}`)}
-                                  className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded transition-opacity hover:opacity-70"
-                                  style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.04)" }}>
-                                  {isColl ? "Show" : "Hide"}
-                                </button>
-                              )}
-                              <button onClick={() => handleMentorInsight(mentor)} disabled={!!mlLoading}
-                                className="text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded transition-opacity hover:opacity-70 disabled:opacity-40"
-                                style={{ color: GOLD, backgroundColor: GOLD + "15" }}>
-                                {loading ? "..." : exists ? "Re-ask" : "Ask"}
-                              </button>
-                            </div>
-                          </div>
-                          {exists && !isColl && (
-                            <div className="px-3 pb-3">
-                              <p className="text-xs leading-relaxed" style={{ color: MUTED }}>{exists}</p>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Suggest Reply */}
-          <div className="flex flex-col gap-2 border-t pt-4" style={{ borderColor: BORDER }}>
-            <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Suggest Reply</p>
-            <div className="flex gap-1 flex-wrap">
-              {TONE_OPTIONS.map(t => (
-                <button key={t.id} onClick={() => setSelectedTone(t.id)}
-                  className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase transition-all"
-                  style={selectedTone === t.id
-                    ? { backgroundColor: t.color + "22", color: t.color, border: `1px solid ${t.color}55` }
-                    : { backgroundColor: CARD, color: DIM, border: `1px solid ${BORDER}` }}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            <button onClick={handleSuggestReply} disabled={generating}
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: "rgba(90,155,211,0.12)", color: "#5A9BD3", border: "1px solid rgba(90,155,211,0.3)" }}>
-              {generating ? <Loader size={12} className="animate-spin" /> : <MessageSquare size={12} />}
-              {generating ? "Drafting..." : "Suggest Reply"}
-            </button>
-
-            {/* Suggested drafts — Fix 4: Replace or Insert Below */}
-            {drafts.length > 0 && (
-              <div className="flex flex-col gap-2 mt-1">
-                <p className="text-[9px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Suggestions ({drafts.length})</p>
-                {drafts.map(draft => {
-                  const toneColor = TONE_OPTIONS.find(t => t.id === draft.tone)?.color ?? GOLD;
-                  const isCopied  = copiedId === draft.id;
-                  return (
-                    <div key={draft.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
-                      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: BORDER }}>
-                        <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
-                          style={{ backgroundColor: toneColor + "22", color: toneColor }}>{draft.tone}</span>
-                        <button onClick={() => { onDraftDeleted(draft.id); deleteEmailDraft(draft.id); }}
-                          className="opacity-40 hover:opacity-80 transition-opacity" style={{ color: "#F87171" }}>
-                          <X size={11} />
-                        </button>
-                      </div>
-                      <div className="px-3 py-2.5">
-                        <p className="text-[11px] leading-relaxed line-clamp-3" style={{ color: MUTED }}>{draft.body}</p>
-                      </div>
-                      <div className="flex border-t" style={{ borderColor: BORDER }}>
-                        <button onClick={() => onReplaceBody(draft.body)}
-                          className="flex-1 py-2 text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80 border-r"
-                          style={{ color: GOLD, borderColor: BORDER }}>
-                          Replace
-                        </button>
-                        <button onClick={() => onInsertBelow(draft.body)}
-                          className="flex-1 py-2 text-[10px] font-bold tracking-widests uppercase transition-opacity hover:opacity-80 border-r"
-                          style={{ color: "#5A9BD3", borderColor: BORDER }}>
-                          Insert
-                        </button>
-                        <button onClick={() => handleCopy(draft.body, draft.id)}
-                          className="flex-1 py-2 text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
-                          style={{ color: isCopied ? "#4ADE80" : MUTED }}>
-                          {isCopied ? "Copied!" : "Copy"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Send Lock notice */}
-          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border-t pt-4" style={{ borderColor: BORDER }}>
-            <Shield size={11} style={{ color: GOLD, flexShrink: 0, marginTop: 2 }} />
-            <p className="text-[10px] leading-relaxed" style={{ color: DIM }}>
-              <span style={{ color: GOLD, fontWeight: 700 }}>Send Lock</span> — Copy the body and send from your own email client.
+        {/* Empty state guidance */}
+        {isEmpty && (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <Lightbulb size={22} style={{ color: DIM }} />
+            <p className="text-xs leading-relaxed" style={{ color: DIM }}>
+              {!ctx
+                ? "Select or compose an email to use AI tools."
+                : "Add some body content to analyze or get a reply suggestion."}
             </p>
           </div>
+        )}
 
-        </div>
+        {!isEmpty && (
+          <div className="flex flex-col gap-5">
+            {/* ── Analyze ─────────────────────────────────────────────── */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Analyze Email</p>
+              <button onClick={handleAnalyze} disabled={analyzing}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: analysis ? CARD : "rgba(201,168,76,0.15)", color: GOLD, border: `1px solid rgba(201,168,76,0.3)` }}>
+                {analyzing ? <Loader size={12} className="animate-spin" /> : <Eye size={12} />}
+                {analyzing ? "Analyzing..." : analysis ? "Re-analyze" : "Analyze"}
+              </button>
+
+              {analysis && (
+                <div className="flex flex-col gap-2 mt-1">
+                  {analysis.summary && (
+                    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(201,168,76,0.15)" }}>
+                      <button onClick={() => toggle("summary")}
+                        className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:opacity-90"
+                        style={{ backgroundColor: "rgba(201,168,76,0.06)" }}>
+                        <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: GOLD }}>Summary</span>
+                        {collapsed.has("summary") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
+                      </button>
+                      {!collapsed.has("summary") && (
+                        <div className="px-3 py-2.5">
+                          <p className="text-xs leading-relaxed" style={{ color: MUTED }}>{analysis.summary}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {analysis.intent && (
+                    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
+                      <button onClick={() => toggle("intent")}
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:opacity-90"
+                        style={{ backgroundColor: CARD }}>
+                        <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Intent</span>
+                        {collapsed.has("intent") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
+                      </button>
+                      {!collapsed.has("intent") && (
+                        <div className="px-3 py-2.5" style={{ backgroundColor: CARD }}>
+                          <p className="text-xs leading-relaxed" style={{ color: MUTED }}>{analysis.intent}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {analysis.risks?.length > 0 && (
+                    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(249,115,22,0.2)" }}>
+                      <button onClick={() => toggle("risks")}
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:opacity-90"
+                        style={{ backgroundColor: "rgba(249,115,22,0.05)" }}>
+                        <span className="text-[10px] font-bold tracking-widest uppercase flex items-center gap-1" style={{ color: "#F87171" }}>
+                          <AlertTriangle size={10} /> Risks
+                        </span>
+                        {collapsed.has("risks") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
+                      </button>
+                      {!collapsed.has("risks") && (
+                        <div className="px-3 py-2.5 flex flex-col gap-1" style={{ backgroundColor: "rgba(249,115,22,0.02)" }}>
+                          {analysis.risks.map((r, i) => <p key={i} className="text-xs leading-relaxed" style={{ color: "#FB923C" }}>{r}</p>)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {analysis.opportunities?.length > 0 && (
+                    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(74,222,128,0.2)" }}>
+                      <button onClick={() => toggle("opps")}
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:opacity-90"
+                        style={{ backgroundColor: "rgba(74,222,128,0.05)" }}>
+                        <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: "#4ADE80" }}>Opportunities</span>
+                        {collapsed.has("opps") ? <ChevronDown size={11} style={{ color: DIM }} /> : <ChevronUp size={11} style={{ color: DIM }} />}
+                      </button>
+                      {!collapsed.has("opps") && (
+                        <div className="px-3 py-2.5 flex flex-col gap-1" style={{ backgroundColor: "rgba(74,222,128,0.02)" }}>
+                          {analysis.opportunities.map((o, i) => <p key={i} className="text-xs leading-relaxed" style={{ color: "#4ADE80" }}>{o}</p>)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="border-t pt-3" style={{ borderColor: BORDER }}>
+                    <p className="text-[10px] font-bold tracking-widest uppercase mb-2" style={{ color: DIM }}>Team Insights</p>
+                    <div className="flex flex-col gap-2">
+                      {routedMentors.map(mentor => {
+                        const color   = ROUTED_MENTOR_COLORS[mentor] ?? GOLD;
+                        const exists  = insights[mentor];
+                        const loading = mlLoading === mentor;
+                        const isColl  = collapsed.has(`m-${mentor}`);
+                        return (
+                          <div key={mentor} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}`, backgroundColor: NAVY }}>
+                            <div className="flex items-center justify-between px-3 py-2">
+                              <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color }}>{mentor}</span>
+                              <div className="flex items-center gap-1">
+                                {exists && (
+                                  <button onClick={() => toggle(`m-${mentor}`)}
+                                    className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded hover:opacity-70"
+                                    style={{ color: DIM, backgroundColor: "rgba(255,255,255,0.04)" }}>
+                                    {isColl ? "Show" : "Hide"}
+                                  </button>
+                                )}
+                                <button onClick={() => handleMentorInsight(mentor)} disabled={!!mlLoading}
+                                  className="text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded hover:opacity-70 disabled:opacity-40"
+                                  style={{ color: GOLD, backgroundColor: GOLD + "15" }}>
+                                  {loading ? "..." : exists ? "Re-ask" : "Ask"}
+                                </button>
+                              </div>
+                            </div>
+                            {exists && !isColl && (
+                              <div className="px-3 pb-3">
+                                <p className="text-xs leading-relaxed" style={{ color: MUTED }}>{exists}</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Suggest Reply ────────────────────────────────────────── */}
+            <div className="flex flex-col gap-2 border-t pt-4" style={{ borderColor: BORDER }}>
+              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Suggest Reply</p>
+              <div className="flex gap-1 flex-wrap">
+                {TONE_OPTIONS.map(t => (
+                  <button key={t.id} onClick={() => setSelectedTone(t.id)}
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase transition-all"
+                    style={selectedTone === t.id
+                      ? { backgroundColor: t.color + "22", color: t.color, border: `1px solid ${t.color}55` }
+                      : { backgroundColor: CARD, color: DIM, border: `1px solid ${BORDER}` }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={handleSuggestReply} disabled={generating}
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: "rgba(90,155,211,0.12)", color: "#5A9BD3", border: "1px solid rgba(90,155,211,0.3)" }}>
+                {generating ? <Loader size={12} className="animate-spin" /> : <MessageSquare size={12} />}
+                {generating ? "Drafting..." : "Suggest Reply"}
+              </button>
+
+              {drafts.length > 0 && (
+                <div className="flex flex-col gap-2 mt-1">
+                  <p className="text-[9px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Suggestions ({drafts.length})</p>
+                  {drafts.map(draft => {
+                    const toneColor = TONE_OPTIONS.find(t => t.id === draft.tone)?.color ?? GOLD;
+                    const isCopied  = copiedId === draft.id;
+                    return (
+                      <div key={draft.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
+                        <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: BORDER }}>
+                          <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded"
+                            style={{ backgroundColor: toneColor + "22", color: toneColor }}>{draft.tone}</span>
+                          <button onClick={() => { onDraftDeleted(draft.id); if (!draft.id.startsWith("tmp-")) deleteEmailDraft(draft.id); }}
+                            className="opacity-40 hover:opacity-80 transition-opacity" style={{ color: "#F87171" }}>
+                            <X size={11} />
+                          </button>
+                        </div>
+                        <div className="px-3 py-2.5">
+                          <p className="text-[11px] leading-relaxed line-clamp-3" style={{ color: MUTED }}>{draft.body}</p>
+                        </div>
+                        <div className="flex border-t" style={{ borderColor: BORDER }}>
+                          <button onClick={() => onReplaceBody(draft.body)}
+                            className="flex-1 py-2 text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80 border-r"
+                            style={{ color: GOLD, borderColor: BORDER }}>
+                            Replace
+                          </button>
+                          <button onClick={() => onInsertBelow(draft.body)}
+                            className="flex-1 py-2 text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80 border-r"
+                            style={{ color: "#5A9BD3", borderColor: BORDER }}>
+                            Insert
+                          </button>
+                          <button onClick={() => handleCopy(draft.body, draft.id)}
+                            className="flex-1 py-2 text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
+                            style={{ color: isCopied ? "#4ADE80" : MUTED }}>
+                            {isCopied ? "Copied!" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Send Lock */}
+            <div className="flex items-start gap-2 border-t pt-4" style={{ borderColor: BORDER }}>
+              <Shield size={11} style={{ color: GOLD, flexShrink: 0, marginTop: 2 }} />
+              <p className="text-[10px] leading-relaxed" style={{ color: DIM }}>
+                <span style={{ color: GOLD, fontWeight: 700 }}>Send Lock</span> — Copy the body and send from your own email client.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/* ── Center Email Workspace ──────────────────────────────────────────────── */
+/* ── Email Workspace (saved email) ───────────────────────────────────────── */
 
 interface EmailWorkspaceProps {
   email: Email;
   attachments: EmailAttachment[];
   analysis: EmailAnalysis | null;
   bodyValue: string;
+  bodyHistory: BodyVersion[];
   onBodyChange: (v: string) => void;
   onArchive: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
   onSave: () => void;
+  onRestore: (body: string) => void;
   saving: boolean;
 }
 
 function EmailWorkspace({
   email, attachments, analysis,
-  bodyValue, onBodyChange,
-  onArchive, onDelete, onSave, saving,
+  bodyValue, bodyHistory, onBodyChange,
+  onArchive, onDelete, onSave, onRestore, saving,
 }: EmailWorkspaceProps) {
-  const [previewAttId, setPreviewAttId] = useState<string | null>(null);
+  const [previewAttId,  setPreviewAttId]  = useState<string | null>(null);
+  const [showHistory,   setShowHistory]   = useState(false);
 
   const status: EmailStatus = analysis ? "analyzed" : "saved";
+  const canUndo = bodyHistory.length > 0;
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {showHistory && (
+        <DraftHistoryModal
+          versions={bodyHistory}
+          currentBody={bodyValue}
+          onRestore={body => { onRestore(body); }}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
       {/* Header */}
       <div className="px-6 py-4 border-b flex-shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-start justify-between gap-3">
@@ -497,28 +652,44 @@ function EmailWorkspace({
         </div>
       </div>
 
-      {/* Editable body — Fix 1+2: center always shows editable content */}
+      {/* Body editor */}
       <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: DIM }}>Email Body</p>
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-[10px] font-bold tracking-widest uppercase flex-1" style={{ color: DIM }}>Email Body</p>
+          {/* Undo: restore most recent history version */}
+          <button
+            onClick={() => canUndo && onRestore(bodyHistory[0].body)}
+            disabled={!canUndo}
+            title="Undo to last saved version"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80 disabled:opacity-30"
+            style={{ color: MUTED, border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
+            <RefreshCw size={10} /> Undo
+          </button>
+          {/* History */}
+          <button
+            onClick={() => setShowHistory(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
+            style={{ color: MUTED, border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
+            <Clock size={10} /> History
+            {bodyHistory.length > 0 && (
+              <span className="ml-1 font-bold" style={{ color: GOLD }}>{bodyHistory.length}</span>
+            )}
+          </button>
+          {/* Save */}
           <button onClick={onSave} disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80 disabled:opacity-40"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80 disabled:opacity-40"
             style={{ backgroundColor: GOLD + "22", color: GOLD, border: `1px solid ${GOLD}44` }}>
             {saving ? <Loader size={10} className="animate-spin" /> : <Check size={10} />}
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
+
         <textarea
           value={bodyValue}
           onChange={e => onBodyChange(e.target.value)}
-          className="flex-1 w-full px-4 py-3 rounded-xl text-sm outline-none resize-none leading-relaxed"
-          style={{
-            backgroundColor: NAVY,
-            color: TEXT,
-            border: `1px solid ${BORDER}`,
-            lineHeight: "1.85",
-            minHeight: "280px",
-          }}
+          className="flex-1 w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
+          style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.85", minHeight: "280px" }}
           placeholder="Email body…"
         />
 
@@ -548,7 +719,7 @@ function EmailWorkspace({
                         ? <p className="text-xs leading-relaxed whitespace-pre-wrap font-mono" style={{ color: MUTED }}>
                             {att.content.slice(0, 2000)}{att.content.length > 2000 ? "\n\n[truncated…]" : ""}
                           </p>
-                        : <p className="text-xs" style={{ color: DIM }}>Preview not available — filename stored only</p>
+                        : <p className="text-xs" style={{ color: DIM }}>Preview not available</p>
                       }
                     </div>
                   )}
@@ -562,29 +733,35 @@ function EmailWorkspace({
   );
 }
 
-/* ── Compose Workspace ───────────────────────────────────────────────────── */
+/* ── Compose Workspace (controlled — fields live in parent) ──────────────── */
 
 interface ComposeWorkspaceProps {
+  to: string; onTo: (v: string) => void;
+  toEmail: string; onToEmail: (v: string) => void;
+  subject: string; onSubject: (v: string) => void;
+  body: string; onBody: (v: string) => void;
+  bodyHistory: BodyVersion[];
+  onRestore: (body: string) => void;
   onSaved: (email: Email) => void;
   onCancel: () => void;
 }
 
-function ComposeWorkspace({ onSaved, onCancel }: ComposeWorkspaceProps) {
-  const [to,           setTo]           = useState("");
-  const [toEmail,      setToEmail]      = useState("");
-  const [subject,      setSubject]      = useState("");
-  const [body,         setBody]         = useState("");
+function ComposeWorkspace({
+  to, onTo, toEmail, onToEmail, subject, onSubject, body, onBody,
+  bodyHistory, onRestore, onSaved, onCancel,
+}: ComposeWorkspaceProps) {
   const [attachment,   setAttachment]   = useState<AttachmentDraft | null>(null);
   const [saving,       setSaving]       = useState(false);
   const [contacts,     setContacts]     = useState<SavedContact[]>([]);
   const [showContacts, setShowContacts] = useState(false);
+  const [showHistory,  setShowHistory]  = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setContacts(loadContacts()); }, []);
 
   function selectContact(c: SavedContact) {
-    setTo(c.name);
-    setToEmail(c.email);
+    onTo(c.name);
+    onToEmail(c.email);
     setShowContacts(false);
   }
 
@@ -624,6 +801,15 @@ function ComposeWorkspace({ onSaved, onCancel }: ComposeWorkspaceProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {showHistory && (
+        <DraftHistoryModal
+          versions={bodyHistory}
+          currentBody={body}
+          onRestore={v => { onRestore(v); }}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
       <div className="px-6 py-4 border-b flex items-center justify-between flex-shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-2">
           <Send size={14} style={{ color: GOLD }} />
@@ -636,7 +822,6 @@ function ComposeWorkspace({ onSaved, onCancel }: ComposeWorkspaceProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4 flex flex-col gap-3">
-        {/* Contact recall */}
         {contacts.length > 0 && (
           <div>
             <button onClick={() => setShowContacts(v => !v)}
@@ -664,26 +849,36 @@ function ComposeWorkspace({ onSaved, onCancel }: ComposeWorkspaceProps) {
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Name)</label>
-            <input value={to} onChange={e => setTo(e.target.value)} placeholder="Jane Smith"
+            <input value={to} onChange={e => onTo(e.target.value)} placeholder="Jane Smith"
               className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>To (Email)</label>
-            <input value={toEmail} onChange={e => setToEmail(e.target.value)} placeholder="jane@example.com"
+            <input value={toEmail} onChange={e => onToEmail(e.target.value)} placeholder="jane@example.com"
               className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
           </div>
         </div>
 
         <div className="flex flex-col gap-1">
           <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>Subject <span style={{ color: "#F87171" }}>*</span></label>
-          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject line"
+          <input value={subject} onChange={e => onSubject(e.target.value)} placeholder="Subject line"
             className="px-3 py-2.5 rounded-lg text-sm outline-none" style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}` }} />
         </div>
 
+        {/* Body + history toolbar */}
         <div className="flex flex-col gap-1 flex-1">
-          <label className="text-[10px] tracking-widest uppercase font-bold" style={{ color: MUTED }}>Body <span style={{ color: "#F87171" }}>*</span></label>
-          <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Write your email…"
-            className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none resize-none leading-relaxed"
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] tracking-widest uppercase font-bold flex-1" style={{ color: MUTED }}>Body <span style={{ color: "#F87171" }}>*</span></label>
+            {bodyHistory.length > 0 && (
+              <button onClick={() => setShowHistory(true)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-opacity hover:opacity-80"
+                style={{ color: MUTED, border: `1px solid ${BORDER}`, backgroundColor: CARD }}>
+                <Clock size={10} /> History ({bodyHistory.length})
+              </button>
+            )}
+          </div>
+          <textarea value={body} onChange={e => onBody(e.target.value)} placeholder="Write your email…"
+            className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none resize-none"
             style={{ backgroundColor: NAVY, color: TEXT, border: `1px solid ${BORDER}`, lineHeight: "1.85", minHeight: "220px" }} />
         </div>
 
@@ -693,7 +888,7 @@ function ComposeWorkspace({ onSaved, onCancel }: ComposeWorkspaceProps) {
           <input ref={fileRef} type="file" className="hidden" onChange={pickFile} />
           {!attachment ? (
             <button onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-80 justify-center border-2 border-dashed"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold hover:opacity-80 justify-center border-2 border-dashed"
               style={{ borderColor: BORDER, color: DIM }}>
               <Paperclip size={14} /> Choose File
             </button>
@@ -715,12 +910,12 @@ function ComposeWorkspace({ onSaved, onCancel }: ComposeWorkspaceProps) {
 
       <div className="flex gap-2 px-6 py-4 border-t flex-shrink-0" style={{ borderColor: BORDER }}>
         <button onClick={onCancel}
-          className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wider uppercase transition-opacity hover:opacity-70"
+          className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wider uppercase hover:opacity-70"
           style={{ backgroundColor: NAVY, color: MUTED, border: `1px solid ${BORDER}` }}>Cancel</button>
         <button onClick={handleSave} disabled={saving || !canSave}
-          className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wider uppercase transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold tracking-wider uppercase hover:opacity-90 disabled:opacity-40"
           style={{ backgroundColor: GOLD, color: NAVY }}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? "Saving…" : "Save & Continue"}
         </button>
       </div>
     </div>
@@ -738,9 +933,18 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
   const [attachments,   setAttachments]   = useState<EmailAttachment[]>([]);
   const [analysis,      setAnalysis]      = useState<EmailAnalysis | null>(null);
   const [drafts,        setDrafts]        = useState<EmailDraft[]>([]);
-  const [bodyValue,     setBodyValue]     = useState("");
-  const [saving,        setSaving]        = useState(false);
   const [showArchived,  setShowArchived]  = useState(false);
+
+  /* Shared body + history */
+  const [bodyValue,    setBodyValue]    = useState("");
+  const [bodyHistory,  setBodyHistory]  = useState<BodyVersion[]>([]);
+
+  /* Compose fields (lifted so AI panel can read them) */
+  const [composeTo,      setComposeTo]      = useState("");
+  const [composeToEmail, setComposeToEmail] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+
+  const [saving,   setSaving]   = useState(false);
   const loadedId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -751,11 +955,36 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
     ? emails.find(e => e.id === centerState.emailId) ?? null
     : null;
 
+  /* AI context: works for both compose and saved email */
+  const aiCtx: EmailContext | null = (() => {
+    if (centerState.mode === "compose") {
+      if (!bodyValue.trim()) return null;
+      return {
+        subject:      composeSubject || "(no subject)",
+        sender_name:  composeTo      || "Unknown",
+        sender_email: composeToEmail || "",
+        body:         bodyValue,
+        savedId:      null,
+      };
+    }
+    if (centerState.mode === "email" && selectedEmail) {
+      return {
+        subject:      selectedEmail.subject,
+        sender_name:  selectedEmail.sender_name,
+        sender_email: selectedEmail.sender_email,
+        body:         bodyValue,
+        savedId:      selectedEmail.id,
+      };
+    }
+    return null;
+  })();
+
   async function handleSelectEmail(email: Email) {
     if (loadedId.current === email.id) return;
     loadedId.current = email.id;
     setCenterState({ mode: "email", emailId: email.id });
     setBodyValue(email.body);
+    setBodyHistory([]);
     setAttachments([]);
     setAnalysis(null);
     setDrafts([]);
@@ -775,15 +1004,13 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
     setDrafts(drs);
   }
 
-  /* Save body edits back to DB */
   async function handleSaveBody() {
     if (!selectedEmail) return;
     setSaving(true);
     try {
-      await supabase
-        .from("emails")
-        .update({ body: bodyValue })
-        .eq("id", selectedEmail.id);
+      /* Push current body to history before saving */
+      setBodyHistory(prev => pushVersion(prev, bodyValue, "Saved"));
+      await supabase.from("emails").update({ body: bodyValue }).eq("id", selectedEmail.id);
       setEmails(prev => prev.map(e => e.id === selectedEmail.id ? { ...e, body: bodyValue } : e));
     } finally {
       setSaving(false);
@@ -794,6 +1021,7 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
     loadedId.current = null;
     setCenterState({ mode: "empty" });
     setBodyValue("");
+    setBodyHistory([]);
     setAnalysis(null);
     setDrafts([]);
   }
@@ -814,19 +1042,41 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
   }
 
   function handleComposeSaved(email: Email) {
+    /* Push compose body to history before transitioning */
+    setBodyHistory(prev => pushVersion(prev, bodyValue, "Saved"));
     setEmails(prev => [email, ...prev]);
     loadedId.current = null;
     handleSelectEmail(email);
   }
 
-  /* Fix 4: Replace or Insert body from AI suggestion */
-  const handleReplaceBody = useCallback((text: string) => {
-    setBodyValue(text);
-  }, []);
+  function openCompose() {
+    loadedId.current = null;
+    setCenterState({ mode: "compose" });
+    setBodyValue("");
+    setBodyHistory([]);
+    setComposeTo("");
+    setComposeToEmail("");
+    setComposeSubject("");
+    setAnalysis(null);
+    setDrafts([]);
+  }
 
+  /* Replace: push current body to history, set new */
+  const handleReplaceBody = useCallback((text: string) => {
+    setBodyHistory(prev => pushVersion(prev, bodyValue, "AI Replace"));
+    setBodyValue(text);
+  }, [bodyValue]);
+
+  /* Insert: push current body to history, append */
   const handleInsertBelow = useCallback((text: string) => {
+    setBodyHistory(prev => pushVersion(prev, bodyValue, "AI Insert"));
     setBodyValue(prev => prev ? `${prev}\n\n---\n\n${text}` : text);
-  }, []);
+  }, [bodyValue]);
+
+  /* Restore from history: sets body (no new history entry to avoid loops) */
+  function handleRestore(body: string) {
+    setBodyValue(body);
+  }
 
   const active      = emails.filter(e => !e.archived);
   const archived    = emails.filter(e => e.archived);
@@ -847,7 +1097,7 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: GOLD, color: NAVY }}>{unreadCount}</span>
             )}
           </div>
-          <button onClick={() => { loadedId.current = null; setCenterState({ mode: "compose" }); setAnalysis(null); setDrafts([]); }}
+          <button onClick={openCompose}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold tracking-widest uppercase transition-opacity hover:opacity-90"
             style={{ backgroundColor: GOLD, color: NAVY }}>
             <Plus size={11} /> New
@@ -915,7 +1165,7 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
         </div>
       </div>
 
-      {/* ── CENTER: Always the workspace ─────────────────────────────────── */}
+      {/* ── CENTER ───────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden border-r" style={{ borderColor: BORDER }}>
         {centerState.mode === "empty" && (
           <div className="flex flex-col h-full items-center justify-center gap-6 px-10">
@@ -926,10 +1176,10 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
             <div className="text-center max-w-sm">
               <p className="text-base font-semibold mb-2" style={{ color: MUTED }}>Email Workspace</p>
               <p className="text-sm leading-relaxed" style={{ color: DIM }}>
-                Select an email to read and edit it here, or compose a new one. AI suggestions appear on the right and never overwrite without you.
+                Select an email or compose a new one. AI suggestions appear on the right and never overwrite without you.
               </p>
             </div>
-            <button onClick={() => setCenterState({ mode: "compose" })}
+            <button onClick={openCompose}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold tracking-wider uppercase hover:opacity-90"
               style={{ backgroundColor: GOLD, color: NAVY }}>
               <Plus size={14} /> Compose Email
@@ -939,6 +1189,12 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
 
         {centerState.mode === "compose" && (
           <ComposeWorkspace
+            to={composeTo}           onTo={setComposeTo}
+            toEmail={composeToEmail} onToEmail={setComposeToEmail}
+            subject={composeSubject} onSubject={setComposeSubject}
+            body={bodyValue}         onBody={setBodyValue}
+            bodyHistory={bodyHistory}
+            onRestore={handleRestore}
             onSaved={handleComposeSaved}
             onCancel={() => setCenterState({ mode: "empty" })}
           />
@@ -950,21 +1206,22 @@ export default function EmailView({ onPendingChange: _onPendingChange }: { onPen
             attachments={attachments}
             analysis={analysis}
             bodyValue={bodyValue}
+            bodyHistory={bodyHistory}
             onBodyChange={setBodyValue}
             onArchive={e => handleArchive(selectedEmail, e)}
             onDelete={e => handleDelete(selectedEmail, e)}
             onSave={handleSaveBody}
+            onRestore={handleRestore}
             saving={saving}
           />
         )}
       </div>
 
-      {/* ── RIGHT: AI panel — suggestions only ───────────────────────────── */}
+      {/* ── RIGHT: AI panel ──────────────────────────────────────────────── */}
       <div className="flex-shrink-0 flex flex-col border-l min-h-0"
         style={{ width: "280px", minWidth: "280px", backgroundColor: PANEL_BG, borderColor: BORDER }}>
         <AIPanel
-          email={selectedEmail}
-          emailBody={bodyValue}
+          ctx={aiCtx}
           analysis={analysis}
           drafts={drafts}
           onAnalysisDone={a => setAnalysis(a)}
