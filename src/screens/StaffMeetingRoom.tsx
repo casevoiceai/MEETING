@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Save, Users, RefreshCw, StickyNote, Pencil, X, RotateCcw } from "lucide-react";
+import { Send, Save, Users, RefreshCw, StickyNote, Pencil, X, RotateCcw, FileText } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { saveMeetingToDrive } from "../lib/integrations";
 import SideNotesPanel, { SideNote, loadOpenNoteIds, saveOpenNoteIds } from "./SideNoteModal";
 import { listPendingQueueItems, BoysQueueItem } from "../lib/boysQueue";
+import MeetingMinutesModal from "../components/MeetingMinutesModal";
 
 const GOLD = "#C9A84C";
 const NAVY = "#0D1B2E";
@@ -408,7 +409,8 @@ export default function StaffMeetingRoom() {
   const [noteContents, setNoteContents] = useState<Record<string, boolean>>({});
   const [juliePersonality, setJuliePersonality] = useState(() => loadJuliePersonality());
 
-  const [openNoteIds, setOpenNoteIds] = useState<string[]>(() => loadOpenNoteIds());
+  const [openNoteIds,    setOpenNoteIds]    = useState<string[]>(() => loadOpenNoteIds());
+  const [showMinutes,    setShowMinutes]    = useState(false);
 
   useEffect(() => {
     saveOpenNoteIds(openNoteIds);
@@ -644,6 +646,20 @@ export default function StaffMeetingRoom() {
         />
       )}
 
+      {/* Meeting Minutes Modal */}
+      {showMinutes && (
+        <MeetingMinutesModal
+          messages={messages.map(m => ({
+            speaker: m.speaker,
+            text: m.text,
+            isFounder: m.isFounder,
+            isJulie: m.isJulie,
+            isSystem: m.isSystem,
+          }))}
+          onClose={() => setShowMinutes(false)}
+        />
+      )}
+
       {/* Header */}
       <div
         className="flex items-center gap-3 px-5 py-4 border-b flex-shrink-0"
@@ -678,6 +694,24 @@ export default function StaffMeetingRoom() {
             title="Edit Julie's personality and behavior"
           >
             <Pencil size={13} /> Julie
+          </button>
+          {/* Print Minutes button */}
+          <button
+            onClick={() => {
+              setShowCallPanel(false);
+              setShowJulieEditor(false);
+              setShowMinutes(true);
+            }}
+            disabled={messages.filter(m => !m.isSystem).length < 2}
+            className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold tracking-wider uppercase transition-all hover:opacity-90 disabled:opacity-30"
+            style={{
+              backgroundColor: "rgba(90,155,211,0.08)",
+              color: "#5A9BD3",
+              border: "1px solid rgba(90,155,211,0.25)",
+            }}
+            title="Generate and print meeting minutes"
+          >
+            <FileText size={13} /> Minutes
           </button>
           {/* Call Team button */}
           <button
