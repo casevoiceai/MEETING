@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, RefreshCcw, X } from "lucide-react";
 import { testDriveConnection } from "../lib/integrations";
 import { runStateReconciliation, DriftReport } from "../lib/health";
+import { supabase } from "../lib/supabase";
 
 type ServiceStatus = "healthy" | "warning" | "error" | "loading";
 type Service = { id: string; name: string; status: ServiceStatus; lastChecked: string; detail: string; };
@@ -43,7 +44,6 @@ function StatusExplanation({ service }: { service: Service }) {
       </>
     );
   }
-  // error
   return (
     <>
       <p className="text-[10px] text-rose-400">This service is unavailable. Check the details below and take action.</p>
@@ -52,13 +52,44 @@ function StatusExplanation({ service }: { service: Service }) {
   );
 }
 
+async function pingWithTimeout(url: string, method: string, timeoutMs: number): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    await fetch(url, { method, signal: controller.signal, mode: "no-cors" });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function SystemHealthPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
   const [driveStatus, setDriveStatus] = useState<ServiceStatus>("loading");
   const [driveLastChecked, setDriveLastChecked] = useState("Pending");
   const [driveDetail, setDriveDetail] = useState("Drive check has not run yet.");
+
+  const [havenStatus, setHavenStatus] = useState<ServiceStatus>("loading");
+  const [havenLastChecked, setHavenLastChecked] = useState("Pending");
+  const [havenDetail, setHavenDetail] = useState("Check has not run yet.");
+
+  const [workerStatus, setWorkerStatus] = useState<ServiceStatus>("loading");
+  const [workerLastChecked, setWorkerLastChecked] = useState("Pending");
+  const [workerDetail, setWorkerDetail] = useState("Check has not run yet.");
+
+  const [approvalsStatus, setApprovalsStatus] = useState<ServiceStatus>("loading");
+  const [approvalsLastChecked, setApprovalsLastChecked] = useState("Pending");
+  const [approvalsDetail, setApprovalsDetail] = useState("Check has not run yet.");
+
+  const [sessionStatus, setSessionStatus] = useState<ServiceStatus>("loading");
+  const [sessionLastChecked, setSessionLastChecked] = useState("Pending");
+  const [sessionDetail, setSessionDetail] = useState("Check has not run yet.");
+
   const [driftReport, setDriftReport] = useState<DriftReport | null>(null);
   const [driftChecking, setDriftChecking] = useState(false);
   const [driftLastChecked, setDriftLastChecked] = useState("Pending");
@@ -84,13 +115,98 @@ export default function SystemHealthPanel() {
     }
   };
 
+  const runHavenCheck = async () => {
+    setHavenStatus("loading");
+    setHavenDetail("Pinging mystatement.ai...");
+    const ok = await pingWithTimeout("https://mystatement.ai", "HEAD", 5000);
+    if (ok) {
+      setHavenStatus("healthy");
+      setHavenDetail("mystatement.ai is responding normally.");
+    } else {
+      setHavenStatus("error");
+      setHavenDetail("mystatement.ai is not responding. Check Vercel deployment.");
+    }
+    setHavenLastChecked(new Date().toLocaleTimeString());
+  };
+
+  const runWorkerCheck = async () => {
+    setWorkerStatus("loading");
+    setWorkerDetail("Pinging Cloudflare Worker...");
+    const ok = await pingWithTimeout("https://foundercrm.casevoice-ai.workers.dev/api/ping", "GET", 5000);
+    if (ok) {
+      setWorkerStatus("healthy");
+      setWorkerDetail("Cloudflare Worker is responding normally.");
+    } else {
+      setWorkerStatus("error");
+      setWorkerDetail("Cloudflare Worker is down. Check Cloudflare dashboard.");
+    }
+    setWorkerLastChecked(new Date().toLocaleTimeString());
+  };
+
+  const runApprovalsCheck = async () => {
+    setApprovalsStatus("loading");
+    setApprovalsDetail("Checking approval queue...");
+    try {
+      const { count, error } = await supabase
+        .from("approval_log")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+      if (error) throw error;
+      const n = count ?? 0;
+      if (n === 0) {
+        setApprovalsStatus("healthy");
+        setApprovalsDetail("No pending approvals.");
+      } else {
+        setApprovalsStatus("warning");
+        setApprovalsDetail(`${n} item${n === 1 ? "" : "s"} awaiting approval. Go to the QUEUE tab.`);
+      }
+    } catch {
+      setApprovalsStatus("warning");
+      setApprovalsDetail("Could not read approval queue. Table may not be available.");
+    } finally {
+      setApprovalsLastChecked(new Date().toLocaleTimeString());
+    }
+  };
+
+  const runSessionCheck = async () => {
+    setSessionStatus("loading");
+    setSessionDetail("Checking last session...");
+    try {
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("created_at")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        setSessionStatus("warning");
+        setSessionDetail("No sessions found. Consider running a session.");
+      } else {
+        const diffMs = Date.now() - new Date(data.created_at).getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays <= 7) {
+          setSessionStatus("healthy");
+          setSessionDetail(diffDays === 0 ? "Last session was today." : `Last session was ${diffDays} day${diffDays === 1 ? "" : "s"} ago.`);
+        } else {
+          setSessionStatus("warning");
+          setSessionDetail(`No session logged in ${diffDays} days. Consider running a session.`);
+        }
+      }
+    } catch {
+      setSessionStatus("warning");
+      setSessionDetail("Could not read sessions table. Table may not be available.");
+    } finally {
+      setSessionLastChecked(new Date().toLocaleTimeString());
+    }
+  };
+
   const runReconciliationCheck = async () => {
     setDriftChecking(true);
     try {
       const report = await runStateReconciliation();
       setDriftReport(report);
     } catch {
-      // treat a failed query (e.g. missing table) as clean — not actionable drift
       setDriftReport({ clean: true, drifts: [] });
     } finally {
       setDriftLastChecked(new Date().toLocaleTimeString());
@@ -100,7 +216,14 @@ export default function SystemHealthPanel() {
 
   const runAllChecks = async () => {
     setIsRefreshing(true);
-    await Promise.all([runDriveCheck(), runReconciliationCheck()]);
+    await Promise.all([
+      runDriveCheck(),
+      runHavenCheck(),
+      runWorkerCheck(),
+      runApprovalsCheck(),
+      runSessionCheck(),
+      runReconciliationCheck(),
+    ]);
     setIsRefreshing(false);
   };
 
@@ -114,9 +237,18 @@ export default function SystemHealthPanel() {
     DATABASE_SERVICE,
     { id: "drive", name: "Google Drive", status: driveStatus, lastChecked: driveLastChecked, detail: driveDetail },
     AUTH_SERVICE,
-  ], [driveStatus, driveLastChecked, driveDetail]);
+    { id: "haven", name: "HAVEN App (mystatement.ai)", status: havenStatus, lastChecked: havenLastChecked, detail: havenDetail },
+    { id: "worker", name: "Cloudflare Worker", status: workerStatus, lastChecked: workerLastChecked, detail: workerDetail },
+    { id: "approvals", name: "Pending Approvals", status: approvalsStatus, lastChecked: approvalsLastChecked, detail: approvalsDetail },
+    { id: "session", name: "Last Session Logged", status: sessionStatus, lastChecked: sessionLastChecked, detail: sessionDetail },
+  ], [
+    driveStatus, driveLastChecked, driveDetail,
+    havenStatus, havenLastChecked, havenDetail,
+    workerStatus, workerLastChecked, workerDetail,
+    approvalsStatus, approvalsLastChecked, approvalsDetail,
+    sessionStatus, sessionLastChecked, sessionDetail,
+  ]);
 
-  // Only show red if there is a genuine error the user needs to act on
   const hasError = services.some((s) => s.status === "error");
 
   return (
@@ -179,6 +311,16 @@ export default function SystemHealthPanel() {
                     {service.id === "drive" && service.status !== "loading" && (
                       <div className="pt-1">
                         <button onClick={runDriveCheck} className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded">Test connection again</button>
+                      </div>
+                    )}
+                    {service.id === "haven" && service.status !== "loading" && (
+                      <div className="pt-1">
+                        <button onClick={runHavenCheck} className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded">Test connection again</button>
+                      </div>
+                    )}
+                    {service.id === "worker" && service.status !== "loading" && (
+                      <div className="pt-1">
+                        <button onClick={runWorkerCheck} className="text-[10px] px-3 py-1.5 border border-blue-500 text-blue-400 rounded">Test connection again</button>
                       </div>
                     )}
                   </div>
