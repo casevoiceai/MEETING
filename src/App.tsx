@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import StaffMeetingRoom from "./screens/StaffMeetingRoom";
+import MeetingRoomView from "./screens/MeetingRoomView";
 import VaultView from "./screens/VaultView";
 import DirectChat from "./screens/DirectChat";
 import EmailView from "./screens/EmailView";
@@ -8,28 +8,35 @@ import BoysQueuePanel from "./components/BoysQueuePanel";
 import SystemReportsModal from "./components/SystemReportsModal";
 import HAVENProjectRoom from "./screens/HAVENProjectRoom";
 import HealthView from "./screens/HealthView";
+import StoreRoomView from "./screens/StoreRoomView";
+import CleanRoomView from "./screens/CleanRoomView";
+import ConnectorControlRoomView from "./screens/ConnectorControlRoomView";
 
 type MainTab =
-  | "MEETING"
+  | "FRONT DESK"
   | "HAVEN"
-  | "DIRECT"
+  | "CONFERENCE ROOM"
   | "PROJECTS"
   | "QUEUE"
   | "VAULT"
   | "EMAIL"
   | "HEALTH"
-  | "OFFICE SUPPLIES";
+  | "STORE ROOM"
+  | "CLEAN ROOM"
+  | "CONNECTORS";
 
 const MAIN_TABS: MainTab[] = [
-  "MEETING",
+  "FRONT DESK",
   "HAVEN",
-  "DIRECT",
+  "CONFERENCE ROOM",
   "PROJECTS",
   "QUEUE",
   "VAULT",
   "EMAIL",
   "HEALTH",
-  "OFFICE SUPPLIES",
+  "STORE ROOM",
+  "CLEAN ROOM",
+  "CONNECTORS",
 ];
 
 function PlaceholderScreen({ title, description }: { title: string; description: string }) {
@@ -138,7 +145,7 @@ function OfficeSuppliesScreen() {
 
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<MainTab>("MEETING");
+  const [activeTab, setActiveTab] = useState<MainTab>("FRONT DESK");
   const [reportsOpen, setReportsOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -149,7 +156,7 @@ export default function App() {
   }, []);
 
   const mainOverflowClass =
-    activeTab === "MEETING" || activeTab === "DIRECT" || activeTab === "EMAIL"
+    activeTab === "FRONT DESK" || activeTab === "CONFERENCE ROOM" || activeTab === "EMAIL"
       ? "overflow-hidden"
       : "overflow-y-auto";
 
@@ -177,12 +184,12 @@ export default function App() {
             {MAIN_TABS.map((tab) => {
               const active = activeTab === tab;
               const isQueue = tab === "QUEUE";
-              const isDim = tab === "HEALTH" || tab === "OFFICE SUPPLIES";
+              const isDim = false;
               return (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex-shrink-0 flex items-center gap-2"
+                  className="px-5 py-3 rounded-xl text-sm font-bold tracking-wide whitespace-nowrap transition-all flex-shrink-0 flex items-center gap-2 border shadow-sm"
                   style={
                     active
                       ? {
@@ -223,16 +230,18 @@ export default function App() {
       </header>
 
       <main className={`flex-1 ${mainOverflowClass}`}>
-        {activeTab === "MEETING" && <StaffMeetingRoom />}
+        {activeTab === "FRONT DESK" && <MeetingRoomView onSendToDirect={() => setActiveTab("CONFERENCE ROOM")} />}
         {activeTab === "HAVEN" && <HAVENProjectRoom />}
-        {activeTab === "DIRECT" && <DirectChat />}
+        {activeTab === "CONFERENCE ROOM" && <DirectChat />}
         {activeTab === "EMAIL" && <EmailView />}
         {activeTab === "QUEUE" && (
           <BoysQueuePanel onPendingCountChange={setPendingCount} />
         )}
         {activeTab === "VAULT" && <VaultView />}
         {activeTab === "HEALTH" && <HealthView />}
-        {activeTab === "OFFICE SUPPLIES" && <OfficeSuppliesScreen />}
+        {activeTab === "STORE ROOM" && <StoreRoomView />}
+        {activeTab === "CLEAN ROOM" && <CleanRoomView />}
+        {activeTab === "CONNECTORS" && <ConnectorControlRoomView />}
         {activeTab === "PROJECTS" && <ProjectsView />}
       </main>
 
@@ -240,3 +249,5 @@ export default function App() {
     </div>
   );
 }
+
+

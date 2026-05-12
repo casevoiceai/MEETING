@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+﻿import { supabase } from "./supabase";
 import { scanFile } from "./quarantine";
 
 export type TaskStatus = "open" | "in_progress" | "done";
@@ -339,10 +339,6 @@ export async function upsertTags(tags: string[]): Promise<void> {
 
 export async function createProject(name: string): Promise<Project> {
   const trimmed = name.trim();
-  const slug = trimmed
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
 
   const { data: existing } = await supabase
     .from("projects")
@@ -354,7 +350,7 @@ export async function createProject(name: string): Promise<Project> {
 
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name: trimmed, slug })
+    .insert({ name: trimmed })
     .select()
     .single();
   if (error) throw error;

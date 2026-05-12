@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import {
   Plus, ChevronRight, Archive, Trash2, CheckCircle, Circle, Clock,
   FileText, AlignLeft, Tag, Link, Pencil, Check, X, Layers, Upload,
@@ -11,12 +11,12 @@ import {
   listVaultFilesByProject, listSideNotes, listTagsForProject, listVaultFolders, deleteVaultFile,
   type Project, type ProjectNote, type ProjectTask, type TaskStatus, type VaultFile, type SideNote, type TagEntry, type LinkableType, type VaultFolder,
 } from "../lib/db";
-import { proposeAction } from "../lib/approval";
 import { useGuardrail } from "../lib/useGuardrail";
 import DestructiveConfirmModal from "../components/DestructiveConfirmModal";
 import LinkedItemsPanel from "../components/LinkedItemsPanel";
 import FileUploadModal from "../components/FileUploadModal";
 import FilePreviewModal from "../components/FilePreviewModal";
+import { PROJECT_ROOM_SOURCE_RECORDS } from "../lib/projectRoomsSource";
 
 type DetailTab = "overview" | "files" | "notes" | "tasks" | "sessions" | "tags";
 
@@ -146,14 +146,8 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
   async function commitRename() {
     const name = renameDraft.trim();
     if (!name || name === project.name) { setRenamingProject(false); return; }
-    await proposeAction({
-      action_type: "project_rename",
-      title: `Rename project: "${project.name}" → "${name}"`,
-      description: `Rename the project from "${project.name}" to "${name}". Approve in Integrations → Approvals to apply.`,
-      proposed_by: "USER",
-      payload: { project_id: project.id, old_name: project.name, new_name: name },
-    });
-    setRenameProposed(true);
+        // Read-only safe mode: approval proposal writes are locked.
+    setRenameProposed(false);
     setRenamingProject(false);
   }
 
@@ -214,13 +208,7 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
         snapshotData: task ? { id: task.id, text: task.text, owner: task.owner, status: task.status } : {},
       },
       async () => {
-        await proposeAction({
-          action_type: "task_delete",
-          title: `Delete task: "${task?.text?.slice(0, 60) ?? id}"`,
-          description: `Permanently delete task from project "${project.name}". This cannot be undone.`,
-          proposed_by: "USER",
-          payload: { task_id: id, task_text: task?.text, project_id: project.id, project_name: project.name },
-        });
+        // Read-only safe mode: approval proposal writes are locked.
         setTaskDeleteProposed((prev) => new Set(prev).add(id));
       }
     );
@@ -278,6 +266,69 @@ function ProjectDetail({ project, onProjectRenamed, onNavigate }: ProjectDetailP
           <>
             {tab === "overview" && (
               <div className="flex flex-col gap-6">
+                {/* PROJECT ROOMS SOURCE AUTHORITY READ ONLY CARD START */}
+                <div className="rounded-2xl border p-5" style={{ backgroundColor: CARD, borderColor: "rgba(201,168,76,0.35)" }}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-bold tracking-widest uppercase mb-2" style={{ color: GOLD }}>
+                        Project Rooms / Source Authority
+                      </p>
+                      <p className="text-sm leading-relaxed" style={{ color: MUTED }}>
+                        Read-only room map from the completed source authority sweep. This card is informational only.
+                      </p>
+                    </div>
+                    <span
+                      className="text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded-full flex-shrink-0"
+                      style={{ color: "#4ADE80", backgroundColor: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.25)" }}
+                    >
+                      Read Only
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    {PROJECT_ROOM_SOURCE_RECORDS.map((room) => (
+                      <div
+                        key={room.name}
+                        className="rounded-xl border px-4 py-3"
+                        style={{ backgroundColor: NAVY, borderColor: BORDER }}
+                      >
+                        <div className="flex items-center justify-between gap-3 mb-1">
+                          <p className="text-xs font-bold" style={{ color: "#FFFFFF" }}>{room.name}</p>
+                          {/* PROJECTSVIEW MINIMAL UI RECEIPT PATCH START */}
+                          {room.evidenceTitle && room.evidenceTitle.trim() !== "" ? (
+                            <p className="mt-1 text-xs text-slate-400">
+                              Evidence: {room.evidenceTitle}
+                            </p>
+                          ) : null}
+                          {room.unresolvedGate && room.unresolvedGate.trim() !== "" && room.unresolvedGate !== "None" ? (
+                            <p className="mt-1 text-xs text-amber-300">
+                              Gate open: {room.unresolvedGate}
+                            </p>
+                          ) : null}
+                          {/* PROJECTSVIEW MINIMAL UI RECEIPT PATCH END */}
+                          <span className="text-[9px] font-bold tracking-widest uppercase" style={{ color: GOLD }}>
+                            {room.status}
+                          </span>
+                        </div>
+                        {room.evidenceTitle ? (
+                          <p className="mt-1 text-[11px]" style={{ color: MUTED }}>
+                            Evidence: {room.evidenceTitle}
+                          </p>
+                        ) : null}
+                        {room.unresolvedGate && room.unresolvedGate !== "None." ? (
+                          <p className="mt-1 text-[11px] font-semibold" style={{ color: GOLD }}>
+                            Gate open: {room.unresolvedGate}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[10px] font-bold tracking-widest uppercase mt-4" style={{ color: DIM }}>
+                    No actions. No writes. App.tsx untouched. Health remains diagnostics-only.
+                  </p>
+                </div>
+                {/* PROJECT ROOMS SOURCE AUTHORITY READ ONLY CARD END */}
                 <div className="grid grid-cols-4 gap-3">
                   {[
                     { label: "Open Tasks", value: openTasks.length, color: GOLD },
@@ -669,6 +720,8 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [projectCreateError, setProjectCreateError] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [projectDeleteProposed, setProjectDeleteProposed] = useState<Set<string>>(new Set());
@@ -686,12 +739,46 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
   }, [linkedTarget]);
 
   async function handleCreateProject() {
-    if (!newProjectName.trim()) return;
-    const p = await createProject(newProjectName.trim());
-    setProjects((prev) => [p, ...prev]);
-    setNewProjectName("");
-    setCreating(false);
-    setSelected(p);
+    const trimmedName = newProjectName.trim();
+    setProjectCreateError("");
+
+    if (!trimmedName) {
+      setProjectCreateError("Project name is required before Create can run.");
+      return;
+    }
+
+    try {
+      setCreatingProject(true);
+      const p = await createProject(trimmedName);
+      setProjects((prev) => [p, ...prev]);
+      setNewProjectName("");
+      setCreating(false);
+      setSelected(p);
+    } catch (error) {
+      let message = "";
+
+      if (error instanceof Error) {
+        message = error.message;
+      } else if (error && typeof error === "object") {
+        const record = error as Record<string, unknown>;
+        const parts = [
+          record.message ? `message=${String(record.message)}` : "",
+          record.details ? `details=${String(record.details)}` : "",
+          record.hint ? `hint=${String(record.hint)}` : "",
+          record.code ? `code=${String(record.code)}` : "",
+          record.status ? `status=${String(record.status)}` : "",
+          record.statusText ? `statusText=${String(record.statusText)}` : "",
+        ].filter(Boolean);
+
+        message = parts.length ? parts.join(" | ") : JSON.stringify(record);
+      } else {
+        message = String(error);
+      }
+
+      setProjectCreateError(`Project create failed: ${message}`);
+    } finally {
+      setCreatingProject(false);
+    }
   }
 
   function handleArchiveProject(p: Project, e: React.MouseEvent) {
@@ -732,13 +819,7 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
         snapshotData: { project_id: id, project_name: proj?.name },
       },
       async () => {
-        await proposeAction({
-          action_type: "project_delete",
-          title: `Delete project: "${proj?.name ?? id}"`,
-          description: `Permanently delete the project "${proj?.name ?? id}" and all its tasks, notes, and links. This cannot be undone.`,
-          proposed_by: "USER",
-          payload: { project_id: id, project_name: proj?.name },
-        });
+        // Read-only safe mode: approval proposal writes are locked.
         setProjectDeleteProposed((prev) => new Set(prev).add(id));
       }
     );
@@ -774,11 +855,21 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
             <div className="flex gap-1.5">
               <button
                 onClick={handleCreateProject}
-                className="flex-1 py-2 rounded-lg text-xs font-bold tracking-widest uppercase hover:opacity-80"
+                disabled={creatingProject}
+                className="flex-1 py-2 rounded-lg text-xs font-bold tracking-widest uppercase hover:opacity-80 disabled:opacity-50"
                 style={{ backgroundColor: GOLD, color: NAVY }}
               >
-                Create
+                {creatingProject ? "Creating..." : "Create"}
               </button>
+
+              {projectCreateError && (
+                <div
+                  className="rounded-lg border px-3 py-2 text-xs leading-relaxed"
+                  style={{ borderColor: "rgba(248,113,113,0.35)", backgroundColor: "rgba(248,113,113,0.08)", color: "#FCA5A5" }}
+                >
+                  {projectCreateError}
+                </div>
+              )}
               <button
                 onClick={() => setCreating(false)}
                 className="px-3 py-2 rounded-lg text-xs font-bold tracking-widest uppercase hover:opacity-80"
@@ -875,3 +966,6 @@ export default function ProjectsView({ onNavigateLinked, linkedTarget }: Project
     </div>
   );
 }
+
+
+

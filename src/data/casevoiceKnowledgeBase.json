@@ -1,0 +1,56 @@
+﻿{
+  "schema_version": "casevoice-mini-brain-v1",
+  "mode": "local-read-only",
+  "last_updated": "2026-05-12",
+  "north_star": {
+    "current": "Build CASEVOICE into a safe local-first command center that can read evidence, understand current project state, route work to Team Members, and keep all execution behind explicit approval gates.",
+    "immediate_priority_order": [
+      "Startup Lock and CRM connection integrity",
+      "Mini-Brain v1 local read-only truth layer",
+      "Team Member Queue autonomy from grounded context",
+      "Company Health / ER Monitor truth-only hardening",
+      "Conference / Meeting workflow that turns founder intent into scoped work packets",
+      "Drive Brain evidence retrieval before answering",
+      "Approval-to-execution only after guardrails are ready"
+    ],
+    "parked_for_now": [
+      "Connector room polish",
+      "GitHub write wiring",
+      "Email send wiring",
+      "Drive write/delete/merge behavior",
+      "Autonomous Team Member execution",
+      "App.tsx navigation changes unless explicitly approved"
+    ]
+  },
+  "protected_rules": {
+    "app_tsx": "src/App.tsx is protected and must not be changed unless explicitly approved.",
+    "health_boundary": "Health reports system truth only. No interpretation or decision logic.",
+    "write_boundary": "No DB writes, Drive writes/deletes, GitHub writes, email sends, or Team Member execution without explicit approval.",
+    "checkpoint_rule": "Create and verify a checkpoint before significant changes."
+  },
+  "current_known_files": {
+    "team_members_contract": "src/lib/teamMembers.ts",
+    "team_member_draft_generator": "src/lib/teamMemberDraftGenerator.ts",
+    "team_member_draft_contract": "src/lib/teamMemberDraftContract.ts",
+    "queue_contract": "src/lib/boysQueue.ts",
+    "queue_panel": "src/components/BoysQueuePanel.tsx",
+    "back_office": "src/screens/BackOfficeView.tsx",
+    "health": "src/screens/HealthView.tsx",
+    "connectors": "src/screens/ConnectorControlRoomView.tsx",
+    "drive_brain_index": "src/lib/driveBrainIndex.ts"
+  },
+  "team_member_boundaries": {
+    "current_mode": "read-only / screen-only unless explicitly approved",
+    "meaning_gate_required_sections": ["ISSUE:", "RECOMMENDED FIX:", "QUESTIONS FOR FOUNDER:", "FIRE LEVEL:"],
+    "safe_next_team_member_goal": "Use Mini-Brain truth to generate grounded screen-only Team Member discussion or queue draft previews before any execution or write path is connected."
+  },
+  "next_safe_action": {
+    "after_mini_brain_v1": "Consume Mini-Brain from the safest existing room without touching App.tsx, then use it to ground Team Member discussion/work packets.",
+    "do_not_do_next": [
+      "Do not polish connector receipts before Team Member / Mini-Brain work.",
+      "Do not patch App.tsx.",
+      "Do not wire autonomous execution.",
+      "Do not write to database, Drive, GitHub, or email."
+    ]
+  }
+}
