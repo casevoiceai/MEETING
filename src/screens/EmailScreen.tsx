@@ -200,7 +200,7 @@ export default function EmailScreen() {
             className="rounded-xl px-4 py-3 text-xs leading-relaxed"
             style={{ backgroundColor: CARD, border: `1px solid ${BORDER}`, color: DIM }}
           >
-            <span style={{ color: MUTED }}>Signature:</span> Daniel J. Vogt | Founder, Vogtcom LLC | casevoice.ai@gmail.com | (570) 281-2357
+            <span style={{ color: MUTED }}>Signature:</span> Daniel J. Vogt | Founder, Vogtcom LLC | vogtcomllc@gmail.com | (570) 281-2357
           </div>
 
           {/* Send button */}
