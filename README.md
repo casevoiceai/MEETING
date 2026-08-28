@@ -38,6 +38,10 @@ The local AI service runs independently at http://127.0.0.1:5000. Start it accor
 
 Production uses Cloudflare Workers via `wrangler`. See `wrangler.jsonc` for config. Do not use Vercel.
 
+`GOOGLE_CLIENT_SECRET` must be stored as a Cloudflare Worker secret. Never commit the secret value to `wrangler.jsonc`, `.env`, documentation, issues, pull requests, or other tracked files.
+
+Before deploying a new or rotated Google OAuth credential, set the production Worker secret using the Cloudflare dashboard or Wrangler secret management, then verify the OAuth connection before removing the prior credential.
+
 ```
 npm run build
 npx wrangler deploy
