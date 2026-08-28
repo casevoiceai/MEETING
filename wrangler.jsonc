@@ -20,7 +20,6 @@
     }
   ],
   "vars": {
-    "GOOGLE_CLIENT_ID": "663742742568-umceuanlki4bnhqcth77vlsqenpuepek.apps.googleusercontent.com",
-    "GOOGLE_CLIENT_SECRET": "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"
+    "GOOGLE_CLIENT_ID": "663742742568-umceuanlki4bnhqcth77vlsqenpuepek.apps.googleusercontent.com"
   }
 }
