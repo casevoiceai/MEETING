@@ -1,31 +1,33 @@
-﻿{
+{
   "schema_version": "casevoice-mini-brain-v1",
   "mode": "local-read-only",
-  "last_updated": "2026-05-12",
+  "last_updated": "2026-09-02",
   "north_star": {
-    "current": "Build CASEVOICE into a safe local-first command center that can read evidence, understand current project state, route work to Team Members, and keep all execution behind explicit approval gates.",
+    "current": "CASEVOICE / My Written Statement is Vogtcom's primary commercial objective. Build toward a $300,000 yearly gross collected revenue run-rate while preserving AstroBehr as the one protected creator/content/community/commerce/IP lane.",
     "immediate_priority_order": [
-      "Startup Lock and CRM connection integrity",
-      "Mini-Brain v1 local read-only truth layer",
-      "Team Member Queue autonomy from grounded context",
-      "Company Health / ER Monitor truth-only hardening",
-      "Conference / Meeting workflow that turns founder intent into scoped work packets",
-      "Drive Brain evidence retrieval before answering",
-      "Approval-to-execution only after guardrails are ready"
+      "Keep CASEVOICE first and show the current gate clearly: 94 PASS / 0 OPEN / 3 BLOCKED",
+      "Wait for qualified-counsel classification before target-organization outreach; do not treat outreach clearance as pilot clearance",
+      "Use allowed CASE time for fictional demo rehearsal and qualified healthcare target research without contact",
+      "Protect one bounded AstroBehr Studio Day and work one Astro lane deeply at a time",
+      "Keep MyTravBot and my420journal parked as active-development products",
+      "Surface visible progress, trends, evidence, and a small set of daily side quests",
+      "Convert new founder ideas into structured hypotheses before classifying them REQUIRED NOW, HIGH-LEVERAGE ADJACENT, or PARK"
     ],
     "parked_for_now": [
-      "Connector room polish",
-      "GitHub write wiring",
-      "Email send wiring",
-      "Drive write/delete/merge behavior",
+      "MyTravBot coding, redesign, feature merges, or roadmap restart",
+      "my420journal active development, outreach, commercialization, or Shared Journey re-enable",
+      "GutHub expansion into a standalone software company",
+      "New dashboard or CRM redesign work that does not directly support the current North Star",
       "Autonomous Team Member execution",
-      "App.tsx navigation changes unless explicitly approved"
+      "Unapproved Drive, GitHub, database, or email write paths"
     ]
   },
   "protected_rules": {
     "app_tsx": "src/App.tsx is protected and must not be changed unless explicitly approved.",
     "health_boundary": "Health reports system truth only. No interpretation or decision logic.",
-    "write_boundary": "No DB writes, Drive writes/deletes, GitHub writes, email sends, or Team Member execution without explicit approval.",
+    "write_boundary": "No DB writes, Drive writes/deletes, GitHub writes, or Team Member execution without explicit approval.",
+    "email_boundary": "Never send an email without Daniel's explicit final approval immediately before sending. Approval must cover the exact recipient, subject, body, and attachments. Draft-only by default.",
+    "north_star_source": "VOGTCOM CANON NORTH STAR - NEXT 90 DAYS - CURRENT, Drive ID 1yv2FKe_9dRcrfFN6DRt9PY8kikKrdu8Y5aK-pJcjEso.",
     "checkpoint_rule": "Create and verify a checkpoint before significant changes."
   },
   "current_known_files": {
@@ -37,20 +39,22 @@
     "back_office": "src/screens/BackOfficeView.tsx",
     "health": "src/screens/HealthView.tsx",
     "connectors": "src/screens/ConnectorControlRoomView.tsx",
-    "drive_brain_index": "src/lib/driveBrainIndex.ts"
+    "drive_brain_index": "src/lib/driveBrainIndex.ts",
+    "project_rooms_source": "src/lib/projectRoomsSource.ts"
   },
   "team_member_boundaries": {
     "current_mode": "read-only / screen-only unless explicitly approved",
     "meaning_gate_required_sections": ["ISSUE:", "RECOMMENDED FIX:", "QUESTIONS FOR FOUNDER:", "FIRE LEVEL:"],
-    "safe_next_team_member_goal": "Use Mini-Brain truth to generate grounded screen-only Team Member discussion or queue draft previews before any execution or write path is connected."
+    "safe_next_team_member_goal": "Support the active CASE objective with grounded evidence and small side quests without creating new workstreams or changing parked-product status."
   },
   "next_safe_action": {
-    "after_mini_brain_v1": "Consume Mini-Brain from the safest existing room without touching App.tsx, then use it to ground Team Member discussion/work packets.",
+    "after_mini_brain_v1": "Use the current North Star and verified control records to present visible progress, the CASE blocker, and a small number of next side quests. The CRM is an execution-support surface, not a new company project.",
     "do_not_do_next": [
-      "Do not polish connector receipts before Team Member / Mini-Brain work.",
-      "Do not patch App.tsx.",
+      "Do not redesign the CRM because progress feels invisible.",
+      "Do not reopen MyTravBot or my420journal from stale task lists.",
+      "Do not promote GutHub above CASE priority.",
       "Do not wire autonomous execution.",
-      "Do not write to database, Drive, GitHub, or email."
+      "Do not send email without Daniel's exact final approval."
     ]
   }
 }
