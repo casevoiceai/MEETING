@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import FoundryView from "./screens/FoundryView";
 import MeetingRoomView from "./screens/MeetingRoomView";
 import VaultView from "./screens/VaultView";
 import DirectChat from "./screens/DirectChat";
@@ -13,6 +14,7 @@ import CleanRoomView from "./screens/CleanRoomView";
 import ConnectorControlRoomView from "./screens/ConnectorControlRoomView";
 
 type MainTab =
+  | "FOUNDRY"
   | "FRONT DESK"
   | "HAVEN"
   | "CONFERENCE ROOM"
@@ -26,6 +28,7 @@ type MainTab =
   | "CONNECTORS";
 
 const MAIN_TABS: MainTab[] = [
+  "FOUNDRY",
   "FRONT DESK",
   "HAVEN",
   "CONFERENCE ROOM",
@@ -143,9 +146,8 @@ function OfficeSuppliesScreen() {
   );
 }
 
-
 export default function App() {
-  const [activeTab, setActiveTab] = useState<MainTab>("FRONT DESK");
+  const [activeTab, setActiveTab] = useState<MainTab>("FOUNDRY");
   const [reportsOpen, setReportsOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -230,6 +232,7 @@ export default function App() {
       </header>
 
       <main className={`flex-1 ${mainOverflowClass}`}>
+        {activeTab === "FOUNDRY" && <FoundryView />}
         {activeTab === "FRONT DESK" && <MeetingRoomView onSendToDirect={() => setActiveTab("CONFERENCE ROOM")} />}
         {activeTab === "HAVEN" && <HAVENProjectRoom />}
         {activeTab === "CONFERENCE ROOM" && <DirectChat />}
@@ -249,5 +252,3 @@ export default function App() {
     </div>
   );
 }
-
-

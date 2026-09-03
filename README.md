@@ -40,6 +40,10 @@ Production uses Cloudflare Workers via `wrangler`. See `wrangler.jsonc` for conf
 
 `GOOGLE_CLIENT_SECRET` must be stored as a Cloudflare Worker secret. Never commit the secret value to `wrangler.jsonc`, `.env`, documentation, issues, pull requests, or other tracked files.
 
+`OPENAI_API_KEY` must also be stored as a Cloudflare Worker secret. Foundry calls OpenAI only through the Worker route at `/api/foundry-analyze`; never expose the key in browser code or tracked files.
+
+`FOUNDRY_ACCESS_KEY` must be a separate strong random Cloudflare Worker secret. The Foundry browser asks Daniel for this key once and keeps it in local browser storage. The Worker rejects missing or incorrect keys before any OpenAI request is made. Never commit this key.
+
 Before deploying a new or rotated Google OAuth credential, set the production Worker secret using the Cloudflare dashboard or Wrangler secret management, then verify the OAuth connection before removing the prior credential.
 
 ```

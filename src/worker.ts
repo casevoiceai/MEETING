@@ -1,9 +1,13 @@
+import { handleFoundryAnalyze } from "./foundryWorker";
+
 export interface Env {
   ASSETS: Fetcher;
   OAUTH_TOKENS: KVNamespace;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   GOOGLE_DRIVE_PARENT_FOLDER_ID?: string;
+  OPENAI_API_KEY: string;
+  FOUNDRY_ACCESS_KEY: string;
 }
 
 const REDIRECT_URI = "https://foundercrm.casevoice-ai.workers.dev/oauth/callback";
@@ -187,6 +191,10 @@ async function handleApi(request: Request, env: Env) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/foundry-analyze") {
+      return handleFoundryAnalyze(request, env);
+    }
 
     if (url.pathname === "/oauth/start") {
       const params = new URLSearchParams({
