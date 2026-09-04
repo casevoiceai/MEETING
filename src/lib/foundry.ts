@@ -97,7 +97,6 @@ export interface FoundryDecisionLogEntry {
 const CARDS_KEY = "vogtcom_foundry_cards_v1";
 const CAPTURES_KEY = "vogtcom_foundry_captures_v1";
 const DECISIONS_KEY = "vogtcom_foundry_decision_log_v1";
-const BROWSER_UNLOCK_STORAGE = "vogtcom_foundry_unlock_v1";
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -116,16 +115,6 @@ function makeId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `foundry_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
-
-function getFoundryAccessKey(): string {
-  const existing = localStorage.getItem(BROWSER_UNLOCK_STORAGE)?.trim() ?? "";
-  if (existing) return existing;
-
-  const supplied = window.prompt("Enter your private Foundry access key.")?.trim() ?? "";
-  if (!supplied) throw new Error("Foundry AI is locked until the private access key is entered.");
-  localStorage.setItem(BROWSER_UNLOCK_STORAGE, supplied);
-  return supplied;
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -149,6 +138,12 @@ function updateCapture(id: string, patch: Partial<FoundryCapture>): void {
   );
 }
 
+function accessError(status: number): string {
+  return status === 401 || status === 403
+    ? "Your Founder CRM sign-in session is missing or expired. Refresh the page and sign in again."
+    : "";
+}
+
 export async function listFoundryCards(): Promise<FoundryCard[]> {
   return readJson<FoundryCard[]>(CARDS_KEY, []).sort(
     (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)
@@ -157,6 +152,27 @@ export async function listFoundryCards(): Promise<FoundryCard[]> {
 
 export function listFoundryDecisionLog(): FoundryDecisionLogEntry[] {
   return readJson<FoundryDecisionLogEntry[]>(DECISIONS_KEY, []);
+}
+
+export async function transcribeFoundryAudio(audio: Blob): Promise<string> {
+  if (!audio.size) throw new Error("No voice recording was captured.");
+  if (audio.size > 10 * 1024 * 1024) throw new Error("Keep voice notes under 10 MB.");
+
+  const formData = new FormData();
+  const type = audio.type || "audio/webm";
+  const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : type.includes("wav") ? "wav" : "webm";
+  formData.append("audio", audio, `foundry-voice.${extension}`);
+
+  const response = await fetch("/api/foundry-transcribe", {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin",
+  });
+  const payload = (await response.json().catch(() => ({}))) as { text?: string; error?: string };
+  if (!response.ok || !payload.text?.trim()) {
+    throw new Error(accessError(response.status) || payload.error || "Voice transcription failed.");
+  }
+  return payload.text.trim();
 }
 
 export async function analyzeFoundryIdea(intake: FoundryIntake): Promise<FoundryCard> {
@@ -196,10 +212,8 @@ export async function analyzeFoundryIdea(intake: FoundryIntake): Promise<Foundry
   writeJson(CAPTURES_KEY, [capture, ...captures].slice(0, 500));
 
   let imageDataUrl = "";
-  let accessKey = "";
   try {
     if (intake.image) imageDataUrl = await fileToDataUrl(intake.image);
-    accessKey = getFoundryAccessKey();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Foundry input preparation failed.";
     updateCapture(captureId, { analysis_status: "failed", error: message });
@@ -210,10 +224,8 @@ export async function analyzeFoundryIdea(intake: FoundryIntake): Promise<Foundry
   try {
     response = await fetch("/api/foundry-analyze", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Foundry-Key": accessKey,
-      },
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({
         raw_input: rawInput,
         source_url: sourceUrl,
@@ -228,11 +240,9 @@ export async function analyzeFoundryIdea(intake: FoundryIntake): Promise<Foundry
     throw new Error(`${message} Your raw thought was preserved locally.`);
   }
 
-  if (response.status === 401) localStorage.removeItem(BROWSER_UNLOCK_STORAGE);
-
   const payload = (await response.json().catch(() => ({}))) as { analysis?: FoundryAnalysis; error?: string };
   if (!response.ok || !payload.analysis) {
-    const message = payload.error || `Foundry analysis failed (${response.status}).`;
+    const message = accessError(response.status) || payload.error || `Foundry analysis failed (${response.status}).`;
     updateCapture(captureId, { analysis_status: "failed", error: message });
     throw new Error(`${message} Your raw thought was preserved locally.`);
   }
