@@ -1,6 +1,5 @@
 export interface FoundryWorkerEnv {
   OPENAI_API_KEY: string;
-  FOUNDRY_ACCESS_KEY: string;
 }
 
 const analysisSchema = {
@@ -86,13 +85,48 @@ function extractOutputText(payload: any): string {
   return "";
 }
 
+function audioFilename(type: string): string {
+  if (type.includes("mp4")) return "foundry-voice.m4a";
+  if (type.includes("ogg")) return "foundry-voice.ogg";
+  if (type.includes("wav")) return "foundry-voice.wav";
+  return "foundry-voice.webm";
+}
+
+export async function handleFoundryTranscribe(request: Request, env: FoundryWorkerEnv): Promise<Response> {
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (!env.OPENAI_API_KEY?.trim()) return json({ error: "Foundry AI is not configured" }, 503);
+
+  try {
+    const incoming = await request.formData();
+    const audio = incoming.get("audio");
+    if (!(audio instanceof Blob) || audio.size === 0) return json({ error: "No voice recording received" }, 400);
+    if (audio.size > 10 * 1024 * 1024) return json({ error: "Voice recording is too large" }, 400);
+
+    const form = new FormData();
+    form.append("file", audio, audioFilename(audio.type || "audio/webm"));
+    form.append("model", "gpt-4o-mini-transcribe");
+    form.append("language", "en");
+
+    const openaiResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+      body: form,
+    });
+    const payload = (await openaiResponse.json()) as any;
+    if (!openaiResponse.ok) {
+      return json({ error: payload?.error?.message || `Transcription failed (${openaiResponse.status})` }, 502);
+    }
+
+    const text = String(payload?.text ?? "").trim();
+    if (!text) return json({ error: "No speech was detected" }, 422);
+    return json({ text }, 200);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Voice transcription failed" }, 500);
+  }
+}
+
 export async function handleFoundryAnalyze(request: Request, env: FoundryWorkerEnv): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
-  const expectedKey = env.FOUNDRY_ACCESS_KEY?.trim() ?? "";
-  const suppliedKey = request.headers.get("X-Foundry-Key")?.trim() ?? "";
-  if (!expectedKey) return json({ error: "Foundry access control is not configured" }, 503);
-  if (!suppliedKey || suppliedKey !== expectedKey) return json({ error: "Foundry access denied" }, 401);
   if (!env.OPENAI_API_KEY?.trim()) return json({ error: "Foundry AI is not configured" }, 503);
 
   try {
