@@ -48,3 +48,50 @@
   transform: scaleX(2) !important;
   transform-origin: left center !important;
 }
+
+/* Foundry TL;DR: read like a conclusion, not a miniature report. */
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) {
+  padding: 18px !important;
+}
+
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-2.text-sm {
+  font-size: 15px !important;
+  line-height: 1.45 !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  overflow: hidden !important;
+}
+
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div {
+  grid-column: auto !important;
+}
+
+/* Verdict, continue, stop, next move, unknown. */
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div:nth-child(1) { order: 1; }
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div:nth-child(3) { order: 2; }
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div:nth-child(4) { order: 3; }
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div:nth-child(2) { order: 4; }
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div:nth-child(5) { order: 5; }
+
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div > div:first-child {
+  font-size: 10px !important;
+}
+
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div > div:nth-child(2) {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  overflow: hidden !important;
+}
+
+div.mb-5.rounded-xl.border.p-4:has(> .tracking-\[0\.18em\]):has(> .mt-4.grid.gap-3.md\:grid-cols-2) > .mt-4.grid > div:nth-child(2) > div:nth-child(2) {
+  -webkit-line-clamp: 3 !important;
+}
