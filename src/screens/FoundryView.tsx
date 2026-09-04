@@ -76,6 +76,23 @@ export default function FoundryView() {
     if (selectedId) return cards.find((card) => card.id === selectedId) ?? null;
     return decisionCards[0] ?? null;
   }, [cards, decisionCards, selectedId]);
+  const selectedOverview = useMemo(() => {
+    if (!selected) return null;
+    const founderVerdict = selected.decision
+      ? `YOU: ${selected.decision} · STATE: ${selected.lifecycle}`
+      : `AI: ${selected.recommendation} · ${selected.score}/100`;
+    const nextMove = selected.lifecycle === "KILL"
+      ? `Stop unless this changes: ${selected.kill_trigger}`
+      : selected.smallest_test;
+    return {
+      idea: compact(selected.proposed_solution || selected.problem || selected.title, 260),
+      verdict: founderVerdict,
+      continueReason: selected.evidence_for?.[0] || "No strong positive evidence has been established yet.",
+      stopReason: selected.evidence_against?.[0] || "No strong counter-evidence has been established yet.",
+      biggestUnknown: selected.unknowns?.[0] || "No material unknown was recorded.",
+      nextMove,
+    };
+  }, [selected]);
   const decisionCount = decisionCards.length;
   const activeCount = cards.filter(isActiveCard).length;
   const holdCount = cards.filter((card) => card.lifecycle === "HOLD").length;
@@ -528,6 +545,35 @@ export default function FoundryView() {
               </div>
             ) : (
               <>
+                {selectedOverview && (
+                  <div className="mb-5 rounded-xl border p-4" style={{ borderColor: GOLD, backgroundColor: "rgba(201,168,76,0.06)" }}>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: GOLD }}>TL;DR / OVERVIEW</div>
+                    <div className="mt-2 text-sm font-semibold leading-relaxed" style={{ color: TEXT }}>{selectedOverview.idea}</div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>VERDICT</div>
+                        <div className="mt-1 text-xs font-bold" style={{ color: selected.decision ? GOLD : recommendationTone[selected.recommendation] }}>{selectedOverview.verdict}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>EXACT NEXT MOVE</div>
+                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.nextMove, 260)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "#4ADE80" }}>BEST REASON TO CONTINUE</div>
+                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.continueReason, 240)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "#F87171" }}>BEST REASON TO STOP</div>
+                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.stopReason, 240)}</div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>BIGGEST UNKNOWN</div>
+                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.biggestUnknown, 300)}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD }}>{selected.lifecycle === "TESTABLE" ? "FOUNDRY DECISION" : "FOUNDRY RECORD"}</div>
