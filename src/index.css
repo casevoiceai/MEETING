@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Foundry voice feedback: keep the live mic monitor compact and readable. */
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+  margin-top: 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:first-child {
+  flex: 0 0 auto !important;
+  gap: 8px !important;
+}
+
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:nth-child(2) {
+  display: flex !important;
+  align-items: center !important;
+  flex: 1 1 160px !important;
+  gap: 8px !important;
+  margin-top: 0 !important;
+  min-width: 140px !important;
+}
+
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:nth-child(2) > div:first-child {
+  flex: 0 1 220px !important;
+  min-width: 120px !important;
+  max-width: 220px !important;
+}
+
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:nth-child(2) > div:first-child > div:first-child,
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:nth-child(2) > div:first-child > div:last-child,
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:nth-child(2) > div:nth-child(2) {
+  display: none !important;
+}
+
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:nth-child(2) > div:first-child > div:nth-child(2) {
+  height: 6px !important;
+}
+
+[aria-live="polite"].mt-3.rounded-xl.border.p-3 > div:nth-child(2) > div:first-child > div:nth-child(2) > div {
+  transform: scaleX(2) !important;
+  transform-origin: left center !important;
+}
