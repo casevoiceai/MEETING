@@ -18,6 +18,8 @@ const TEXT = "#D0DFEE";
 const MUTED = "#8A9BB5";
 const LIVE_CHUNK_MS = 4000;
 
+type VaultFilter = "ACTIVE" | "HOLD" | "KILL" | "ALL";
+
 const recommendationTone: Record<string, string> = {
   TEST: "#4ADE80",
   HOLD: "#F59E0B",
@@ -33,14 +35,27 @@ function chooseRecorderMimeType(): string {
   return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
+function isActiveCard(card: FoundryCard) {
+  return card.lifecycle !== "HOLD" && card.lifecycle !== "KILL";
+}
+
+function matchesFilter(card: FoundryCard, filter: VaultFilter) {
+  if (filter === "ALL") return true;
+  if (filter === "HOLD") return card.lifecycle === "HOLD";
+  if (filter === "KILL") return card.lifecycle === "KILL";
+  return isActiveCard(card);
+}
+
 export default function FoundryView() {
   const [rawInput, setRawInput] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [cards, setCards] = useState<FoundryCard[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [vaultFilter, setVaultFilter] = useState<VaultFilter>("ACTIVE");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [recording, setRecording] = useState(false);
   const [pendingSegments, setPendingSegments] = useState(0);
@@ -55,11 +70,16 @@ export default function FoundryView() {
   const levelFrameRef = useRef<number | null>(null);
   const transcribing = pendingSegments > 0;
 
-  const selected = useMemo(
-    () => cards.find((card) => card.id === selectedId) ?? cards.find((card) => card.lifecycle === "TESTABLE") ?? cards[0] ?? null,
-    [cards, selectedId]
-  );
-  const decisionCount = cards.filter((card) => card.lifecycle === "TESTABLE").length;
+  const decisionCards = useMemo(() => cards.filter((card) => card.lifecycle === "TESTABLE"), [cards]);
+  const visibleCards = useMemo(() => cards.filter((card) => matchesFilter(card, vaultFilter)), [cards, vaultFilter]);
+  const selected = useMemo(() => {
+    if (selectedId) return cards.find((card) => card.id === selectedId) ?? null;
+    return decisionCards[0] ?? null;
+  }, [cards, decisionCards, selectedId]);
+  const decisionCount = decisionCards.length;
+  const activeCount = cards.filter(isActiveCard).length;
+  const holdCount = cards.filter((card) => card.lifecycle === "HOLD").length;
+  const killCount = cards.filter((card) => card.lifecycle === "KILL").length;
   const levelLabel = micLevel < 0.12 ? "TOO QUIET" : micLevel > 0.85 ? "TOO LOUD" : "GOOD LEVEL";
   const levelColor = micLevel < 0.12 ? "#FBBF24" : micLevel > 0.85 ? "#F87171" : "#4ADE80";
   const voiceStatus = recording
@@ -75,7 +95,21 @@ export default function FoundryView() {
   async function refresh(preferId?: string) {
     const next = await listFoundryCards();
     setCards(next);
-    if (preferId) setSelectedId(preferId);
+    if (preferId && next.some((card) => card.id === preferId)) {
+      setSelectedId(preferId);
+      return;
+    }
+    setSelectedId(next.find((card) => card.lifecycle === "TESTABLE")?.id ?? "");
+  }
+
+  function changeVaultFilter(filter: VaultFilter) {
+    setVaultFilter(filter);
+    setShowAnalysis(false);
+    const matching = cards.filter((card) => matchesFilter(card, filter));
+    const next = filter === "ACTIVE"
+      ? matching.find((card) => card.lifecycle === "TESTABLE") ?? matching[0]
+      : matching[0];
+    setSelectedId(next?.id ?? "");
   }
 
   function clearSegmentTimer() {
@@ -237,6 +271,7 @@ export default function FoundryView() {
     }
 
     setError("");
+    setNotice("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -260,6 +295,7 @@ export default function FoundryView() {
     }
     setBusy(true);
     setError("");
+    setNotice("");
     setShowAnalysis(false);
     try {
       const card = await analyzeFoundryIdea({
@@ -271,6 +307,7 @@ export default function FoundryView() {
       setRawInput("");
       setSourceUrl("");
       setImage(null);
+      setVaultFilter("ACTIVE");
       await refresh(card.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Foundry analysis failed.");
@@ -283,10 +320,21 @@ export default function FoundryView() {
     if (!selected) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const updated = await recordFoundryDecision(selected, decision);
-      setCards((current) => current.map((card) => (card.id === updated.id ? updated : card)));
-      setSelectedId(updated.id);
+      const nextCards = cards.map((card) => (card.id === updated.id ? updated : card));
+      setCards(nextCards);
+      setShowAnalysis(false);
+
+      const nextDecision = nextCards.find((card) => card.lifecycle === "TESTABLE" && card.id !== updated.id);
+      setSelectedId(nextDecision?.id ?? "");
+      setVaultFilter("ACTIVE");
+
+      if (decision === "HOLD") setNotice(`Moved “${updated.title}” to HOLD. It remains in the Vault history.`);
+      else if (decision === "KILL") setNotice(`Moved “${updated.title}” to KILL. It remains in the Vault history.`);
+      else if (decision === "TEST") setNotice(`Test approved for “${updated.title}”. It moved out of the decision queue and remains ACTIVE as TESTING.`);
+      else setNotice(`Decision recorded for “${updated.title}”.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not record the Foundry decision.");
     } finally {
@@ -416,15 +464,43 @@ export default function FoundryView() {
               {busy ? "RESEARCHING…" : "RESEARCH IDEA"}
             </button>
           </div>
+          {notice && <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "#4ADE80", color: "#86EFAC" }}>{notice}</div>}
           {error && <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "#F87171", color: "#FCA5A5" }}>{error}</div>}
         </section>
 
         <div className="mt-6 grid gap-5 lg:grid-cols-[0.85fr_1.6fr]">
           <section className="rounded-2xl border p-4" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-            <div className="mb-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: MUTED }}>IDEA VAULT</div>
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: MUTED }}>IDEA VAULT</div>
+            <div className="mb-3 text-[10px]" style={{ color: MUTED }}>Decisions leave the active queue but stay here as history.</div>
+            <div className="mb-3 grid grid-cols-4 gap-1">
+              {([
+                ["ACTIVE", activeCount],
+                ["HOLD", holdCount],
+                ["KILL", killCount],
+                ["ALL", cards.length],
+              ] as [VaultFilter, number][]).map(([filter, count]) => (
+                <button
+                  type="button"
+                  key={filter}
+                  onClick={() => changeVaultFilter(filter)}
+                  className="rounded-lg border px-2 py-2 text-[9px] font-bold"
+                  style={{
+                    borderColor: vaultFilter === filter ? GOLD : BORDER,
+                    color: vaultFilter === filter ? GOLD : MUTED,
+                    backgroundColor: BG,
+                  }}
+                >
+                  {filter} {count}
+                </button>
+              ))}
+            </div>
             <div className="space-y-2">
-              {cards.length === 0 && <div className="rounded-xl border p-4 text-sm" style={{ borderColor: BORDER, color: MUTED }}>No Foundry cards yet.</div>}
-              {cards.map((card) => (
+              {visibleCards.length === 0 && (
+                <div className="rounded-xl border p-4 text-sm" style={{ borderColor: BORDER, color: MUTED }}>
+                  No {vaultFilter.toLowerCase()} Foundry cards.
+                </div>
+              )}
+              {visibleCards.map((card) => (
                 <button
                   type="button"
                   key={card.id}
@@ -434,10 +510,12 @@ export default function FoundryView() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="text-sm font-semibold" style={{ color: TEXT }}>{card.title}</div>
-                    <div className="text-[9px] font-bold uppercase" style={{ color: recommendationTone[card.recommendation] ?? MUTED }}>{card.recommendation}</div>
+                    <div className="text-right">
+                      <div className="text-[9px] font-bold uppercase" style={{ color: recommendationTone[card.recommendation] ?? MUTED }}>AI {card.recommendation}</div>
+                      <div className="mt-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: card.lifecycle === "HOLD" ? "#FBBF24" : card.lifecycle === "KILL" ? "#FCA5A5" : GOLD }}>{card.lifecycle}</div>
+                    </div>
                   </div>
                   <div className="mt-2 text-[11px]" style={{ color: MUTED }}>{compact(card.problem, 95)}</div>
-                  <div className="mt-2 text-[9px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>{card.lifecycle}</div>
                 </button>
               ))}
             </div>
@@ -445,13 +523,16 @@ export default function FoundryView() {
 
           <section className="rounded-2xl border p-5" style={{ borderColor: BORDER, backgroundColor: CARD }}>
             {!selected ? (
-              <div className="py-12 text-center text-sm" style={{ color: MUTED }}>Your next decision will appear here.</div>
+              <div className="py-12 text-center text-sm" style={{ color: MUTED }}>
+                {decisionCount > 0 ? "Select a Foundry decision from the Vault." : "No Foundry decisions need your attention."}
+              </div>
             ) : (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD }}>FOUNDRY DECISION</div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD }}>{selected.lifecycle === "TESTABLE" ? "FOUNDRY DECISION" : "FOUNDRY RECORD"}</div>
                     <h2 className="mt-2 text-xl font-bold">{selected.title}</h2>
+                    {selected.lifecycle !== "TESTABLE" && <div className="mt-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>STATE: {selected.lifecycle}</div>}
                   </div>
                   <div className="rounded-lg border px-3 py-2 text-sm font-bold" style={{ borderColor: recommendationTone[selected.recommendation], color: recommendationTone[selected.recommendation] }}>
                     AI: {selected.recommendation} · {selected.score}/100
@@ -526,12 +607,12 @@ export default function FoundryView() {
                       </div>
                     ))}
                     <div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>AI TEAM</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>FOUNDRY REVIEW SQUAD</div>
                       <div className="mt-2 grid gap-2 md:grid-cols-2">
                         {selected.workers.map((worker) => (
-                          <div key={`${worker.role}-${worker.finding}`} className="rounded-lg border p-3 text-xs" style={{ borderColor: BORDER }}>
-                            <div className="font-bold" style={{ color: GOLD }}>{worker.role}</div>
-                            <div className="mt-1" style={{ color: TEXT }}>{worker.finding}</div>
+                          <div key={`${worker.role}-${worker.finding}`} className="rounded-lg border p-3 text-xs" style={{ borderColor: worker.role.toUpperCase().includes("JERRY") ? "#F87171" : BORDER }}>
+                            <div className="font-bold" style={{ color: worker.role.toUpperCase().includes("JERRY") ? "#FCA5A5" : GOLD }}>{worker.role}</div>
+                            <div className="mt-1 leading-relaxed" style={{ color: TEXT }}>{worker.finding}</div>
                           </div>
                         ))}
                       </div>
