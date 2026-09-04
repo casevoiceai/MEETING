@@ -184,18 +184,13 @@ async function handleApi(request: Request, env: Env) {
   }
 }
 
-function foundryAccessAllowed(ctx: any): boolean {
-  return Boolean(ctx?.access);
-}
-
 export default {
-  async fetch(request: Request, env: Env, ctx: any): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // Cloudflare Access protects the preview hostname before this Worker runs.
+    // Static Assets Workers do not receive ctx.access, so do not re-check it here.
     if (url.pathname === "/api/foundry-analyze" || url.pathname === "/api/foundry-transcribe") {
-      if (!foundryAccessAllowed(ctx)) {
-        return json({ error: "Founder CRM sign-in required" }, 403);
-      }
       return url.pathname === "/api/foundry-analyze"
         ? handleFoundryAnalyze(request, env)
         : handleFoundryTranscribe(request, env);
