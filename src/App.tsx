@@ -1,17 +1,18 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import FoundryView from "./screens/FoundryView";
-import MeetingRoomView from "./screens/MeetingRoomView";
-import VaultView from "./screens/VaultView";
-import DirectChat from "./screens/DirectChat";
-import EmailView from "./screens/EmailView";
-import ProjectsView from "./screens/ProjectsView";
-import BoysQueuePanel from "./components/BoysQueuePanel";
-import SystemReportsModal from "./components/SystemReportsModal";
-import HAVENProjectRoom from "./screens/HAVENProjectRoom";
-import HealthView from "./screens/HealthView";
-import StoreRoomView from "./screens/StoreRoomView";
-import CleanRoomView from "./screens/CleanRoomView";
-import ConnectorControlRoomView from "./screens/ConnectorControlRoomView";
+
+const MeetingRoomView = lazy(() => import("./screens/MeetingRoomView"));
+const VaultView = lazy(() => import("./screens/VaultView"));
+const DirectChat = lazy(() => import("./screens/DirectChat"));
+const EmailView = lazy(() => import("./screens/EmailView"));
+const ProjectsView = lazy(() => import("./screens/ProjectsView"));
+const BoysQueuePanel = lazy(() => import("./components/BoysQueuePanel"));
+const SystemReportsModal = lazy(() => import("./components/SystemReportsModal"));
+const HAVENProjectRoom = lazy(() => import("./screens/HAVENProjectRoom"));
+const HealthView = lazy(() => import("./screens/HealthView"));
+const StoreRoomView = lazy(() => import("./screens/StoreRoomView"));
+const CleanRoomView = lazy(() => import("./screens/CleanRoomView"));
+const ConnectorControlRoomView = lazy(() => import("./screens/ConnectorControlRoomView"));
 
 type MainTab =
   | "FOUNDRY"
@@ -146,6 +147,14 @@ function OfficeSuppliesScreen() {
   );
 }
 
+function LoadingScreen() {
+  return (
+    <div className="h-full w-full p-8" style={{ backgroundColor: "#08111F", color: "#8A9BB5" }}>
+      Loading…
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("FOUNDRY");
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -232,23 +241,29 @@ export default function App() {
       </header>
 
       <main className={`flex-1 ${mainOverflowClass}`}>
-        {activeTab === "FOUNDRY" && <FoundryView />}
-        {activeTab === "FRONT DESK" && <MeetingRoomView onSendToDirect={() => setActiveTab("CONFERENCE ROOM")} />}
-        {activeTab === "HAVEN" && <HAVENProjectRoom />}
-        {activeTab === "CONFERENCE ROOM" && <DirectChat />}
-        {activeTab === "EMAIL" && <EmailView />}
-        {activeTab === "QUEUE" && (
-          <BoysQueuePanel onPendingCountChange={setPendingCount} />
-        )}
-        {activeTab === "VAULT" && <VaultView />}
-        {activeTab === "HEALTH" && <HealthView />}
-        {activeTab === "STORE ROOM" && <StoreRoomView />}
-        {activeTab === "CLEAN ROOM" && <CleanRoomView />}
-        {activeTab === "CONNECTORS" && <ConnectorControlRoomView />}
-        {activeTab === "PROJECTS" && <ProjectsView />}
+        <Suspense fallback={<LoadingScreen />}>
+          {activeTab === "FOUNDRY" && <FoundryView />}
+          {activeTab === "FRONT DESK" && <MeetingRoomView onSendToDirect={() => setActiveTab("CONFERENCE ROOM")} />}
+          {activeTab === "HAVEN" && <HAVENProjectRoom />}
+          {activeTab === "CONFERENCE ROOM" && <DirectChat />}
+          {activeTab === "EMAIL" && <EmailView />}
+          {activeTab === "QUEUE" && (
+            <BoysQueuePanel onPendingCountChange={setPendingCount} />
+          )}
+          {activeTab === "VAULT" && <VaultView />}
+          {activeTab === "HEALTH" && <HealthView />}
+          {activeTab === "STORE ROOM" && <StoreRoomView />}
+          {activeTab === "CLEAN ROOM" && <CleanRoomView />}
+          {activeTab === "CONNECTORS" && <ConnectorControlRoomView />}
+          {activeTab === "PROJECTS" && <ProjectsView />}
+        </Suspense>
       </main>
 
-      <SystemReportsModal isOpen={reportsOpen} onClose={() => setReportsOpen(false)} />
+      {reportsOpen && (
+        <Suspense fallback={null}>
+          <SystemReportsModal isOpen={reportsOpen} onClose={() => setReportsOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
