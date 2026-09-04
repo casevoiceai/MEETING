@@ -81,16 +81,31 @@ export default function FoundryView() {
     const founderVerdict = selected.decision
       ? `YOU: ${selected.decision} · STATE: ${selected.lifecycle}`
       : `AI: ${selected.recommendation} · ${selected.score}/100`;
+    const continueReason = selected.evidence_for?.[0] || "No strong positive evidence has been established yet.";
+    const stopReason = selected.evidence_against?.[0] || "No strong counter-evidence has been established yet.";
+    const biggestUnknown = selected.unknowns?.[0] || "No material unknown was recorded.";
     const nextMove = selected.lifecycle === "KILL"
       ? `Stop unless this changes: ${selected.kill_trigger}`
       : selected.smallest_test;
+    const control = selected.lifecycle === "TESTING"
+      ? "Keep this as a bounded test. Do not promote it into a Project or Canon until the success trigger is met and Daniel approves promotion."
+      : selected.lifecycle === "KILL"
+        ? "Keep it archived unless new evidence directly changes the kill trigger."
+        : "Keep it outside Projects and Canon until Daniel approves a test or later promotion.";
     return {
-      idea: compact(selected.proposed_solution || selected.problem || selected.title, 260),
+      signal: selected.observation || selected.raw_input || selected.title,
       verdict: founderVerdict,
-      continueReason: selected.evidence_for?.[0] || "No strong positive evidence has been established yet.",
-      stopReason: selected.evidence_against?.[0] || "No strong counter-evidence has been established yet.",
-      biggestUnknown: selected.unknowns?.[0] || "No material unknown was recorded.",
+      continueReason,
+      stopReason,
+      assessment: selected.recommendation_reason,
+      biggestUnknown,
       nextMove,
+      define: selected.problem,
+      measure: `PASS: ${selected.success_trigger} · STOP: ${selected.kill_trigger}`,
+      analyze: `FOR: ${continueReason} · AGAINST: ${stopReason} · UNKNOWN: ${biggestUnknown}`,
+      improve: nextMove,
+      control,
+      sources: selected.sources.slice(0, 4),
     };
   }, [selected]);
   const decisionCount = decisionCards.length;
@@ -547,29 +562,70 @@ export default function FoundryView() {
               <>
                 {selectedOverview && (
                   <div className="mb-5 rounded-xl border p-4" style={{ borderColor: GOLD, backgroundColor: "rgba(201,168,76,0.06)" }}>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: GOLD }}>TL;DR / OVERVIEW</div>
-                    <div className="mt-2 text-sm font-semibold leading-relaxed" style={{ color: TEXT }}>{selectedOverview.idea}</div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div>
-                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>VERDICT</div>
-                        <div className="mt-1 text-xs font-bold" style={{ color: selected.decision ? GOLD : recommendationTone[selected.recommendation] }}>{selectedOverview.verdict}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: GOLD }}>FOUNDRY OVERVIEW</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>Structured decision note + L6S quick audit</div>
+
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-lg border p-3" style={{ borderColor: BORDER, backgroundColor: BG }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>S / SIGNAL</div>
+                        <div className="mt-2 text-sm leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.signal, 420)}</div>
                       </div>
-                      <div>
-                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>EXACT NEXT MOVE</div>
-                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.nextMove, 260)}</div>
+
+                      <div className="rounded-lg border p-3" style={{ borderColor: BORDER, backgroundColor: BG }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>O / OBJECTIVE EVIDENCE</div>
+                        <div className="mt-2 text-xs leading-relaxed" style={{ color: "#86EFAC" }}><span className="font-bold">FOR:</span> {compact(selectedOverview.continueReason, 260)}</div>
+                        <div className="mt-2 text-xs leading-relaxed" style={{ color: "#FCA5A5" }}><span className="font-bold">AGAINST:</span> {compact(selectedOverview.stopReason, 260)}</div>
                       </div>
-                      <div>
-                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "#4ADE80" }}>BEST REASON TO CONTINUE</div>
-                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.continueReason, 240)}</div>
+
+                      <div className="rounded-lg border p-3" style={{ borderColor: BORDER, backgroundColor: BG }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>A / ASSESSMENT</div>
+                        <div className="mt-2 text-sm font-bold" style={{ color: selected.decision ? GOLD : recommendationTone[selected.recommendation] }}>{selectedOverview.verdict}</div>
+                        <div className="mt-2 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.assessment, 320)}</div>
+                        <div className="mt-2 text-[11px] leading-relaxed" style={{ color: MUTED }}><span className="font-bold">BIGGEST UNKNOWN:</span> {compact(selectedOverview.biggestUnknown, 220)}</div>
                       </div>
-                      <div>
-                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "#F87171" }}>BEST REASON TO STOP</div>
-                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.stopReason, 240)}</div>
+
+                      <div className="rounded-lg border p-3" style={{ borderColor: BORDER, backgroundColor: BG }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>P / PLAN</div>
+                        <div className="mt-2 text-sm leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.nextMove, 360)}</div>
+                        <div className="mt-3 text-[11px]" style={{ color: MUTED }}>Cash: {selected.estimated_cash} · Founder time: {selected.estimated_founder_time}</div>
                       </div>
-                      <div className="md:col-span-2">
-                        <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>BIGGEST UNKNOWN</div>
-                        <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{compact(selectedOverview.biggestUnknown, 300)}</div>
+                    </div>
+
+                    <div className="mt-4 rounded-lg border p-3" style={{ borderColor: "rgba(201,168,76,0.45)", backgroundColor: BG }}>
+                      <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>L6S / DMAIC OVERVIEW</div>
+                      <div className="mt-3 space-y-2">
+                        {([
+                          ["DEFINE", selectedOverview.define],
+                          ["MEASURE", selectedOverview.measure],
+                          ["ANALYZE", selectedOverview.analyze],
+                          ["IMPROVE", selectedOverview.improve],
+                          ["CONTROL", selectedOverview.control],
+                        ] as [string, string][]).map(([label, value]) => (
+                          <div key={label} className="grid gap-1 md:grid-cols-[80px_1fr]">
+                            <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>{label}</div>
+                            <div className="text-xs leading-relaxed" style={{ color: TEXT }}>{compact(value, label === "ANALYZE" ? 360 : 300)}</div>
+                          </div>
+                        ))}
                       </div>
+                    </div>
+
+                    <div className="mt-4 rounded-lg border p-3" style={{ borderColor: BORDER, backgroundColor: BG }}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>SOURCE CHECK</div>
+                        <div className="text-[10px]" style={{ color: MUTED }}>{selectedOverview.sources.length} research source{selectedOverview.sources.length === 1 ? "" : "s"} shown</div>
+                      </div>
+                      {selected.source_url && (
+                        <a href={selected.source_url} target="_blank" rel="noreferrer" className="mt-2 block text-xs underline" style={{ color: "#60A5FA" }}>Founder-provided source</a>
+                      )}
+                      {selectedOverview.sources.length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {selectedOverview.sources.map((source) => (
+                            <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="block text-xs underline" style={{ color: "#60A5FA" }}>{source.title || source.url}</a>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-xs" style={{ color: MUTED }}>No external research sources were returned on this card.</div>
+                      )}
                     </div>
                   </div>
                 )}
