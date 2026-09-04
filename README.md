@@ -44,6 +44,8 @@ Production uses Cloudflare Workers via `wrangler`. See `wrangler.jsonc` for conf
 
 Foundry does not use a separate browser password or access key. Protect the `foundercrm` Worker with Cloudflare Access so approved users sign in once at the Worker edge. The Foundry API routes require an authenticated Cloudflare Access session before OpenAI is called.
 
+Voice intake uses browser audio recording and the Worker transcription route. It does not depend on browser SpeechRecognition.
+
 Before deploying a new or rotated Google OAuth credential, set the production Worker secret using the Cloudflare dashboard or Wrangler secret management, then verify the OAuth connection before removing the prior credential.
 
 ```
