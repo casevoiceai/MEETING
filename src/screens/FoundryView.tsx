@@ -17,6 +17,7 @@ const CARD = "#0D1B2E";
 const TEXT = "#D0DFEE";
 const MUTED = "#8A9BB5";
 const LIVE_CHUNK_MS = 4000;
+const READINESS_STAGES = ["BRAIN DUMP", "DESIGN EXERCISE", "VALIDATE", "TESTABLE", "PROMOTION CANDIDATE"] as const;
 
 type VaultFilter = "ACTIVE" | "HOLD" | "KILL" | "ALL";
 
@@ -28,6 +29,22 @@ const recommendationTone: Record<string, string> = {
 
 function compact(value: string, max = 150) {
   return value.length > max ? `${value.slice(0, max).trim()}…` : value;
+}
+
+function readinessIndex(card: FoundryCard): number {
+  if (card.lifecycle === "PROMOTE" || (card.lifecycle === "EVIDENCE" && card.score >= 75)) return 4;
+  if (card.score >= 60 || card.recommendation === "TEST") return 3;
+  if (card.score >= 40) return 2;
+  if (card.score >= 20) return 1;
+  return 0;
+}
+
+function readinessMeaning(index: number): string {
+  if (index === 0) return "Interesting thought only. The evidence is not strong enough to treat this as project work.";
+  if (index === 1) return "Worth thinking through, but this is still closer to a design exercise than a business commitment.";
+  if (index === 2) return "Plausible opportunity. Get cheap external evidence before spending build time.";
+  if (index === 3) return "Enough evidence exists for a bounded test. This still does not authorize a build or new project.";
+  return "Evidence is strong enough to consider formal promotion. Daniel still makes the promotion decision.";
 }
 
 function chooseRecorderMimeType(): string {
@@ -106,6 +123,15 @@ export default function FoundryView() {
       improve: nextMove,
       control,
       sources: selected.sources.slice(0, 4),
+    };
+  }, [selected]);
+  const selectedReadiness = useMemo(() => {
+    if (!selected) return null;
+    const index = readinessIndex(selected);
+    return {
+      index,
+      label: READINESS_STAGES[index],
+      meaning: readinessMeaning(index),
     };
   }, [selected]);
   const decisionCount = decisionCards.length;
@@ -560,6 +586,42 @@ export default function FoundryView() {
               </div>
             ) : (
               <>
+                {selectedReadiness && (
+                  <div className="mb-4 rounded-xl border p-4" style={{ borderColor: BORDER, backgroundColor: BG }}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: GOLD }}>PROJECT READINESS</div>
+                      <div className="text-xs font-bold" style={{ color: GOLD }}>CURRENT READ: {selectedReadiness.label}</div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+                      {READINESS_STAGES.map((stage, index) => {
+                        const isCurrent = index === selectedReadiness.index;
+                        const isPassed = index < selectedReadiness.index;
+                        return (
+                          <div
+                            key={stage}
+                            className="rounded-lg border px-2 py-3 text-center text-[9px] font-bold uppercase tracking-wider"
+                            style={{
+                              borderColor: isCurrent ? GOLD : isPassed ? "#4ADE80" : BORDER,
+                              backgroundColor: isCurrent ? GOLD : isPassed ? "rgba(74,222,128,0.08)" : CARD,
+                              color: isCurrent ? BG : isPassed ? "#86EFAC" : MUTED,
+                            }}
+                          >
+                            {stage}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 text-xs leading-relaxed" style={{ color: TEXT }}>{selectedReadiness.meaning}</div>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] uppercase tracking-wider" style={{ color: MUTED }}>
+                      <span>AI SCORE {selected.score}/100</span>
+                      <span>SOURCES {selected.sources.length}</span>
+                      <span>UNKNOWNS {selected.unknowns.length}</span>
+                      <span>RISKS {selected.primary_risks.length}</span>
+                      <span>TEST {selected.estimated_cash} · {selected.estimated_founder_time}</span>
+                    </div>
+                  </div>
+                )}
+
                 {selectedOverview && (
                   <div className="mb-5 rounded-xl border p-4" style={{ borderColor: GOLD, backgroundColor: "rgba(201,168,76,0.06)" }}>
                     <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: GOLD }}>FOUNDRY OVERVIEW</div>
