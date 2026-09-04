@@ -130,6 +130,17 @@ function saveCards(cards: FoundryCard[]): void {
   writeJson(CARDS_KEY, cards.slice(0, 250));
 }
 
+function normalizeCard(card: FoundryCard): FoundryCard {
+  if (!card.decision && card.lifecycle === "TESTABLE" && card.recommendation !== "TEST") {
+    return { ...card, lifecycle: "RESEARCHED" };
+  }
+  return card;
+}
+
+export function needsFounderDecision(card: FoundryCard): boolean {
+  return !card.decision && (card.lifecycle === "RESEARCHED" || card.lifecycle === "TESTABLE");
+}
+
 function updateCapture(id: string, patch: Partial<FoundryCapture>): void {
   const captures = readJson<FoundryCapture[]>(CAPTURES_KEY, []);
   writeJson(
@@ -145,9 +156,12 @@ function accessError(status: number): string {
 }
 
 export async function listFoundryCards(): Promise<FoundryCard[]> {
-  return readJson<FoundryCard[]>(CARDS_KEY, []).sort(
-    (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)
-  );
+  const stored = readJson<FoundryCard[]>(CARDS_KEY, []);
+  const normalized = stored.map(normalizeCard);
+  if (normalized.some((card, index) => card.lifecycle !== stored[index]?.lifecycle)) {
+    saveCards(normalized);
+  }
+  return normalized.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
 }
 
 export function listFoundryDecisionLog(): FoundryDecisionLogEntry[] {
@@ -254,7 +268,7 @@ export async function analyzeFoundryIdea(intake: FoundryIntake): Promise<Foundry
     raw_input: rawInput,
     source_url: sourceUrl,
     attachment_name: intake.image?.name ?? "",
-    lifecycle: "TESTABLE",
+    lifecycle: payload.analysis.recommendation === "TEST" ? "TESTABLE" : "RESEARCHED",
     decision: "",
     decision_reason: "",
     created_at: capturedAt,
