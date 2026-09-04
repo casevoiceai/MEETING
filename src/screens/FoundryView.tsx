@@ -21,6 +21,14 @@ const READINESS_STAGES = ["BRAIN DUMP", "DESIGN EXERCISE", "VALIDATE", "TESTABLE
 
 type VaultFilter = "ACTIVE" | "HOLD" | "KILL" | "ALL";
 
+type ReadinessCoach = {
+  status: string;
+  heading: string;
+  why: string;
+  questions: string[];
+  proof: string;
+};
+
 const recommendationTone: Record<string, string> = {
   TEST: "#4ADE80",
   HOLD: "#F59E0B",
@@ -45,6 +53,99 @@ function readinessMeaning(index: number): string {
   if (index === 2) return "Plausible opportunity. Get cheap external evidence before spending build time.";
   if (index === 3) return "Enough evidence exists for a bounded test. This still does not authorize a build or new project.";
   return "Evidence is strong enough to consider formal promotion. Daniel still makes the promotion decision.";
+}
+
+function readinessCoach(card: FoundryCard, targetIndex: number, currentIndex: number): ReadinessCoach {
+  const biggestUnknown = card.unknowns?.[0] || "The most important remaining assumption has not been isolated yet.";
+  const strongestCounter = card.evidence_against?.[0] || "The squad has not yet found strong counter-evidence, but absence of evidence is not proof.";
+
+  if (targetIndex < currentIndex) {
+    return {
+      status: "ALREADY EARNED",
+      heading: "WHY THIS LEVEL IS ALREADY BEHIND THE IDEA",
+      why: `Foundry currently places this idea beyond ${READINESS_STAGES[targetIndex]}. That means the present research packet already supports the minimum standard for this stage.`,
+      questions: [
+        "What evidence originally earned this level?",
+        "Has any newer evidence weakened that conclusion?",
+        "What would have to be false for the idea to fall back below this level?",
+      ],
+      proof: "This stage is already supported by the current card. The useful question now is whether the evidence still deserves to stand.",
+    };
+  }
+
+  if (targetIndex === currentIndex) {
+    return {
+      status: "CURRENT STAGE",
+      heading: "WHY THE IDEA IS HERE NOW",
+      why: readinessMeaning(currentIndex),
+      questions: [
+        "What is the weakest assumption at this stage?",
+        "What evidence would move this idea forward one level?",
+        "What evidence would move it backward or make me stop?",
+        "Am I reacting to real outside evidence or mainly to how much I like the idea?",
+      ],
+      proof: "The current evidence supports this level, but Foundry does not yet see enough proof for the next one.",
+    };
+  }
+
+  if (targetIndex === 1) {
+    return {
+      status: "NOT EARNED YET",
+      heading: "WHY THIS IS NOT YET A DESIGN EXERCISE WORTH PURSUING",
+      why: `Foundry has not yet separated a recurring problem from an interesting concept strongly enough. Biggest open question: ${biggestUnknown}`,
+      questions: [
+        "What exact moment or frustration made me notice this?",
+        "Who experiences that problem repeatedly, not just occasionally?",
+        "What are they already doing instead?",
+        "If nobody fixed this, what real cost, delay, risk, or frustration remains?",
+      ],
+      proof: "A specific recurring problem, a specific person who has it, the current workaround, and a clear reason the workaround is unsatisfying.",
+    };
+  }
+
+  if (targetIndex === 2) {
+    return {
+      status: "NOT EARNED YET",
+      heading: "WHY THIS HAS NOT EARNED VALIDATION YET",
+      why: `The idea still needs stronger evidence outside the concept itself. Foundry is carrying ${card.unknowns.length} material unknown${card.unknowns.length === 1 ? "" : "s"}. Strongest current counterpoint: ${strongestCounter}`,
+      questions: [
+        "Which assumption would kill this idea immediately if it were false?",
+        "What evidence would convince Jerry that the pain exists without me explaining the idea first?",
+        "Are people already spending time, money, or effort to work around this problem?",
+        "What would count as real behavior rather than polite interest or compliments?",
+      ],
+      proof: "Independent evidence that the pain is recurring, the current alternatives leave a meaningful gap, and the target customer cares enough to change behavior.",
+    };
+  }
+
+  if (targetIndex === 3) {
+    return {
+      status: "NOT EARNED YET",
+      heading: "WHY THIS IS NOT YET TESTABLE",
+      why: `The research has not yet justified spending even bounded test time at this level. Current AI recommendation: ${card.recommendation}. Biggest open question: ${biggestUnknown}`,
+      questions: [
+        "Can I define what success and failure mean before I test anything?",
+        "Can the biggest uncertainty be answered without quietly building the product?",
+        "What would a target buyer have to do, not merely say, to justify another hour?",
+        "Is the test small enough that CASEVOICE and current priorities remain untouched?",
+      ],
+      proof: "A cheap, bounded experiment with a clear question, observable pass and kill results, realistic founder time, and no hidden product build.",
+    };
+  }
+
+  return {
+    status: "NOT EARNED YET",
+    heading: "WHY THIS IS NOT YET A PROMOTION CANDIDATE",
+    why: `Promotion means this idea competes for real Vogtcom execution. The card has not earned that status yet. Current lifecycle: ${card.lifecycle}. Current score: ${card.score}/100.`,
+    questions: [
+      "What has been proven by actual behavior, payment, usage, or repeated demand?",
+      "Why should this take founder time away from CASEVOICE now?",
+      "Does the evidence show a repeatable opportunity or only one interesting experiment?",
+      "Can one founder deliver and support this without creating another permanent burden?",
+      "What result would make promotion obviously wrong even if I still like the idea?",
+    ],
+    proof: `The approved test meets its success trigger, buyer behavior or payment intent is credible, workload and risk remain acceptable, and Daniel explicitly decides that the opportunity deserves promotion. Current success trigger: ${card.success_trigger}`,
+  };
 }
 
 function chooseRecorderMimeType(): string {
@@ -74,6 +175,7 @@ export default function FoundryView() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [readinessFocus, setReadinessFocus] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
   const [pendingSegments, setPendingSegments] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
@@ -134,6 +236,13 @@ export default function FoundryView() {
       meaning: readinessMeaning(index),
     };
   }, [selected]);
+  const selectedReadinessCoach = useMemo(() => {
+    if (!selected || !selectedReadiness || readinessFocus === null) return null;
+    return {
+      stage: READINESS_STAGES[readinessFocus],
+      ...readinessCoach(selected, readinessFocus, selectedReadiness.index),
+    };
+  }, [selected, selectedReadiness, readinessFocus]);
   const decisionCount = decisionCards.length;
   const activeCount = cards.filter(isActiveCard).length;
   const holdCount = cards.filter((card) => card.lifecycle === "HOLD").length;
@@ -163,6 +272,7 @@ export default function FoundryView() {
   function changeVaultFilter(filter: VaultFilter) {
     setVaultFilter(filter);
     setShowAnalysis(false);
+    setReadinessFocus(null);
     const matching = cards.filter((card) => matchesFilter(card, filter));
     const next = filter === "ACTIVE"
       ? matching.find((card) => card.lifecycle === "TESTABLE") ?? matching[0]
@@ -317,6 +427,10 @@ export default function FoundryView() {
     };
   }, []);
 
+  useEffect(() => {
+    setReadinessFocus(null);
+  }, [selectedId]);
+
   async function toggleVoice() {
     if (recording) {
       stopVoice();
@@ -355,6 +469,7 @@ export default function FoundryView() {
     setError("");
     setNotice("");
     setShowAnalysis(false);
+    setReadinessFocus(null);
     try {
       const card = await analyzeFoundryIdea({
         rawInput,
@@ -384,6 +499,7 @@ export default function FoundryView() {
       const nextCards = cards.map((card) => (card.id === updated.id ? updated : card));
       setCards(nextCards);
       setShowAnalysis(false);
+      setReadinessFocus(null);
 
       const nextDecision = nextCards.find((card) => card.lifecycle === "TESTABLE" && card.id !== updated.id);
       setSelectedId(nextDecision?.id ?? "");
@@ -562,7 +678,7 @@ export default function FoundryView() {
                 <button
                   type="button"
                   key={card.id}
-                  onClick={() => { setSelectedId(card.id); setShowAnalysis(false); }}
+                  onClick={() => { setSelectedId(card.id); setShowAnalysis(false); setReadinessFocus(null); }}
                   className="w-full rounded-xl border p-3 text-left"
                   style={{ borderColor: selected?.id === card.id ? GOLD : BORDER, backgroundColor: BG }}
                 >
@@ -596,18 +712,24 @@ export default function FoundryView() {
                       {READINESS_STAGES.map((stage, index) => {
                         const isCurrent = index === selectedReadiness.index;
                         const isPassed = index < selectedReadiness.index;
+                        const isFocused = readinessFocus === index;
                         return (
-                          <div
+                          <button
+                            type="button"
                             key={stage}
-                            className="rounded-lg border px-2 py-3 text-center text-[9px] font-bold uppercase tracking-wider"
+                            onClick={() => setReadinessFocus((current) => current === index ? null : index)}
+                            aria-pressed={isFocused}
+                            className="rounded-lg border px-2 py-3 text-center text-[9px] font-bold uppercase tracking-wider transition-colors"
                             style={{
                               borderColor: isCurrent ? GOLD : isPassed ? "#4ADE80" : BORDER,
                               backgroundColor: isCurrent ? GOLD : isPassed ? "rgba(74,222,128,0.08)" : CARD,
                               color: isCurrent ? BG : isPassed ? "#86EFAC" : MUTED,
+                              boxShadow: isFocused ? "0 0 0 1px #60A5FA" : "none",
                             }}
+                            title={`Click to understand ${stage}`}
                           >
                             {stage}
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -619,6 +741,39 @@ export default function FoundryView() {
                       <span>RISKS {selected.primary_risks.length}</span>
                       <span>TEST {selected.estimated_cash} · {selected.estimated_founder_time}</span>
                     </div>
+
+                    {selectedReadinessCoach && (
+                      <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "#2B4A73", backgroundColor: CARD }}>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: "#60A5FA" }}>STAGE COACH · {selectedReadinessCoach.stage}</div>
+                            <div className="mt-1 text-[9px] font-bold uppercase tracking-wider" style={{ color: selectedReadinessCoach.status === "NOT EARNED YET" ? "#FBBF24" : selectedReadinessCoach.status === "CURRENT STAGE" ? GOLD : "#86EFAC" }}>{selectedReadinessCoach.status}</div>
+                          </div>
+                          <button type="button" onClick={() => setReadinessFocus(null)} className="text-[10px] uppercase" style={{ color: MUTED }}>CLOSE</button>
+                        </div>
+
+                        <div className="mt-3">
+                          <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>{selectedReadinessCoach.heading}</div>
+                          <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{selectedReadinessCoach.why}</div>
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>QUESTIONS TO THINK ABOUT</div>
+                          <ul className="mt-2 list-disc space-y-1.5 pl-5 text-xs leading-relaxed" style={{ color: TEXT }}>
+                            {selectedReadinessCoach.questions.map((question) => <li key={question}>{question}</li>)}
+                          </ul>
+                        </div>
+
+                        <div className="mt-4 rounded-lg border p-3" style={{ borderColor: BORDER, backgroundColor: BG }}>
+                          <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: "#86EFAC" }}>WHAT WOULD CHANGE THE READ</div>
+                          <div className="mt-1 text-xs leading-relaxed" style={{ color: TEXT }}>{selectedReadinessCoach.proof}</div>
+                        </div>
+
+                        <div className="mt-3 text-[10px] leading-relaxed" style={{ color: MUTED }}>
+                          These are questions, not instructions. Foundry identifies the missing proof. Daniel decides how, or whether, to pursue it.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
