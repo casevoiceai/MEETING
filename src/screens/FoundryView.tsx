@@ -16,6 +16,7 @@ const BG = "#08111F";
 const CARD = "#0D1B2E";
 const TEXT = "#D0DFEE";
 const MUTED = "#8A9BB5";
+const LIVE_CHUNK_MS = 4000;
 
 const recommendationTone: Record<string, string> = {
   TEST: "#4ADE80",
@@ -42,11 +43,13 @@ export default function FoundryView() {
   const [error, setError] = useState("");
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
+  const [pendingSegments, setPendingSegments] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const stopTimerRef = useRef<number | null>(null);
+  const segmentTimerRef = useRef<number | null>(null);
+  const listeningRef = useRef(false);
+  const transcriptQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const transcribing = pendingSegments > 0;
 
   const selected = useMemo(
     () => cards.find((card) => card.id === selectedId) ?? cards.find((card) => card.lifecycle === "TESTABLE") ?? cards[0] ?? null,
@@ -60,28 +63,108 @@ export default function FoundryView() {
     if (preferId) setSelectedId(preferId);
   }
 
-  function releaseVoiceHardware() {
-    if (stopTimerRef.current !== null) {
-      window.clearTimeout(stopTimerRef.current);
-      stopTimerRef.current = null;
+  function clearSegmentTimer() {
+    if (segmentTimerRef.current !== null) {
+      window.clearTimeout(segmentTimerRef.current);
+      segmentTimerRef.current = null;
     }
+  }
+
+  function releaseVoiceHardware() {
+    clearSegmentTimer();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     recorderRef.current = null;
+    listeningRef.current = false;
     setRecording(false);
+  }
+
+  function appendTranscript(text: string) {
+    const cleaned = text.trim();
+    if (!cleaned) return;
+    setRawInput((current) => `${current}${current.trim() ? " " : ""}${cleaned}`);
+  }
+
+  function queueTranscript(audio: Blob) {
+    if (!audio.size) return;
+    setPendingSegments((count) => count + 1);
+    transcriptQueueRef.current = transcriptQueueRef.current
+      .then(async () => {
+        const text = await transcribeFoundryAudio(audio);
+        appendTranscript(text);
+        setError("");
+      })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : "Voice transcription failed.";
+        if (!message.toLowerCase().includes("no speech")) setError(message);
+      })
+      .finally(() => {
+        setPendingSegments((count) => Math.max(0, count - 1));
+      });
+  }
+
+  function startVoiceSegment() {
+    const stream = streamRef.current;
+    if (!listeningRef.current || !stream) return;
+
+    const mimeType = chooseRecorderMimeType();
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    recorderRef.current = recorder;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+
+    recorder.onerror = () => {
+      listeningRef.current = false;
+      releaseVoiceHardware();
+      setError("Voice recording stopped unexpectedly. Your existing text is safe.");
+    };
+
+    recorder.onstop = () => {
+      clearSegmentTimer();
+      const finalType = recorder.mimeType || chunks[0]?.type || "audio/webm";
+      if (chunks.length > 0) queueTranscript(new Blob(chunks, { type: finalType }));
+      recorderRef.current = null;
+
+      if (listeningRef.current && streamRef.current) {
+        window.setTimeout(startVoiceSegment, 0);
+      } else {
+        releaseVoiceHardware();
+      }
+    };
+
+    recorder.start();
+    segmentTimerRef.current = window.setTimeout(() => {
+      if (recorder.state !== "inactive") recorder.stop();
+    }, LIVE_CHUNK_MS);
+  }
+
+  function stopVoice() {
+    listeningRef.current = false;
+    clearSegmentTimer();
+    setRecording(false);
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    else releaseVoiceHardware();
   }
 
   useEffect(() => {
     refresh().catch((e) => setError(e instanceof Error ? e.message : "Could not load Foundry."));
     return () => {
+      listeningRef.current = false;
+      clearSegmentTimer();
       if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
-      releaseVoiceHardware();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      recorderRef.current = null;
     };
   }, []);
 
   async function toggleVoice() {
     if (recording) {
-      if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+      stopVoice();
       return;
     }
 
@@ -94,46 +177,9 @@ export default function FoundryView() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      chunksRef.current = [];
-      const mimeType = chooseRecorderMimeType();
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      recorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
-      };
-
-      recorder.onerror = () => {
-        releaseVoiceHardware();
-        setError("Voice recording stopped unexpectedly. Your existing text is safe.");
-      };
-
-      recorder.onstop = async () => {
-        const chunks = [...chunksRef.current];
-        const finalType = recorder.mimeType || chunks[0]?.type || "audio/webm";
-        releaseVoiceHardware();
-        if (chunks.length === 0) {
-          setError("No voice audio was captured. Try again.");
-          return;
-        }
-
-        setTranscribing(true);
-        try {
-          const text = await transcribeFoundryAudio(new Blob(chunks, { type: finalType }));
-          setRawInput((current) => `${current}${current.trim() ? " " : ""}${text}`);
-          setError("");
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "Voice transcription failed.");
-        } finally {
-          setTranscribing(false);
-        }
-      };
-
-      recorder.start(1000);
+      listeningRef.current = true;
       setRecording(true);
-      stopTimerRef.current = window.setTimeout(() => {
-        if (recorder.state !== "inactive") recorder.stop();
-      }, 180000);
+      startVoiceSegment();
     } catch (e) {
       releaseVoiceHardware();
       const message = e instanceof DOMException && e.name === "NotAllowedError"
@@ -205,24 +251,30 @@ export default function FoundryView() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="font-semibold">Brain dump</h2>
-              <p className="mt-1 text-xs" style={{ color: MUTED }}>One sentence is enough. Swearing, fragments, pasted notes, and half-formed ideas are allowed.</p>
+              <p className="mt-1 text-xs" style={{ color: MUTED }}>
+                {recording
+                  ? "LIVE DICTATION ON. Text appears every few seconds. Keep talking and edit the text whenever you want."
+                  : transcribing
+                    ? "Finishing the last voice chunk. You can keep editing the text."
+                    : "One sentence is enough. Swearing, fragments, pasted notes, and half-formed ideas are allowed."}
+              </p>
             </div>
             <button
               type="button"
               onClick={toggleVoice}
-              disabled={transcribing}
+              disabled={busy}
               className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50"
               style={{ borderColor: recording ? "#F87171" : BORDER, color: recording ? "#F87171" : TEXT }}
             >
               {recording ? <MicOff size={14} /> : <Mic size={14} />}
-              {transcribing ? "TRANSCRIBING…" : recording ? "STOP" : "VOICE"}
+              {recording ? "STOP" : "VOICE"}
             </button>
           </div>
           <textarea
             value={rawInput}
             onChange={(event) => setRawInput(event.target.value)}
             className="mt-4 min-h-32 w-full rounded-xl border p-4 text-sm outline-none"
-            style={{ borderColor: BORDER, backgroundColor: BG, color: TEXT }}
+            style={{ borderColor: recording ? "#4ADE80" : BORDER, backgroundColor: BG, color: TEXT }}
             placeholder="Why the fuck doesn't somebody make X?"
           />
           <div className="mt-3 grid gap-3 md:grid-cols-2">
