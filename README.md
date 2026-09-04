@@ -40,6 +40,12 @@ Production uses Cloudflare Workers via `wrangler`. See `wrangler.jsonc` for conf
 
 `GOOGLE_CLIENT_SECRET` must be stored as a Cloudflare Worker secret. Never commit the secret value to `wrangler.jsonc`, `.env`, documentation, issues, pull requests, or other tracked files.
 
+`OPENAI_API_KEY` must also be stored as a Cloudflare Worker secret. Foundry calls OpenAI only through Worker routes such as `/api/foundry-analyze` and `/api/foundry-transcribe`; never expose the key in browser code or tracked files.
+
+Foundry does not use a separate browser password or access key. Protect the `foundercrm` Worker with Cloudflare Access so approved users sign in once at the Worker edge. The Foundry API routes require an authenticated Cloudflare Access session before OpenAI is called.
+
+Voice intake uses browser audio recording and the Worker transcription route. It does not depend on browser SpeechRecognition.
+
 Before deploying a new or rotated Google OAuth credential, set the production Worker secret using the Cloudflare dashboard or Wrangler secret management, then verify the OAuth connection before removing the prior credential.
 
 ```

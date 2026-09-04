@@ -1,9 +1,12 @@
+import { handleFoundryAnalyze, handleFoundryTranscribe } from "./foundryWorker";
+
 export interface Env {
   ASSETS: Fetcher;
   OAUTH_TOKENS: KVNamespace;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   GOOGLE_DRIVE_PARENT_FOLDER_ID?: string;
+  OPENAI_API_KEY: string;
 }
 
 const REDIRECT_URI = "https://foundercrm.casevoice-ai.workers.dev/oauth/callback";
@@ -100,9 +103,8 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
     name: title.replace(/[\\/:*?"<>|]/g, "_"),
     mimeType: "application/vnd.google-apps.document",
   };
-  if (parentId) {
-    metadata.parents = [parentId];
-  }
+  if (parentId) metadata.parents = [parentId];
+
   const boundary = "casevoice-boundary-" + crypto.randomUUID();
   const multipartBody =
     "--" + boundary + "\r\n" +
@@ -112,6 +114,7 @@ async function saveMeetingToDrive(env: Env, body: JsonRecord) {
     "Content-Type: text/plain\r\n\r\n" +
     content + "\r\n" +
     "--" + boundary + "--";
+
   const uploadRes = await fetch(
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
     {
@@ -158,10 +161,7 @@ async function handleApi(request: Request, env: Env) {
   }
   const action = typeof body.action === "string" ? body.action : "";
   try {
-    if (action === "save_meeting") {
-      const result = await saveMeetingToDrive(env, body);
-      return json(result, 200);
-    }
+    if (action === "save_meeting") return json(await saveMeetingToDrive(env, body), 200);
     if (action === "check_credentials") {
       const hasClientId = typeof env.GOOGLE_CLIENT_ID === "string" && env.GOOGLE_CLIENT_ID.trim().length > 10;
       const hasClientSecret = typeof env.GOOGLE_CLIENT_SECRET === "string" && env.GOOGLE_CLIENT_SECRET.trim().length > 10;
@@ -187,6 +187,14 @@ async function handleApi(request: Request, env: Env) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // Cloudflare Access protects the preview hostname before this Worker runs.
+    // Static Assets Workers do not receive ctx.access, so do not re-check it here.
+    if (url.pathname === "/api/foundry-analyze" || url.pathname === "/api/foundry-transcribe") {
+      return url.pathname === "/api/foundry-analyze"
+        ? handleFoundryAnalyze(request, env)
+        : handleFoundryTranscribe(request, env);
+    }
 
     if (url.pathname === "/oauth/start") {
       const params = new URLSearchParams({
