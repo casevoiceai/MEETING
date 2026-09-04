@@ -4,6 +4,7 @@ import {
   analyzeFoundryIdea,
   listFoundryCards,
   recordFoundryDecision,
+  transcribeFoundryAudio,
   type FoundryCard,
   type FoundryDecision,
 } from "../lib/foundry";
@@ -26,6 +27,11 @@ function compact(value: string, max = 150) {
   return value.length > max ? `${value.slice(0, max).trim()}…` : value;
 }
 
+function chooseRecorderMimeType(): string {
+  if (typeof MediaRecorder === "undefined") return "";
+  return ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+}
+
 export default function FoundryView() {
   const [rawInput, setRawInput] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -35,8 +41,12 @@ export default function FoundryView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const stopTimerRef = useRef<number | null>(null);
 
   const selected = useMemo(
     () => cards.find((card) => card.id === selectedId) ?? cards.find((card) => card.lifecycle === "TESTABLE") ?? cards[0] ?? null,
@@ -50,44 +60,87 @@ export default function FoundryView() {
     if (preferId) setSelectedId(preferId);
   }
 
+  function releaseVoiceHardware() {
+    if (stopTimerRef.current !== null) {
+      window.clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+    setRecording(false);
+  }
+
   useEffect(() => {
     refresh().catch((e) => setError(e instanceof Error ? e.message : "Could not load Foundry."));
-    return () => recognitionRef.current?.stop?.();
+    return () => {
+      if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+      releaseVoiceHardware();
+    };
   }, []);
 
-  function toggleVoice() {
-    if (listening) {
-      recognitionRef.current?.stop?.();
-      setListening(false);
+  async function toggleVoice() {
+    if (recording) {
+      if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
       return;
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError("Voice capture is not available in this browser. Type or paste the thought instead.");
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("This browser cannot record voice notes. Type or paste the thought instead.");
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-    recognition.onresult = (event: any) => {
-      let spoken = "";
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        if (event.results[i].isFinal) spoken += `${event.results[i][0].transcript} `;
-      }
-      if (spoken.trim()) setRawInput((current) => `${current}${current ? " " : ""}${spoken.trim()}`);
-    };
-    recognition.onerror = () => {
-      setListening(false);
-      setError("Voice capture stopped. Your existing text is safe.");
-    };
-    recognition.onend = () => setListening(false);
-    recognition.start();
-    recognitionRef.current = recognition;
-    setListening(true);
     setError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mimeType = chooseRecorderMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+
+      recorder.onerror = () => {
+        releaseVoiceHardware();
+        setError("Voice recording stopped unexpectedly. Your existing text is safe.");
+      };
+
+      recorder.onstop = async () => {
+        const chunks = [...chunksRef.current];
+        const finalType = recorder.mimeType || chunks[0]?.type || "audio/webm";
+        releaseVoiceHardware();
+        if (chunks.length === 0) {
+          setError("No voice audio was captured. Try again.");
+          return;
+        }
+
+        setTranscribing(true);
+        try {
+          const text = await transcribeFoundryAudio(new Blob(chunks, { type: finalType }));
+          setRawInput((current) => `${current}${current.trim() ? " " : ""}${text}`);
+          setError("");
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Voice transcription failed.");
+        } finally {
+          setTranscribing(false);
+        }
+      };
+
+      recorder.start(1000);
+      setRecording(true);
+      stopTimerRef.current = window.setTimeout(() => {
+        if (recorder.state !== "inactive") recorder.stop();
+      }, 180000);
+    } catch (e) {
+      releaseVoiceHardware();
+      const message = e instanceof DOMException && e.name === "NotAllowedError"
+        ? "Microphone permission was blocked. Allow microphone access for this site and try again."
+        : "Could not start the microphone. Try again or type the thought.";
+      setError(message);
+    }
   }
 
   async function submitIdea() {
@@ -157,11 +210,12 @@ export default function FoundryView() {
             <button
               type="button"
               onClick={toggleVoice}
-              className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold"
-              style={{ borderColor: listening ? "#F87171" : BORDER, color: listening ? "#F87171" : TEXT }}
+              disabled={transcribing}
+              className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-50"
+              style={{ borderColor: recording ? "#F87171" : BORDER, color: recording ? "#F87171" : TEXT }}
             >
-              {listening ? <MicOff size={14} /> : <Mic size={14} />}
-              {listening ? "STOP" : "VOICE"}
+              {recording ? <MicOff size={14} /> : <Mic size={14} />}
+              {transcribing ? "TRANSCRIBING…" : recording ? "STOP" : "VOICE"}
             </button>
           </div>
           <textarea
@@ -195,7 +249,7 @@ export default function FoundryView() {
             </div>
             <button
               type="button"
-              disabled={busy || !rawInput.trim()}
+              disabled={busy || transcribing || recording || !rawInput.trim()}
               onClick={submitIdea}
               className="flex items-center gap-2 rounded-xl px-4 py-3 text-xs font-bold disabled:opacity-40"
               style={{ backgroundColor: GOLD, color: "#08111F" }}
