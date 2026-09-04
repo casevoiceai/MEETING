@@ -44,11 +44,15 @@ export default function FoundryView() {
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [recording, setRecording] = useState(false);
   const [pendingSegments, setPendingSegments] = useState(0);
+  const [micLevel, setMicLevel] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const segmentTimerRef = useRef<number | null>(null);
   const listeningRef = useRef(false);
   const transcriptQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const levelFrameRef = useRef<number | null>(null);
   const transcribing = pendingSegments > 0;
 
   const selected = useMemo(
@@ -56,6 +60,17 @@ export default function FoundryView() {
     [cards, selectedId]
   );
   const decisionCount = cards.filter((card) => card.lifecycle === "TESTABLE").length;
+  const levelLabel = micLevel < 0.12 ? "TOO QUIET" : micLevel > 0.85 ? "TOO LOUD" : "GOOD LEVEL";
+  const levelColor = micLevel < 0.12 ? "#FBBF24" : micLevel > 0.85 ? "#F87171" : "#4ADE80";
+  const voiceStatus = recording
+    ? pendingSegments > 2
+      ? "LISTENING · CATCHING UP"
+      : pendingSegments > 0
+        ? "LISTENING · BUFFERING"
+        : "LISTENING"
+    : pendingSegments > 0
+      ? "FINISHING TRANSCRIPTION"
+      : "READY";
 
   async function refresh(preferId?: string) {
     const next = await listFoundryCards();
@@ -70,8 +85,54 @@ export default function FoundryView() {
     }
   }
 
+  function stopLevelMonitor() {
+    if (levelFrameRef.current !== null) {
+      window.cancelAnimationFrame(levelFrameRef.current);
+      levelFrameRef.current = null;
+    }
+    analyserRef.current = null;
+    const context = audioContextRef.current;
+    audioContextRef.current = null;
+    setMicLevel(0);
+    if (context && context.state !== "closed") {
+      context.close().catch(() => undefined);
+    }
+  }
+
+  function startLevelMonitor(stream: MediaStream) {
+    stopLevelMonitor();
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const context = new AudioContextCtor();
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.65;
+    source.connect(analyser);
+    audioContextRef.current = context;
+    analyserRef.current = analyser;
+    const samples = new Uint8Array(analyser.fftSize);
+
+    const updateLevel = () => {
+      if (!listeningRef.current || !analyserRef.current) return;
+      analyser.getByteTimeDomainData(samples);
+      let squareSum = 0;
+      for (const sample of samples) {
+        const centered = (sample - 128) / 128;
+        squareSum += centered * centered;
+      }
+      const rms = Math.sqrt(squareSum / samples.length);
+      setMicLevel(Math.min(1, rms * 4));
+      levelFrameRef.current = window.requestAnimationFrame(updateLevel);
+    };
+
+    levelFrameRef.current = window.requestAnimationFrame(updateLevel);
+  }
+
   function releaseVoiceHardware() {
     clearSegmentTimer();
+    stopLevelMonitor();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     recorderRef.current = null;
@@ -145,6 +206,7 @@ export default function FoundryView() {
     listeningRef.current = false;
     clearSegmentTimer();
     setRecording(false);
+    stopLevelMonitor();
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop();
     else releaseVoiceHardware();
@@ -155,6 +217,7 @@ export default function FoundryView() {
     return () => {
       listeningRef.current = false;
       clearSegmentTimer();
+      stopLevelMonitor();
       if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -179,6 +242,7 @@ export default function FoundryView() {
       streamRef.current = stream;
       listeningRef.current = true;
       setRecording(true);
+      startLevelMonitor(stream);
       startVoiceSegment();
     } catch (e) {
       releaseVoiceHardware();
@@ -248,7 +312,7 @@ export default function FoundryView() {
         </div>
 
         <section className="mt-6 rounded-2xl border p-5" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Brain dump</h2>
               <p className="mt-1 text-xs" style={{ color: MUTED }}>
@@ -270,6 +334,48 @@ export default function FoundryView() {
               {recording ? "STOP" : "VOICE"}
             </button>
           </div>
+
+          {(recording || transcribing) && (
+            <div className="mt-3 rounded-xl border p-3" style={{ borderColor: BORDER, backgroundColor: BG }} aria-live="polite">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: recording ? "#4ADE80" : GOLD }} />
+                  <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: recording ? "#4ADE80" : GOLD }}>{voiceStatus}</span>
+                </div>
+                {pendingSegments > 0 && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>
+                    {pendingSegments} chunk{pendingSegments === 1 ? "" : "s"} waiting
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <div className="min-w-48 flex-1">
+                  <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+                    <span style={{ color: MUTED }}>MIC LEVEL</span>
+                    <span style={{ color: recording ? levelColor : MUTED }}>{recording ? levelLabel : "MIC OFF"}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full" style={{ backgroundColor: BORDER }}>
+                    <div
+                      className="h-full rounded-full transition-[width] duration-100"
+                      style={{ width: `${Math.round(micLevel * 100)}%`, backgroundColor: levelColor }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[9px] uppercase" style={{ color: MUTED }}>
+                    <span>Quiet</span><span>Good</span><span>Loud</span>
+                  </div>
+                </div>
+                <div className="min-w-48 text-[11px] leading-relaxed" style={{ color: MUTED }}>
+                  {pendingSegments > 2
+                    ? "You are still being recorded. Text is behind and catching up."
+                    : pendingSegments > 0
+                      ? "You are still being recorded. Foundry is processing recent speech."
+                      : "Your microphone is live. Keep speaking normally."}
+                </div>
+              </div>
+            </div>
+          )}
+
           <textarea
             value={rawInput}
             onChange={(event) => setRawInput(event.target.value)}
