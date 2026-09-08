@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import FoundryView from "./screens/FoundryView";
 
+const PromptIntelligenceView = lazy(() => import("./screens/PromptIntelligenceView"));
 const MeetingRoomView = lazy(() => import("./screens/MeetingRoomView"));
 const VaultView = lazy(() => import("./screens/VaultView"));
 const DirectChat = lazy(() => import("./screens/DirectChat"));
@@ -16,6 +17,7 @@ const ConnectorControlRoomView = lazy(() => import("./screens/ConnectorControlRo
 
 type MainTab =
   | "FOUNDRY"
+  | "PROMPTS"
   | "FRONT DESK"
   | "HAVEN"
   | "CONFERENCE ROOM"
@@ -30,6 +32,7 @@ type MainTab =
 
 const MAIN_TABS: MainTab[] = [
   "FOUNDRY",
+  "PROMPTS",
   "FRONT DESK",
   "HAVEN",
   "CONFERENCE ROOM",
@@ -243,6 +246,7 @@ export default function App() {
       <main className={`flex-1 ${mainOverflowClass}`}>
         <Suspense fallback={<LoadingScreen />}>
           {activeTab === "FOUNDRY" && <FoundryView />}
+          {activeTab === "PROMPTS" && <PromptIntelligenceView />}
           {activeTab === "FRONT DESK" && <MeetingRoomView onSendToDirect={() => setActiveTab("CONFERENCE ROOM")} />}
           {activeTab === "HAVEN" && <HAVENProjectRoom />}
           {activeTab === "CONFERENCE ROOM" && <DirectChat />}
